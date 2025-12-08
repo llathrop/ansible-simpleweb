@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  ansible-web:
+    build: .
+    container_name: ansible-simpleweb
+    ports:
+      - "3001:3001"
+    volumes:
+      # Mount playbooks for easy editing
+      - ./playbooks:/app/playbooks
+      # Mount logs for persistence
+      - ./logs:/app/logs
+      # Mount inventory for easy editing
+      - ./inventory:/app/inventory
+      # Mount web app for development
+      - ./web:/app/web
+      # Mount SSH keys if they exist
+      - ~/.ssh:/root/.ssh:ro
+    environment:
+      - FLASK_ENV=development
+      - FLASK_APP=web/app.py
+    network_mode: host
+    restart: unless-stopped

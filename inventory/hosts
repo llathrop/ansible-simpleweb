@@ -1,0 +1,8 @@
+[local]
+localhost ansible_connection=local
+
+[remote_servers]
+# Add remote hosts here
+# Example:
+# server1.example.com ansible_user=username ansible_ssh_pass=password
+# server2.example.com ansible_user=username ansible_ssh_private_key_file=/root/.ssh/id_rsa
