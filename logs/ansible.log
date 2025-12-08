@@ -1,0 +1,13 @@
+2025-12-08 23:27:26,048 p=15 u=root n=ansible | [DEPRECATION WARNING]: DEFAULT_GATHER_TIMEOUT option, the module_defaults 
+keyword is a more generic version and can apply to all calls to the 
+M(ansible.builtin.gather_facts) or M(ansible.builtin.setup) actions, use 
+module_defaults instead. This feature will be removed from ansible-core in 
+version 2.18. Deprecation warnings can be disabled by setting 
+deprecation_warnings=False in ansible.cfg.
+2025-12-08 23:27:26,826 p=15 u=root n=ansible | localhost | SUCCESS => {
+    "ansible_facts": {
+        "discovered_interpreter_python": "/usr/bin/python3"
+    },
+    "changed": false,
+    "ping": "pong"
+}

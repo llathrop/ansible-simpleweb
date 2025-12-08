@@ -20,5 +20,4 @@ services:
     environment:
       - FLASK_ENV=development
       - FLASK_APP=web/app.py
-    network_mode: host
     restart: unless-stopped
