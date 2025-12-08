@@ -1,0 +1,125 @@
+[DEPRECATION WARNING]: DEFAULT_GATHER_TIMEOUT option, the module_defaults 
+keyword is a more generic version and can apply to all calls to the 
+M(ansible.builtin.gather_facts) or M(ansible.builtin.setup) actions, use 
+module_defaults instead. This feature will be removed from ansible-core in 
+version 2.18. Deprecation warnings can be disabled by setting 
+deprecation_warnings=False in ansible.cfg.
+
+PLAY [Hardware Inventory Collection] *******************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [localhost]
+
+TASK [Gather CPU information] **************************************************
+ok: [localhost]
+
+TASK [Gather memory information] ***********************************************
+ok: [localhost]
+
+TASK [Gather disk information] *************************************************
+ok: [localhost]
+
+TASK [Check for GPU (NVIDIA)] **************************************************
+ok: [localhost]
+
+TASK [Set GPU information] *****************************************************
+ok: [localhost]
+
+TASK [Compile hardware inventory] **********************************************
+ok: [localhost]
+
+TASK [Display hardware inventory as JSON] **************************************
+ok: [localhost] => 
+  msg: |-
+    {
+        "cpu": {
+            "architecture": "x86_64",
+            "cores": 4,
+            "count": 1,
+            "model": "Intel(R) Core(TM) i7-6700HQ CPU @ 2.60GHz",
+            "threads_per_core": 2,
+            "vcpus": 8
+        },
+        "disks": {
+            "devices": [
+                "loop1",
+                "loop29",
+                "loop19",
+                "nvme0n1",
+                "loop37",
+                "loop27",
+                "loop17",
+                "loop8",
+                "loop35",
+                "loop25",
+                "loop15",
+                "loop6",
+                "loop33",
+                "loop23",
+                "loop13",
+                "loop4",
+                "loop31",
+                "loop21",
+                "loop11",
+                "loop2",
+                "loop38",
+                "loop0",
+                "loop28",
+                "loop18",
+                "loop9",
+                "loop36",
+                "loop26",
+                "loop16",
+                "loop7",
+                "loop34",
+                "loop24",
+                "loop14",
+                "loop5",
+                "loop32",
+                "loop22",
+                "loop12",
+                "loop3",
+                "loop30",
+                "loop20",
+                "loop10",
+                "loop39"
+            ],
+            "mounts": [
+                "/root/.ssh",
+                "/app/web",
+                "/app/inventory",
+                "/app/logs",
+                "/app/playbooks",
+                "/etc/resolv.conf",
+                "/etc/hostname",
+                "/etc/hosts"
+            ],
+            "total_size_gb": "7324.205139160156"
+        },
+        "fqdn": "7e5a9fc7e1c4",
+        "gpu": {
+            "details": [
+                "No GPU detected"
+            ],
+            "detected": false
+        },
+        "hostname": "7e5a9fc7e1c4",
+        "memory": {
+            "free_mb": 804,
+            "swap_free_mb": 511,
+            "swap_total_mb": 511,
+            "total_mb": 31909
+        },
+        "system": {
+            "distribution": "Rocky",
+            "distribution_version": "9.7",
+            "kernel": "6.14.0-36-generic",
+            "virtualization_role": "guest",
+            "virtualization_type": "docker"
+        },
+        "timestamp": "2025-12-08T23:50:00Z"
+    }
+
+PLAY RECAP *********************************************************************
+localhost                  : ok=8    changed=0    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0   
+

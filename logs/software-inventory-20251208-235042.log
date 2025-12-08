@@ -1,0 +1,34 @@
+[DEPRECATION WARNING]: DEFAULT_GATHER_TIMEOUT option, the module_defaults 
+keyword is a more generic version and can apply to all calls to the 
+M(ansible.builtin.gather_facts) or M(ansible.builtin.setup) actions, use 
+module_defaults instead. This feature will be removed from ansible-core in 
+version 2.18. Deprecation warnings can be disabled by setting 
+deprecation_warnings=False in ansible.cfg.
+
+PLAY [Software Inventory Collection] *******************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [localhost]
+
+TASK [Get manually installed packages with versions (Debian/Ubuntu)] ***********
+skipping: [localhost]
+
+TASK [Get user-installed packages with versions (RedHat/Rocky/CentOS)] *********
+ok: [localhost]
+
+TASK [Build package list (Debian)] *********************************************
+skipping: [localhost]
+
+TASK [Build package list (RedHat)] *********************************************
+ok: [localhost]
+
+TASK [Handle empty package list] ***********************************************
+skipping: [localhost]
+
+TASK [Parse package JSON] ******************************************************
+fatal: [localhost]: FAILED! => 
+  msg: 'Unexpected templating type error occurred on ({{ package_list_json | from_json }}): the JSON object must be str, bytes or bytearray, not list. the JSON object must be str, bytes or bytearray, not list'
+
+PLAY RECAP *********************************************************************
+localhost                  : ok=3    changed=0    unreachable=0    failed=1    skipped=3    rescued=0    ignored=0   
+

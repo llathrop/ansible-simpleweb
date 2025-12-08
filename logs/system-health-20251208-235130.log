@@ -1,242 +1,57 @@
-2025-12-08 23:27:26,048 p=15 u=root n=ansible | [DEPRECATION WARNING]: DEFAULT_GATHER_TIMEOUT option, the module_defaults 
+[DEPRECATION WARNING]: DEFAULT_GATHER_TIMEOUT option, the module_defaults 
 keyword is a more generic version and can apply to all calls to the 
 M(ansible.builtin.gather_facts) or M(ansible.builtin.setup) actions, use 
 module_defaults instead. This feature will be removed from ansible-core in 
 version 2.18. Deprecation warnings can be disabled by setting 
 deprecation_warnings=False in ansible.cfg.
-2025-12-08 23:27:26,826 p=15 u=root n=ansible | localhost | SUCCESS => {
-    "ansible_facts": {
-        "discovered_interpreter_python": "/usr/bin/python3"
-    },
-    "changed": false,
-    "ping": "pong"
-}
-2025-12-08 23:49:59,190 p=65 u=root n=ansible | [DEPRECATION WARNING]: DEFAULT_GATHER_TIMEOUT option, the module_defaults 
-keyword is a more generic version and can apply to all calls to the 
-M(ansible.builtin.gather_facts) or M(ansible.builtin.setup) actions, use 
-module_defaults instead. This feature will be removed from ansible-core in 
-version 2.18. Deprecation warnings can be disabled by setting 
-deprecation_warnings=False in ansible.cfg.
-2025-12-08 23:49:59,633 p=65 u=root n=ansible | PLAY [Hardware Inventory Collection] *******************************************
-2025-12-08 23:49:59,646 p=65 u=root n=ansible | TASK [Gathering Facts] *********************************************************
-2025-12-08 23:50:01,153 p=65 u=root n=ansible | ok: [localhost]
-2025-12-08 23:50:01,197 p=65 u=root n=ansible | TASK [Gather CPU information] **************************************************
-2025-12-08 23:50:01,250 p=65 u=root n=ansible | ok: [localhost]
-2025-12-08 23:50:01,271 p=65 u=root n=ansible | TASK [Gather memory information] ***********************************************
-2025-12-08 23:50:01,295 p=65 u=root n=ansible | ok: [localhost]
-2025-12-08 23:50:01,314 p=65 u=root n=ansible | TASK [Gather disk information] *************************************************
-2025-12-08 23:50:01,373 p=65 u=root n=ansible | ok: [localhost]
-2025-12-08 23:50:01,391 p=65 u=root n=ansible | TASK [Check for GPU (NVIDIA)] **************************************************
-2025-12-08 23:50:01,881 p=65 u=root n=ansible | ok: [localhost]
-2025-12-08 23:50:01,899 p=65 u=root n=ansible | TASK [Set GPU information] *****************************************************
-2025-12-08 23:50:01,929 p=65 u=root n=ansible | ok: [localhost]
-2025-12-08 23:50:01,943 p=65 u=root n=ansible | TASK [Compile hardware inventory] **********************************************
-2025-12-08 23:50:01,993 p=65 u=root n=ansible | ok: [localhost]
-2025-12-08 23:50:02,007 p=65 u=root n=ansible | TASK [Display hardware inventory as JSON] **************************************
-2025-12-08 23:50:02,061 p=65 u=root n=ansible | ok: [localhost] => 
-  msg: |-
-    {
-        "cpu": {
-            "architecture": "x86_64",
-            "cores": 4,
-            "count": 1,
-            "model": "Intel(R) Core(TM) i7-6700HQ CPU @ 2.60GHz",
-            "threads_per_core": 2,
-            "vcpus": 8
-        },
-        "disks": {
-            "devices": [
-                "loop1",
-                "loop29",
-                "loop19",
-                "nvme0n1",
-                "loop37",
-                "loop27",
-                "loop17",
-                "loop8",
-                "loop35",
-                "loop25",
-                "loop15",
-                "loop6",
-                "loop33",
-                "loop23",
-                "loop13",
-                "loop4",
-                "loop31",
-                "loop21",
-                "loop11",
-                "loop2",
-                "loop38",
-                "loop0",
-                "loop28",
-                "loop18",
-                "loop9",
-                "loop36",
-                "loop26",
-                "loop16",
-                "loop7",
-                "loop34",
-                "loop24",
-                "loop14",
-                "loop5",
-                "loop32",
-                "loop22",
-                "loop12",
-                "loop3",
-                "loop30",
-                "loop20",
-                "loop10",
-                "loop39"
-            ],
-            "mounts": [
-                "/root/.ssh",
-                "/app/web",
-                "/app/inventory",
-                "/app/logs",
-                "/app/playbooks",
-                "/etc/resolv.conf",
-                "/etc/hostname",
-                "/etc/hosts"
-            ],
-            "total_size_gb": "7324.205139160156"
-        },
-        "fqdn": "7e5a9fc7e1c4",
-        "gpu": {
-            "details": [
-                "No GPU detected"
-            ],
-            "detected": false
-        },
-        "hostname": "7e5a9fc7e1c4",
-        "memory": {
-            "free_mb": 804,
-            "swap_free_mb": 511,
-            "swap_total_mb": 511,
-            "total_mb": 31909
-        },
-        "system": {
-            "distribution": "Rocky",
-            "distribution_version": "9.7",
-            "kernel": "6.14.0-36-generic",
-            "virtualization_role": "guest",
-            "virtualization_type": "docker"
-        },
-        "timestamp": "2025-12-08T23:50:00Z"
-    }
-2025-12-08 23:50:02,099 p=65 u=root n=ansible | PLAY RECAP *********************************************************************
-2025-12-08 23:50:02,099 p=65 u=root n=ansible | localhost                  : ok=8    changed=0    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0   
-2025-12-08 23:50:08,106 p=148 u=root n=ansible | [DEPRECATION WARNING]: DEFAULT_GATHER_TIMEOUT option, the module_defaults 
-keyword is a more generic version and can apply to all calls to the 
-M(ansible.builtin.gather_facts) or M(ansible.builtin.setup) actions, use 
-module_defaults instead. This feature will be removed from ansible-core in 
-version 2.18. Deprecation warnings can be disabled by setting 
-deprecation_warnings=False in ansible.cfg.
-2025-12-08 23:50:08,541 p=148 u=root n=ansible | PLAY [Software Inventory Collection] *******************************************
-2025-12-08 23:50:08,555 p=148 u=root n=ansible | TASK [Gathering Facts] *********************************************************
-2025-12-08 23:50:09,943 p=148 u=root n=ansible | ok: [localhost]
-2025-12-08 23:50:09,975 p=148 u=root n=ansible | TASK [Get manually installed packages (Debian/Ubuntu)] *************************
-2025-12-08 23:50:09,991 p=148 u=root n=ansible | skipping: [localhost]
-2025-12-08 23:50:10,003 p=148 u=root n=ansible | TASK [Get user-installed packages (RedHat/Rocky/CentOS)] ***********************
-2025-12-08 23:50:10,908 p=148 u=root n=ansible | ok: [localhost]
-2025-12-08 23:50:10,919 p=148 u=root n=ansible | TASK [Get package versions (RedHat/Rocky/CentOS)] ******************************
-2025-12-08 23:50:11,395 p=148 u=root n=ansible | ok: [localhost]
-2025-12-08 23:50:11,412 p=148 u=root n=ansible | TASK [Parse Debian packages] ***************************************************
-2025-12-08 23:50:11,431 p=148 u=root n=ansible | skipping: [localhost]
-2025-12-08 23:50:11,447 p=148 u=root n=ansible | TASK [Parse RedHat packages] ***************************************************
-2025-12-08 23:50:11,502 p=148 u=root n=ansible | ok: [localhost]
-2025-12-08 23:50:11,516 p=148 u=root n=ansible | TASK [Filter RedHat packages with versions] ************************************
-2025-12-08 23:50:11,593 p=148 u=root n=ansible | An exception occurred during task execution. To see the full traceback, use -vvv. The error was:   line 0
-2025-12-08 23:50:11,593 p=148 u=root n=ansible | fatal: [localhost]: FAILED! => changed=false
-2025-12-08 23:50:11,595 p=148 u=root n=ansible | PLAY RECAP *********************************************************************
-2025-12-08 23:50:11,595 p=148 u=root n=ansible | localhost                  : ok=4    changed=0    unreachable=0    failed=1    skipped=2    rescued=0    ignored=0   
-2025-12-08 23:50:42,996 p=245 u=root n=ansible | [DEPRECATION WARNING]: DEFAULT_GATHER_TIMEOUT option, the module_defaults 
-keyword is a more generic version and can apply to all calls to the 
-M(ansible.builtin.gather_facts) or M(ansible.builtin.setup) actions, use 
-module_defaults instead. This feature will be removed from ansible-core in 
-version 2.18. Deprecation warnings can be disabled by setting 
-deprecation_warnings=False in ansible.cfg.
-2025-12-08 23:50:43,380 p=245 u=root n=ansible | PLAY [Software Inventory Collection] *******************************************
-2025-12-08 23:50:43,389 p=245 u=root n=ansible | TASK [Gathering Facts] *********************************************************
-2025-12-08 23:50:44,567 p=245 u=root n=ansible | ok: [localhost]
-2025-12-08 23:50:44,594 p=245 u=root n=ansible | TASK [Get manually installed packages with versions (Debian/Ubuntu)] ***********
-2025-12-08 23:50:44,609 p=245 u=root n=ansible | skipping: [localhost]
-2025-12-08 23:50:44,619 p=245 u=root n=ansible | TASK [Get user-installed packages with versions (RedHat/Rocky/CentOS)] *********
-2025-12-08 23:50:46,976 p=245 u=root n=ansible | ok: [localhost]
-2025-12-08 23:50:46,986 p=245 u=root n=ansible | TASK [Build package list (Debian)] *********************************************
-2025-12-08 23:50:47,019 p=245 u=root n=ansible | skipping: [localhost]
-2025-12-08 23:50:47,030 p=245 u=root n=ansible | TASK [Build package list (RedHat)] *********************************************
-2025-12-08 23:50:47,090 p=245 u=root n=ansible | ok: [localhost]
-2025-12-08 23:50:47,102 p=245 u=root n=ansible | TASK [Handle empty package list] ***********************************************
-2025-12-08 23:50:47,124 p=245 u=root n=ansible | skipping: [localhost]
-2025-12-08 23:50:47,134 p=245 u=root n=ansible | TASK [Parse package JSON] ******************************************************
-2025-12-08 23:50:47,167 p=245 u=root n=ansible | fatal: [localhost]: FAILED! => 
-  msg: 'Unexpected templating type error occurred on ({{ package_list_json | from_json }}): the JSON object must be str, bytes or bytearray, not list. the JSON object must be str, bytes or bytearray, not list'
-2025-12-08 23:50:47,169 p=245 u=root n=ansible | PLAY RECAP *********************************************************************
-2025-12-08 23:50:47,169 p=245 u=root n=ansible | localhost                  : ok=3    changed=0    unreachable=0    failed=1    skipped=3    rescued=0    ignored=0   
-2025-12-08 23:51:01,221 p=616 u=root n=ansible | [DEPRECATION WARNING]: DEFAULT_GATHER_TIMEOUT option, the module_defaults 
-keyword is a more generic version and can apply to all calls to the 
-M(ansible.builtin.gather_facts) or M(ansible.builtin.setup) actions, use 
-module_defaults instead. This feature will be removed from ansible-core in 
-version 2.18. Deprecation warnings can be disabled by setting 
-deprecation_warnings=False in ansible.cfg.
-2025-12-08 23:51:01,599 p=616 u=root n=ansible | PLAY [Software Inventory Collection] *******************************************
-2025-12-08 23:51:01,608 p=616 u=root n=ansible | TASK [Gathering Facts] *********************************************************
-2025-12-08 23:51:02,760 p=616 u=root n=ansible | ok: [localhost]
-2025-12-08 23:51:02,793 p=616 u=root n=ansible | TASK [Get manually installed packages with versions (Debian/Ubuntu)] ***********
-2025-12-08 23:51:02,817 p=616 u=root n=ansible | skipping: [localhost]
-2025-12-08 23:51:02,831 p=616 u=root n=ansible | TASK [Get user-installed packages with versions (RedHat/Rocky/CentOS)] *********
-2025-12-08 23:51:05,191 p=616 u=root n=ansible | ok: [localhost]
-2025-12-08 23:51:05,205 p=616 u=root n=ansible | TASK [Set package output (Debian)] *********************************************
-2025-12-08 23:51:05,222 p=616 u=root n=ansible | skipping: [localhost]
-2025-12-08 23:51:05,237 p=616 u=root n=ansible | TASK [Set package output (RedHat)] *********************************************
-2025-12-08 23:51:05,271 p=616 u=root n=ansible | ok: [localhost]
-2025-12-08 23:51:05,280 p=616 u=root n=ansible | TASK [Handle empty package output] *********************************************
-2025-12-08 23:51:05,319 p=616 u=root n=ansible | skipping: [localhost]
-2025-12-08 23:51:05,331 p=616 u=root n=ansible | TASK [Parse package JSON] ******************************************************
-2025-12-08 23:51:05,365 p=616 u=root n=ansible | fatal: [localhost]: FAILED! => 
-  msg: 'Unexpected templating type error occurred on ({{ (''['' + package_output + '']'') | from_json if package_output | length > 0 else [] }}): can only concatenate str (not "list") to str. can only concatenate str (not "list") to str'
-2025-12-08 23:51:05,367 p=616 u=root n=ansible | PLAY RECAP *********************************************************************
-2025-12-08 23:51:05,367 p=616 u=root n=ansible | localhost                  : ok=3    changed=0    unreachable=0    failed=1    skipped=3    rescued=0    ignored=0   
-2025-12-08 23:51:31,256 p=987 u=root n=ansible | [DEPRECATION WARNING]: DEFAULT_GATHER_TIMEOUT option, the module_defaults 
-keyword is a more generic version and can apply to all calls to the 
-M(ansible.builtin.gather_facts) or M(ansible.builtin.setup) actions, use 
-module_defaults instead. This feature will be removed from ansible-core in 
-version 2.18. Deprecation warnings can be disabled by setting 
-deprecation_warnings=False in ansible.cfg.
-2025-12-08 23:51:31,622 p=987 u=root n=ansible | PLAY [System Health Check] *****************************************************
-2025-12-08 23:51:31,633 p=987 u=root n=ansible | TASK [Gathering Facts] *********************************************************
-2025-12-08 23:51:32,794 p=987 u=root n=ansible | ok: [localhost]
-2025-12-08 23:51:32,844 p=987 u=root n=ansible | TASK [Get system uptime] *******************************************************
-2025-12-08 23:51:32,862 p=987 u=root n=ansible | ok: [localhost]
-2025-12-08 23:51:32,873 p=987 u=root n=ansible | TASK [Calculate uptime in human-readable format] *******************************
-2025-12-08 23:51:32,913 p=987 u=root n=ansible | ok: [localhost]
-2025-12-08 23:51:32,927 p=987 u=root n=ansible | TASK [Get load averages] *******************************************************
-2025-12-08 23:51:32,955 p=987 u=root n=ansible | ok: [localhost]
-2025-12-08 23:51:32,971 p=987 u=root n=ansible | TASK [Get disk usage for all mounts] *******************************************
-2025-12-08 23:51:33,034 p=987 u=root n=ansible | ok: [localhost]
-2025-12-08 23:51:33,047 p=987 u=root n=ansible | TASK [Calculate disk usage percentages] ****************************************
-2025-12-08 23:51:33,107 p=987 u=root n=ansible | ok: [localhost] => (item={'mount': '/root/.ssh', 'device': '/dev/nvme0n1p2', 'fstype': 'ext4', 'options': 'ro,relatime,bind', 'size_total': 983038173184, 'size_available': 281738129408, 'block_size': 4096, 'block_total': 239999554, 'block_available': 68783723, 'block_used': 171215831, 'inode_total': 61030400, 'inode_available': 58002501, 'inode_used': 3027899, 'uuid': 'N/A'})
-2025-12-08 23:51:33,125 p=987 u=root n=ansible | ok: [localhost] => (item={'mount': '/app/web', 'device': '/dev/nvme0n1p2', 'fstype': 'ext4', 'options': 'rw,relatime,bind', 'size_total': 983038173184, 'size_available': 281738129408, 'block_size': 4096, 'block_total': 239999554, 'block_available': 68783723, 'block_used': 171215831, 'inode_total': 61030400, 'inode_available': 58002501, 'inode_used': 3027899, 'uuid': 'N/A'})
-2025-12-08 23:51:33,152 p=987 u=root n=ansible | ok: [localhost] => (item={'mount': '/app/inventory', 'device': '/dev/nvme0n1p2', 'fstype': 'ext4', 'options': 'rw,relatime,bind', 'size_total': 983038173184, 'size_available': 281738129408, 'block_size': 4096, 'block_total': 239999554, 'block_available': 68783723, 'block_used': 171215831, 'inode_total': 61030400, 'inode_available': 58002501, 'inode_used': 3027899, 'uuid': 'N/A'})
-2025-12-08 23:51:33,170 p=987 u=root n=ansible | ok: [localhost] => (item={'mount': '/app/logs', 'device': '/dev/nvme0n1p2', 'fstype': 'ext4', 'options': 'rw,relatime,bind', 'size_total': 983038173184, 'size_available': 281738129408, 'block_size': 4096, 'block_total': 239999554, 'block_available': 68783723, 'block_used': 171215831, 'inode_total': 61030400, 'inode_available': 58002501, 'inode_used': 3027899, 'uuid': 'N/A'})
-2025-12-08 23:51:33,188 p=987 u=root n=ansible | ok: [localhost] => (item={'mount': '/app/playbooks', 'device': '/dev/nvme0n1p2', 'fstype': 'ext4', 'options': 'rw,relatime,bind', 'size_total': 983038173184, 'size_available': 281738129408, 'block_size': 4096, 'block_total': 239999554, 'block_available': 68783723, 'block_used': 171215831, 'inode_total': 61030400, 'inode_available': 58002501, 'inode_used': 3027899, 'uuid': 'N/A'})
-2025-12-08 23:51:33,208 p=987 u=root n=ansible | ok: [localhost] => (item={'mount': '/etc/resolv.conf', 'device': '/dev/nvme0n1p2', 'fstype': 'ext4', 'options': 'rw,relatime,bind', 'size_total': 983038173184, 'size_available': 281738129408, 'block_size': 4096, 'block_total': 239999554, 'block_available': 68783723, 'block_used': 171215831, 'inode_total': 61030400, 'inode_available': 58002501, 'inode_used': 3027899, 'uuid': 'N/A'})
-2025-12-08 23:51:33,227 p=987 u=root n=ansible | ok: [localhost] => (item={'mount': '/etc/hostname', 'device': '/dev/nvme0n1p2', 'fstype': 'ext4', 'options': 'rw,relatime,bind', 'size_total': 983038173184, 'size_available': 281738129408, 'block_size': 4096, 'block_total': 239999554, 'block_available': 68783723, 'block_used': 171215831, 'inode_total': 61030400, 'inode_available': 58002501, 'inode_used': 3027899, 'uuid': 'N/A'})
-2025-12-08 23:51:33,244 p=987 u=root n=ansible | ok: [localhost] => (item={'mount': '/etc/hosts', 'device': '/dev/nvme0n1p2', 'fstype': 'ext4', 'options': 'rw,relatime,bind', 'size_total': 983038173184, 'size_available': 281738129408, 'block_size': 4096, 'block_total': 239999554, 'block_available': 68783723, 'block_used': 171215831, 'inode_total': 61030400, 'inode_available': 58002501, 'inode_used': 3027899, 'uuid': 'N/A'})
-2025-12-08 23:51:33,265 p=987 u=root n=ansible | TASK [Format disk usage data] **************************************************
-2025-12-08 23:51:33,342 p=987 u=root n=ansible | ok: [localhost]
-2025-12-08 23:51:33,353 p=987 u=root n=ansible | TASK [Get memory usage] ********************************************************
-2025-12-08 23:51:33,391 p=987 u=root n=ansible | ok: [localhost]
-2025-12-08 23:51:33,401 p=987 u=root n=ansible | TASK [Get swap usage] **********************************************************
-2025-12-08 23:51:33,437 p=987 u=root n=ansible | ok: [localhost]
-2025-12-08 23:51:33,447 p=987 u=root n=ansible | TASK [Check for system errors in logs (last 100 lines)] ************************
-2025-12-08 23:51:33,920 p=987 u=root n=ansible | ok: [localhost]
-2025-12-08 23:51:33,942 p=987 u=root n=ansible | TASK [Count recent errors] *****************************************************
-2025-12-08 23:51:33,986 p=987 u=root n=ansible | ok: [localhost]
-2025-12-08 23:51:34,000 p=987 u=root n=ansible | TASK [Compile system health report] ********************************************
-2025-12-08 23:51:34,091 p=987 u=root n=ansible | ok: [localhost]
-2025-12-08 23:51:34,103 p=987 u=root n=ansible | TASK [Display system health report as JSON] ************************************
-2025-12-08 23:51:34,156 p=987 u=root n=ansible | ok: [localhost] => 
+
+PLAY [System Health Check] *****************************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [localhost]
+
+TASK [Get system uptime] *******************************************************
+ok: [localhost]
+
+TASK [Calculate uptime in human-readable format] *******************************
+ok: [localhost]
+
+TASK [Get load averages] *******************************************************
+ok: [localhost]
+
+TASK [Get disk usage for all mounts] *******************************************
+ok: [localhost]
+
+TASK [Calculate disk usage percentages] ****************************************
+ok: [localhost] => (item={'mount': '/root/.ssh', 'device': '/dev/nvme0n1p2', 'fstype': 'ext4', 'options': 'ro,relatime,bind', 'size_total': 983038173184, 'size_available': 281738129408, 'block_size': 4096, 'block_total': 239999554, 'block_available': 68783723, 'block_used': 171215831, 'inode_total': 61030400, 'inode_available': 58002501, 'inode_used': 3027899, 'uuid': 'N/A'})
+ok: [localhost] => (item={'mount': '/app/web', 'device': '/dev/nvme0n1p2', 'fstype': 'ext4', 'options': 'rw,relatime,bind', 'size_total': 983038173184, 'size_available': 281738129408, 'block_size': 4096, 'block_total': 239999554, 'block_available': 68783723, 'block_used': 171215831, 'inode_total': 61030400, 'inode_available': 58002501, 'inode_used': 3027899, 'uuid': 'N/A'})
+ok: [localhost] => (item={'mount': '/app/inventory', 'device': '/dev/nvme0n1p2', 'fstype': 'ext4', 'options': 'rw,relatime,bind', 'size_total': 983038173184, 'size_available': 281738129408, 'block_size': 4096, 'block_total': 239999554, 'block_available': 68783723, 'block_used': 171215831, 'inode_total': 61030400, 'inode_available': 58002501, 'inode_used': 3027899, 'uuid': 'N/A'})
+ok: [localhost] => (item={'mount': '/app/logs', 'device': '/dev/nvme0n1p2', 'fstype': 'ext4', 'options': 'rw,relatime,bind', 'size_total': 983038173184, 'size_available': 281738129408, 'block_size': 4096, 'block_total': 239999554, 'block_available': 68783723, 'block_used': 171215831, 'inode_total': 61030400, 'inode_available': 58002501, 'inode_used': 3027899, 'uuid': 'N/A'})
+ok: [localhost] => (item={'mount': '/app/playbooks', 'device': '/dev/nvme0n1p2', 'fstype': 'ext4', 'options': 'rw,relatime,bind', 'size_total': 983038173184, 'size_available': 281738129408, 'block_size': 4096, 'block_total': 239999554, 'block_available': 68783723, 'block_used': 171215831, 'inode_total': 61030400, 'inode_available': 58002501, 'inode_used': 3027899, 'uuid': 'N/A'})
+ok: [localhost] => (item={'mount': '/etc/resolv.conf', 'device': '/dev/nvme0n1p2', 'fstype': 'ext4', 'options': 'rw,relatime,bind', 'size_total': 983038173184, 'size_available': 281738129408, 'block_size': 4096, 'block_total': 239999554, 'block_available': 68783723, 'block_used': 171215831, 'inode_total': 61030400, 'inode_available': 58002501, 'inode_used': 3027899, 'uuid': 'N/A'})
+ok: [localhost] => (item={'mount': '/etc/hostname', 'device': '/dev/nvme0n1p2', 'fstype': 'ext4', 'options': 'rw,relatime,bind', 'size_total': 983038173184, 'size_available': 281738129408, 'block_size': 4096, 'block_total': 239999554, 'block_available': 68783723, 'block_used': 171215831, 'inode_total': 61030400, 'inode_available': 58002501, 'inode_used': 3027899, 'uuid': 'N/A'})
+ok: [localhost] => (item={'mount': '/etc/hosts', 'device': '/dev/nvme0n1p2', 'fstype': 'ext4', 'options': 'rw,relatime,bind', 'size_total': 983038173184, 'size_available': 281738129408, 'block_size': 4096, 'block_total': 239999554, 'block_available': 68783723, 'block_used': 171215831, 'inode_total': 61030400, 'inode_available': 58002501, 'inode_used': 3027899, 'uuid': 'N/A'})
+
+TASK [Format disk usage data] **************************************************
+ok: [localhost]
+
+TASK [Get memory usage] ********************************************************
+ok: [localhost]
+
+TASK [Get swap usage] **********************************************************
+ok: [localhost]
+
+TASK [Check for system errors in logs (last 100 lines)] ************************
+ok: [localhost]
+
+TASK [Count recent errors] *****************************************************
+ok: [localhost]
+
+TASK [Compile system health report] ********************************************
+ok: [localhost]
+
+TASK [Display system health report as JSON] ************************************
+ok: [localhost] => 
   msg: |-
     {
         "cpu_count": 8,
@@ -1572,354 +1387,7 @@ deprecation_warnings=False in ansible.cfg.
             "total_seconds": 86038
         }
     }
-2025-12-08 23:51:34,199 p=987 u=root n=ansible | PLAY RECAP *********************************************************************
-2025-12-08 23:51:34,199 p=987 u=root n=ansible | localhost                  : ok=13   changed=0    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0   
-2025-12-08 23:51:45,598 p=1080 u=root n=ansible | [DEPRECATION WARNING]: DEFAULT_GATHER_TIMEOUT option, the module_defaults 
-keyword is a more generic version and can apply to all calls to the 
-M(ansible.builtin.gather_facts) or M(ansible.builtin.setup) actions, use 
-module_defaults instead. This feature will be removed from ansible-core in 
-version 2.18. Deprecation warnings can be disabled by setting 
-deprecation_warnings=False in ansible.cfg.
-2025-12-08 23:51:45,965 p=1080 u=root n=ansible | PLAY [Service Status Check] ****************************************************
-2025-12-08 23:51:45,975 p=1080 u=root n=ansible | TASK [Gathering Facts] *********************************************************
-2025-12-08 23:51:47,167 p=1080 u=root n=ansible | ok: [localhost]
-2025-12-08 23:51:47,198 p=1080 u=root n=ansible | TASK [Get list of all systemd services] ****************************************
-2025-12-08 23:51:47,213 p=1080 u=root n=ansible | skipping: [localhost]
-2025-12-08 23:51:47,226 p=1080 u=root n=ansible | TASK [Get list of all init services] *******************************************
-2025-12-08 23:51:47,606 p=1080 u=root n=ansible | ok: [localhost]
-2025-12-08 23:51:47,617 p=1080 u=root n=ansible | TASK [Parse systemd services] **************************************************
-2025-12-08 23:51:47,633 p=1080 u=root n=ansible | skipping: [localhost]
-2025-12-08 23:51:47,645 p=1080 u=root n=ansible | TASK [Parse init services] *****************************************************
-2025-12-08 23:51:47,691 p=1080 u=root n=ansible | ok: [localhost]
-2025-12-08 23:51:47,702 p=1080 u=root n=ansible | TASK [Filter running services (systemd)] ***************************************
-2025-12-08 23:51:47,718 p=1080 u=root n=ansible | skipping: [localhost]
-2025-12-08 23:51:47,729 p=1080 u=root n=ansible | TASK [Filter running services (init)] ******************************************
-2025-12-08 23:51:47,778 p=1080 u=root n=ansible | ok: [localhost]
-2025-12-08 23:51:47,796 p=1080 u=root n=ansible | TASK [Filter failed services (systemd only)] ***********************************
-2025-12-08 23:51:47,814 p=1080 u=root n=ansible | skipping: [localhost]
-2025-12-08 23:51:47,826 p=1080 u=root n=ansible | TASK [Get enabled services (systemd)] ******************************************
-2025-12-08 23:51:47,844 p=1080 u=root n=ansible | skipping: [localhost]
-2025-12-08 23:51:47,860 p=1080 u=root n=ansible | TASK [Parse enabled services] **************************************************
-2025-12-08 23:51:47,877 p=1080 u=root n=ansible | skipping: [localhost]
-2025-12-08 23:51:47,888 p=1080 u=root n=ansible | TASK [Compile service status report] *******************************************
-2025-12-08 23:51:47,939 p=1080 u=root n=ansible | ok: [localhost]
-2025-12-08 23:51:47,952 p=1080 u=root n=ansible | TASK [Display service status report as JSON] ***********************************
-2025-12-08 23:51:47,991 p=1080 u=root n=ansible | ok: [localhost] => 
-  msg: |-
-    {
-        "enabled_services": [],
-        "enabled_services_count": "0",
-        "failed_services": [],
-        "failed_services_count": "0",
-        "fqdn": "7e5a9fc7e1c4",
-        "hostname": "7e5a9fc7e1c4",
-        "running_services": [],
-        "running_services_count": "0",
-        "service_manager": "python3",
-        "timestamp": "2025-12-08T23:51:47Z",
-        "total_services": "0"
-    }
-2025-12-08 23:51:48,035 p=1080 u=root n=ansible | PLAY RECAP *********************************************************************
-2025-12-08 23:51:48,035 p=1080 u=root n=ansible | localhost                  : ok=6    changed=0    unreachable=0    failed=0    skipped=6    rescued=0    ignored=0   
-2025-12-08 23:51:56,078 p=1172 u=root n=ansible | [DEPRECATION WARNING]: DEFAULT_GATHER_TIMEOUT option, the module_defaults 
-keyword is a more generic version and can apply to all calls to the 
-M(ansible.builtin.gather_facts) or M(ansible.builtin.setup) actions, use 
-module_defaults instead. This feature will be removed from ansible-core in 
-version 2.18. Deprecation warnings can be disabled by setting 
-deprecation_warnings=False in ansible.cfg.
-2025-12-08 23:51:56,430 p=1172 u=root n=ansible | PLAY [Network Configuration Check] *********************************************
-2025-12-08 23:51:56,439 p=1172 u=root n=ansible | TASK [Gathering Facts] *********************************************************
-2025-12-08 23:51:57,618 p=1172 u=root n=ansible | ok: [localhost]
-2025-12-08 23:51:57,645 p=1172 u=root n=ansible | TASK [Get all network interfaces] **********************************************
-2025-12-08 23:51:57,661 p=1172 u=root n=ansible | fatal: [localhost]: FAILED! => 
-  msg: |-
-    The task includes an option with an undefined variable. The error was: 'ansible_interfaces' is undefined. 'ansible_interfaces' is undefined
-  
-    The error appears to be in '/app/playbooks/network-config.yml': line 6, column 7, but may
-    be elsewhere in the file depending on the exact syntax problem.
-  
-    The offending line appears to be:
-  
-      tasks:
-        - name: Get all network interfaces
-          ^ here
-2025-12-08 23:51:57,663 p=1172 u=root n=ansible | PLAY RECAP *********************************************************************
-2025-12-08 23:51:57,663 p=1172 u=root n=ansible | localhost                  : ok=1    changed=0    unreachable=0    failed=1    skipped=0    rescued=0    ignored=0   
-2025-12-08 23:52:04,239 p=1226 u=root n=ansible | [DEPRECATION WARNING]: DEFAULT_GATHER_TIMEOUT option, the module_defaults 
-keyword is a more generic version and can apply to all calls to the 
-M(ansible.builtin.gather_facts) or M(ansible.builtin.setup) actions, use 
-module_defaults instead. This feature will be removed from ansible-core in 
-version 2.18. Deprecation warnings can be disabled by setting 
-deprecation_warnings=False in ansible.cfg.
-2025-12-08 23:52:04,578 p=1226 u=root n=ansible | PLAY [Network Configuration Check] *********************************************
-2025-12-08 23:52:04,586 p=1226 u=root n=ansible | TASK [Gathering Facts] *********************************************************
-2025-12-08 23:52:05,759 p=1226 u=root n=ansible | ok: [localhost]
-2025-12-08 23:52:05,796 p=1226 u=root n=ansible | TASK [Get all network interfaces] **********************************************
-2025-12-08 23:52:05,814 p=1226 u=root n=ansible | fatal: [localhost]: FAILED! => 
-  msg: |-
-    The task includes an option with an undefined variable. The error was: 'ansible_interfaces' is undefined. 'ansible_interfaces' is undefined
-  
-    The error appears to be in '/app/playbooks/network-config.yml': line 6, column 7, but may
-    be elsewhere in the file depending on the exact syntax problem.
-  
-    The offending line appears to be:
-  
-      tasks:
-        - name: Get all network interfaces
-          ^ here
-2025-12-08 23:52:05,815 p=1226 u=root n=ansible | PLAY RECAP *********************************************************************
-2025-12-08 23:52:05,815 p=1226 u=root n=ansible | localhost                  : ok=1    changed=0    unreachable=0    failed=1    skipped=0    rescued=0    ignored=0   
-2025-12-08 23:52:36,611 p=1280 u=root n=ansible | [DEPRECATION WARNING]: DEFAULT_GATHER_TIMEOUT option, the module_defaults 
-keyword is a more generic version and can apply to all calls to the 
-M(ansible.builtin.gather_facts) or M(ansible.builtin.setup) actions, use 
-module_defaults instead. This feature will be removed from ansible-core in 
-version 2.18. Deprecation warnings can be disabled by setting 
-deprecation_warnings=False in ansible.cfg.
-2025-12-08 23:52:36,875 p=1280 u=root n=ansible | ERROR! We were unable to read either as JSON nor YAML, these are the errors we got from each:
-JSON: Expecting value: line 1 column 1 (char 0)
 
-Syntax Error while loading YAML.
-  mapping values are not allowed in this context
+PLAY RECAP *********************************************************************
+localhost                  : ok=13   changed=0    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0   
 
-The error appears to be in '/app/playbooks/network-config.yml': line 7, column 39, but may
-be elsewhere in the file depending on the exact syntax problem.
-
-The offending line appears to be:
-
-    - name: Get network interfaces from ip command
-      shell: ip -o link show | awk -F': ' '{print $2}' | grep -v '^lo$'
-                                      ^ here
-
-2025-12-08 23:52:54,103 p=1291 u=root n=ansible | [DEPRECATION WARNING]: DEFAULT_GATHER_TIMEOUT option, the module_defaults 
-keyword is a more generic version and can apply to all calls to the 
-M(ansible.builtin.gather_facts) or M(ansible.builtin.setup) actions, use 
-module_defaults instead. This feature will be removed from ansible-core in 
-version 2.18. Deprecation warnings can be disabled by setting 
-deprecation_warnings=False in ansible.cfg.
-2025-12-08 23:52:54,509 p=1291 u=root n=ansible | PLAY [Network Configuration Check] *********************************************
-2025-12-08 23:52:54,519 p=1291 u=root n=ansible | TASK [Gathering Facts] *********************************************************
-2025-12-08 23:52:55,670 p=1291 u=root n=ansible | ok: [localhost]
-2025-12-08 23:52:55,697 p=1291 u=root n=ansible | TASK [Get network interfaces from ip command] **********************************
-2025-12-08 23:52:56,124 p=1291 u=root n=ansible | fatal: [localhost]: FAILED! => changed=false 
-  cmd: 'ip -o link show | awk -F'': '' ''{print $2}'' | grep -v ''^lo$'''
-  delta: '0:00:00.015457'
-  end: '2025-12-08 23:52:56.089878'
-  msg: non-zero return code
-  rc: 1
-  start: '2025-12-08 23:52:56.074421'
-  stderr: '/bin/sh: line 1: ip: command not found'
-  stderr_lines: <omitted>
-  stdout: ''
-  stdout_lines: <omitted>
-2025-12-08 23:52:56,124 p=1291 u=root n=ansible | ...ignoring
-2025-12-08 23:52:56,134 p=1291 u=root n=ansible | TASK [Get interface details] ***************************************************
-2025-12-08 23:52:56,424 p=1291 u=root n=ansible | fatal: [localhost]: FAILED! => changed=false 
-  cmd: ip addr show
-  delta: '0:00:00.004327'
-  end: '2025-12-08 23:52:56.390318'
-  msg: non-zero return code
-  rc: 127
-  start: '2025-12-08 23:52:56.385991'
-  stderr: '/bin/sh: line 1: ip: command not found'
-  stderr_lines: <omitted>
-  stdout: ''
-  stdout_lines: <omitted>
-2025-12-08 23:52:56,424 p=1291 u=root n=ansible | ...ignoring
-2025-12-08 23:52:56,436 p=1291 u=root n=ansible | TASK [Get default gateway] *****************************************************
-2025-12-08 23:52:56,718 p=1291 u=root n=ansible | ok: [localhost]
-2025-12-08 23:52:56,730 p=1291 u=root n=ansible | TASK [Get DNS servers] *********************************************************
-2025-12-08 23:52:57,053 p=1291 u=root n=ansible | ok: [localhost]
-2025-12-08 23:52:57,065 p=1291 u=root n=ansible | TASK [Get routing table] *******************************************************
-2025-12-08 23:52:57,343 p=1291 u=root n=ansible | fatal: [localhost]: FAILED! => changed=false 
-  cmd: ip route show
-  delta: '0:00:00.004456'
-  end: '2025-12-08 23:52:57.312042'
-  msg: non-zero return code
-  rc: 127
-  start: '2025-12-08 23:52:57.307586'
-  stderr: '/bin/sh: line 1: ip: command not found'
-  stderr_lines: <omitted>
-  stdout: ''
-  stdout_lines: <omitted>
-2025-12-08 23:52:57,344 p=1291 u=root n=ansible | ...ignoring
-2025-12-08 23:52:57,356 p=1291 u=root n=ansible | TASK [Get listening ports] *****************************************************
-2025-12-08 23:52:57,623 p=1291 u=root n=ansible | fatal: [localhost]: FAILED! => changed=false 
-  cmd: ss -tuln | grep LISTEN || netstat -tuln | grep LISTEN
-  delta: '0:00:00.007517'
-  end: '2025-12-08 23:52:57.587870'
-  msg: non-zero return code
-  rc: 1
-  start: '2025-12-08 23:52:57.580353'
-  stderr: |-
-    /bin/sh: line 1: ss: command not found
-    /bin/sh: line 1: netstat: command not found
-  stderr_lines: <omitted>
-  stdout: ''
-  stdout_lines: <omitted>
-2025-12-08 23:52:57,623 p=1291 u=root n=ansible | ...ignoring
-2025-12-08 23:52:57,635 p=1291 u=root n=ansible | TASK [Compile network configuration report] ************************************
-2025-12-08 23:52:57,685 p=1291 u=root n=ansible | ok: [localhost]
-2025-12-08 23:52:57,695 p=1291 u=root n=ansible | TASK [Display network configuration report as JSON] ****************************
-2025-12-08 23:52:57,732 p=1291 u=root n=ansible | ok: [localhost] => 
-  msg: |-
-    {
-        "default_ipv4": {
-            "address": "N/A",
-            "gateway": "",
-            "interface": "N/A"
-        },
-        "default_ipv6": {
-            "address": "N/A",
-            "gateway": "N/A",
-            "interface": "N/A"
-        },
-        "dns_servers": [
-            "127.0.0.11"
-        ],
-        "fqdn": "7e5a9fc7e1c4",
-        "hostname": "7e5a9fc7e1c4",
-        "interface_details": [],
-        "interfaces": [],
-        "listening_ports": [],
-        "routing_table": [],
-        "timestamp": "2025-12-08T23:52:55Z"
-    }
-2025-12-08 23:52:57,769 p=1291 u=root n=ansible | PLAY RECAP *********************************************************************
-2025-12-08 23:52:57,769 p=1291 u=root n=ansible | localhost                  : ok=9    changed=0    unreachable=0    failed=0    skipped=0    rescued=0    ignored=4   
-2025-12-08 23:53:19,772 p=1461 u=root n=ansible | [DEPRECATION WARNING]: DEFAULT_GATHER_TIMEOUT option, the module_defaults 
-keyword is a more generic version and can apply to all calls to the 
-M(ansible.builtin.gather_facts) or M(ansible.builtin.setup) actions, use 
-module_defaults instead. This feature will be removed from ansible-core in 
-version 2.18. Deprecation warnings can be disabled by setting 
-deprecation_warnings=False in ansible.cfg.
-2025-12-08 23:53:20,151 p=1461 u=root n=ansible | PLAY [Software Inventory Collection] *******************************************
-2025-12-08 23:53:20,160 p=1461 u=root n=ansible | TASK [Gathering Facts] *********************************************************
-2025-12-08 23:53:21,340 p=1461 u=root n=ansible | ok: [localhost]
-2025-12-08 23:53:21,371 p=1461 u=root n=ansible | TASK [Get all installed packages (Debian/Ubuntu)] ******************************
-2025-12-08 23:53:21,386 p=1461 u=root n=ansible | skipping: [localhost]
-2025-12-08 23:53:21,396 p=1461 u=root n=ansible | TASK [Get all installed packages (RedHat/Rocky/CentOS)] ************************
-2025-12-08 23:53:21,830 p=1461 u=root n=ansible | ok: [localhost]
-2025-12-08 23:53:21,846 p=1461 u=root n=ansible | TASK [Build package list (Debian)] *********************************************
-2025-12-08 23:53:21,862 p=1461 u=root n=ansible | skipping: [localhost]
-2025-12-08 23:53:21,873 p=1461 u=root n=ansible | TASK [Build package list (RedHat)] *********************************************
-2025-12-08 23:53:21,913 p=1461 u=root n=ansible | ok: [localhost]
-2025-12-08 23:53:21,922 p=1461 u=root n=ansible | TASK [Compile software inventory] **********************************************
-2025-12-08 23:53:21,972 p=1461 u=root n=ansible | ok: [localhost]
-2025-12-08 23:53:21,983 p=1461 u=root n=ansible | TASK [Display software inventory as JSON] **************************************
-2025-12-08 23:53:22,023 p=1461 u=root n=ansible | ok: [localhost] => 
-  msg: |-
-    {
-        "distribution": "Rocky",
-        "distribution_version": "9.7",
-        "fqdn": "7e5a9fc7e1c4",
-        "hostname": "7e5a9fc7e1c4",
-        "note": "Showing first 100 packages only for brevity",
-        "os_family": "RedHat",
-        "package_manager": "dnf/yum",
-        "packages": [
-            "libreport-filesystem 2.15.2-6.el9.rocky.0.2",
-            "zlib 1.2.11-40.el9",
-            "xz-libs 5.2.5-8.el9_0",
-            "libxcrypt 4.4.18-3.el9",
-            "popt 1.18-8.el9",
-            "libgpg-error 1.42-5.el9",
-            "readline 8.1-4.el9",
-            "lua-libs 5.4.4-4.el9",
-            "libattr 2.5.1-3.el9",
-            "libffi 3.4.2-8.el9",
-            "libassuan 2.5.5-3.el9",
-            "lz4-libs 1.9.3-5.el9",
-            "libcap-ng 0.8.2-7.el9",
-            "libsigsegv 2.13-4.el9",
-            "libunistring 0.9.10-15.el9",
-            "gmp 6.2.0-13.el9",
-            "grep 3.6-5.el9",
-            "json-c 0.14-11.el9",
-            "keyutils-libs 1.6.3-1.el9",
-            "mpfr 4.1.0-7.el9",
-            "gawk 5.1.0-6.el9",
-            "libidn2 2.3.0-7.el9",
-            "libcomps 0.1.18-1.el9",
-            "libverto 0.3.2-3.el9",
-            "npth 1.6-8.el9",
-            "libyaml 0.2.5-7.el9",
-            "sed 4.8-9.el9",
-            "cyrus-sasl-lib 2.1.27-21.el9",
-            "libmodulemd 2.13.0-2.el9",
-            "gnupg2 2.3.3-4.el9",
-            "gpgme 1.15.1-6.el9",
-            "python3-libcomps 0.1.18-1.el9",
-            "python3-gpg 1.15.1-6.el9",
-            "gzip 1.12-1.el9",
-            "cracklib 2.9.6-27.el9",
-            "cracklib-dicts 2.9.6-27.el9",
-            "libpwquality 1.4.4-8.el9",
-            "passwd 0.80-12.el9",
-            "libutempter 1.2.1-6.el9",
-            "libusbx 1.0.26-1.el9",
-            "hostname 3.23-6.el9",
-            "gpg-pubkey 350d275d-6279464b",
-            "tzdata 2025b-2.el9",
-            "rocky-gpg-keys 9.7-1.3.el9",
-            "rocky-release 9.7-1.3.el9",
-            "rocky-repos 9.7-1.3.el9",
-            "setup 2.13.7-10.el9",
-            "filesystem 3.16-5.el9",
-            "basesystem 11-13.el9.0.1",
-            "python3-setuptools-wheel 53.0.0-15.el9",
-            "pcre2-syntax 10.40-6.el9",
-            "ncurses-base 6.2-12.20210508.el9",
-            "ncurses-libs 6.2-12.20210508.el9",
-            "bash 5.1.8-9.el9",
-            "libgcc 11.5.0-11.el9",
-            "glibc-minimal-langpack 2.34-231.el9_7.2",
-            "glibc-common 2.34-231.el9_7.2",
-            "glibc 2.34-231.el9_7.2",
-            "audit-libs 3.1.5-7.el9",
-            "bzip2-libs 1.0.8-10.el9_5",
-            "libacl 2.3.1-4.el9",
-            "libzstd 1.5.5-1.el9",
-            "libuuid 2.37.4-21.el9",
-            "libcap 2.48-10.el9",
-            "libstdc++ 11.5.0-11.el9",
-            "sqlite-libs 3.34.1-9.el9_7",
-            "libsmartcols 2.37.4-21.el9",
-            "crypto-policies 20250905-1.git377cc42.el9",
-            "elfutils-libelf 0.193-1.el9.rocky.0.1",
-            "libtasn1 4.16.0-9.el9",
-            "p11-kit 0.25.3-3.el9_5",
-            "libxml2 2.9.13-14.el9_7",
-            "alternatives 1.24-2.el9",
-            "p11-kit-trust 0.25.3-3.el9_5",
-            "libcom_err 1.46.5-8.el9",
-            "libsepol 3.6-3.el9",
-            "attr 2.5.1-3.el9",
-            "keyutils 1.6.3-1.el9",
-            "libtool-ltdl 2.4.6-46.el9",
-            "libxcrypt-compat 4.4.18-3.el9",
-            "expat 2.5.0-5.el9_7.1",
-            "file-libs 5.39-16.el9",
-            "gdbm-libs 1.23-1.el9",
-            "libdb 5.3.28-57.el9_6",
-            "libeconf 0.4.1-4.el9",
-            "libgcrypt 1.10.0-11.el9",
-            "libgomp 11.5.0-11.el9",
-            "libnghttp2 1.43.0-6.el9",
-            "nettle 3.10.1-1.el9",
-            "gnutls 3.8.3-9.el9.0.1",
-            "pcre 8.44-4.el9",
-            "pcre2 10.40-6.el9",
-            "libselinux 3.6-3.el9",
-            "coreutils-single 8.32-39.el9",
-            "libblkid 2.37.4-21.el9",
-            "libmount 2.37.4-21.el9",
-            "glib2 2.68.4-18.el9_7",
-            "libfdisk 2.37.4-21.el9",
-            "findutils 4.8.0-7.el9",
-            "ca-certificates 2025.2.80_v9.0.305-91.el9"
-        ],
-        "timestamp": "2025-12-08T23:53:20Z",
-        "total_packages_shown": "100"
-    }
-2025-12-08 23:53:22,068 p=1461 u=root n=ansible | PLAY RECAP *********************************************************************
-2025-12-08 23:53:22,068 p=1461 u=root n=ansible | localhost                  : ok=5    changed=0    unreachable=0    failed=0    skipped=2    rescued=0    ignored=0   

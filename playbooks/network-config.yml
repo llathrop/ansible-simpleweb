@@ -1,0 +1,69 @@
+---
+- name: Network Configuration Check
+  hosts: all
+  gather_facts: yes
+  tasks:
+    - name: Get network interfaces from ip command
+      shell: "ip -o link show | awk -F': ' '{print $2}' | grep -v '^lo$'"
+      register: interface_list
+      changed_when: false
+      ignore_errors: yes
+
+    - name: Get interface details
+      shell: ip addr show
+      register: ip_addr_output
+      changed_when: false
+      ignore_errors: yes
+
+    - name: Get default gateway
+      shell: ip route | grep default | awk '{print $3}'
+      register: default_gateway
+      changed_when: false
+      ignore_errors: yes
+
+    - name: Get DNS servers
+      shell: |
+        if [ -f /etc/resolv.conf ]; then
+          grep "^nameserver" /etc/resolv.conf | awk '{print $2}'
+        else
+          echo "No resolv.conf found"
+        fi
+      register: dns_servers
+      changed_when: false
+      ignore_errors: yes
+
+    - name: Get routing table
+      shell: ip route show
+      register: routing_table
+      changed_when: false
+      ignore_errors: yes
+
+    - name: Get listening ports
+      shell: ss -tuln | grep LISTEN || netstat -tuln | grep LISTEN
+      register: listening_ports
+      changed_when: false
+      ignore_errors: yes
+
+    - name: Compile network configuration report
+      set_fact:
+        network_report:
+          hostname: "{{ ansible_hostname }}"
+          fqdn: "{{ ansible_fqdn }}"
+          timestamp: "{{ ansible_date_time.iso8601 }}"
+          default_ipv4:
+            address: "{{ ansible_default_ipv4.address | default('N/A') }}"
+            gateway: "{{ default_gateway.stdout | default('N/A') }}"
+            interface: "{{ ansible_default_ipv4.interface | default('N/A') }}"
+          default_ipv6:
+            address: "{{ ansible_default_ipv6.address | default('N/A') }}"
+            gateway: "{{ ansible_default_ipv6.gateway | default('N/A') }}"
+            interface: "{{ ansible_default_ipv6.interface | default('N/A') }}"
+          dns_servers: "{{ dns_servers.stdout_lines | default([]) }}"
+          interfaces: "{{ interface_list.stdout_lines | default([]) }}"
+          interface_details: "{{ ip_addr_output.stdout_lines | default([]) }}"
+          routing_table: "{{ routing_table.stdout_lines | default([]) }}"
+          listening_ports: "{{ listening_ports.stdout_lines | default([]) }}"
+
+    - name: Display network configuration report as JSON
+      debug:
+        msg: "{{ network_report | to_nice_json }}"

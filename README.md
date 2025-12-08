@@ -95,14 +95,58 @@ docker-compose down
 
 ---
 
-### Step 2: Configure and Test Playbooks 🔄 IN PROGRESS
+### Step 2: Configure and Test Playbooks ✅ COMPLETE
 
-**Planned Playbooks**:
-- Hardware inventory (CPU, memory, drives, GPU detection)
-- Software inventory (Ubuntu package list)
-- Additional test playbooks (TBD)
+**Completed**: Five test playbooks created, tested, and verified with proper JSON output.
 
-**Status**: Not started
+**Implemented Playbooks**:
+1. **hardware-inventory.yml** - Hardware inventory collection
+   - CPU information (model, cores, vcpus, architecture)
+   - Memory information (total, free, swap)
+   - Disk information (devices, mounts, sizes)
+   - GPU detection (NVIDIA, AMD, Intel)
+   - System information (distribution, kernel, virtualization)
+
+2. **software-inventory.yml** - Software package inventory
+   - All installed packages with versions
+   - Support for both Debian/Ubuntu (apt) and RedHat/Rocky (dnf/yum)
+   - Shows first 100 packages for brevity
+   - Package manager information
+
+3. **system-health.yml** - System health monitoring
+   - Uptime (days, hours, minutes)
+   - Load averages (1min, 5min, 15min)
+   - Memory usage (total, used, free, percentage)
+   - Swap usage
+   - Disk usage for all mounts (with percentages)
+   - Recent system errors from logs
+
+4. **service-status.yml** - Service status check
+   - List of all system services
+   - Running services count and details
+   - Failed services (systemd only)
+   - Enabled services list
+   - Service manager type
+
+5. **network-config.yml** - Network configuration
+   - Default IPv4 and IPv6 addresses
+   - Default gateway
+   - DNS servers
+   - Network interfaces list
+   - Routing table
+   - Listening ports
+
+**Helper Script**:
+- `run-playbook.sh` - Executes playbooks with proper timestamped logging
+- Log format: `<playbookname>-YYYYMMDD-HHMMSS.log`
+
+**Test Results**:
+- All 5 playbooks executed successfully on localhost
+- JSON output format validated
+- Log files created with proper naming convention
+- All logs saved to `logs/` directory
+
+**Status**: Complete and ready for web interface integration
 
 ---
 
@@ -135,8 +179,32 @@ docker-compose exec -T ansible-web ansible localhost -m ping
 
 ### Run a Playbook
 
+Using the helper script (recommended - includes timestamped logging):
 ```bash
-docker-compose exec -T ansible-web ansible-playbook playbooks/your-playbook.yml
+# Copy the script to the container first
+docker cp run-playbook.sh ansible-simpleweb:/app/
+
+# Run a playbook
+docker-compose exec -T ansible-web bash /app/run-playbook.sh hardware-inventory
+docker-compose exec -T ansible-web bash /app/run-playbook.sh software-inventory
+docker-compose exec -T ansible-web bash /app/run-playbook.sh system-health
+docker-compose exec -T ansible-web bash /app/run-playbook.sh service-status
+docker-compose exec -T ansible-web bash /app/run-playbook.sh network-config
+```
+
+Or run directly with ansible-playbook:
+```bash
+docker-compose exec -T ansible-web ansible-playbook playbooks/hardware-inventory.yml
+```
+
+### View Playbook Logs
+
+```bash
+# List all logs
+ls -lh logs/
+
+# View a specific log
+cat logs/hardware-inventory-20251208-234958.log
 ```
 
 ## Troubleshooting

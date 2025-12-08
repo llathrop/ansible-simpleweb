@@ -1,0 +1,109 @@
+---
+- name: Service Status Check
+  hosts: all
+  gather_facts: yes
+  tasks:
+    - name: Get list of all systemd services
+      shell: systemctl list-units --type=service --all --no-pager --no-legend | awk '{print $1, $2, $3, $4}'
+      register: systemd_services
+      when: ansible_service_mgr == "systemd"
+      changed_when: false
+      ignore_errors: yes
+
+    - name: Get list of all init services
+      shell: service --status-all 2>&1 | grep -E '^\s*\[' | sed 's/\[\s*\(.\)\s*\]\s*\(.*\)/\2 \1/'
+      register: init_services
+      when: ansible_service_mgr != "systemd"
+      changed_when: false
+      ignore_errors: yes
+
+    - name: Parse systemd services
+      set_fact:
+        services_list: >-
+          {{
+            systemd_services.stdout_lines | default([]) |
+            map('split', ' ') |
+            map('select') |
+            map('list') |
+            map('zip', ['name', 'load', 'active', 'sub']) |
+            map('map', 'reverse') |
+            map('community.general.dict') |
+            list
+          }}
+      when: ansible_service_mgr == "systemd"
+
+    - name: Parse init services
+      set_fact:
+        services_list: >-
+          {{
+            init_services.stdout_lines | default([]) |
+            map('split', ' ') |
+            map('select') |
+            map('list') |
+            map('zip', ['name', 'status']) |
+            map('map', 'reverse') |
+            map('community.general.dict') |
+            list
+          }}
+      when: ansible_service_mgr != "systemd"
+
+    - name: Filter running services (systemd)
+      set_fact:
+        running_services: >-
+          {{
+            services_list | default([]) |
+            selectattr('active', 'equalto', 'active') |
+            list
+          }}
+      when: ansible_service_mgr == "systemd"
+
+    - name: Filter running services (init)
+      set_fact:
+        running_services: >-
+          {{
+            services_list | default([]) |
+            selectattr('status', 'equalto', '+') |
+            list
+          }}
+      when: ansible_service_mgr != "systemd"
+
+    - name: Filter failed services (systemd only)
+      set_fact:
+        failed_services: >-
+          {{
+            services_list | default([]) |
+            selectattr('active', 'equalto', 'failed') |
+            list
+          }}
+      when: ansible_service_mgr == "systemd"
+
+    - name: Get enabled services (systemd)
+      shell: systemctl list-unit-files --type=service --state=enabled --no-pager --no-legend | awk '{print $1}'
+      register: enabled_services_raw
+      when: ansible_service_mgr == "systemd"
+      changed_when: false
+      ignore_errors: yes
+
+    - name: Parse enabled services
+      set_fact:
+        enabled_services: "{{ enabled_services_raw.stdout_lines | default([]) }}"
+      when: ansible_service_mgr == "systemd"
+
+    - name: Compile service status report
+      set_fact:
+        service_report:
+          hostname: "{{ ansible_hostname }}"
+          fqdn: "{{ ansible_fqdn }}"
+          timestamp: "{{ ansible_date_time.iso8601 }}"
+          service_manager: "{{ ansible_service_mgr }}"
+          total_services: "{{ services_list | default([]) | length }}"
+          running_services_count: "{{ running_services | default([]) | length }}"
+          failed_services_count: "{{ failed_services | default([]) | length if ansible_service_mgr == 'systemd' else 0 }}"
+          enabled_services_count: "{{ enabled_services | default([]) | length if ansible_service_mgr == 'systemd' else 0 }}"
+          running_services: "{{ running_services | default([]) }}"
+          failed_services: "{{ failed_services | default([]) if ansible_service_mgr == 'systemd' else [] }}"
+          enabled_services: "{{ enabled_services | default([]) if ansible_service_mgr == 'systemd' else [] }}"
+
+    - name: Display service status report as JSON
+      debug:
+        msg: "{{ service_report | to_nice_json }}"

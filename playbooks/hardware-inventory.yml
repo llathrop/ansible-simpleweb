@@ -1,0 +1,62 @@
+---
+- name: Hardware Inventory Collection
+  hosts: all
+  gather_facts: yes
+  tasks:
+    - name: Gather CPU information
+      set_fact:
+        cpu_info:
+          model: "{{ ansible_processor[2] if ansible_processor | length > 2 else ansible_processor[0] }}"
+          count: "{{ ansible_processor_count }}"
+          cores: "{{ ansible_processor_cores }}"
+          vcpus: "{{ ansible_processor_vcpus }}"
+          threads_per_core: "{{ ansible_processor_threads_per_core }}"
+          architecture: "{{ ansible_architecture }}"
+
+    - name: Gather memory information
+      set_fact:
+        memory_info:
+          total_mb: "{{ ansible_memtotal_mb }}"
+          free_mb: "{{ ansible_memfree_mb }}"
+          swap_total_mb: "{{ ansible_swaptotal_mb }}"
+          swap_free_mb: "{{ ansible_swapfree_mb }}"
+
+    - name: Gather disk information
+      set_fact:
+        disk_info:
+          devices: "{{ ansible_devices | dict2items | map(attribute='key') | list }}"
+          mounts: "{{ ansible_mounts | map(attribute='mount') | list }}"
+          total_size_gb: "{{ ansible_mounts | map(attribute='size_total') | sum / 1024 / 1024 / 1024 | round(2) }}"
+
+    - name: Check for GPU (NVIDIA)
+      shell: lspci | grep -i 'vga\|3d\|display' || echo "No GPU detected"
+      register: gpu_check
+      changed_when: false
+      ignore_errors: yes
+
+    - name: Set GPU information
+      set_fact:
+        gpu_info:
+          detected: "{{ 'NVIDIA' in gpu_check.stdout or 'AMD' in gpu_check.stdout or 'Intel' in gpu_check.stdout }}"
+          details: "{{ gpu_check.stdout_lines }}"
+
+    - name: Compile hardware inventory
+      set_fact:
+        hardware_inventory:
+          hostname: "{{ ansible_hostname }}"
+          fqdn: "{{ ansible_fqdn }}"
+          timestamp: "{{ ansible_date_time.iso8601 }}"
+          cpu: "{{ cpu_info }}"
+          memory: "{{ memory_info }}"
+          disks: "{{ disk_info }}"
+          gpu: "{{ gpu_info }}"
+          system:
+            distribution: "{{ ansible_distribution }}"
+            distribution_version: "{{ ansible_distribution_version }}"
+            kernel: "{{ ansible_kernel }}"
+            virtualization_type: "{{ ansible_virtualization_type | default('none') }}"
+            virtualization_role: "{{ ansible_virtualization_role | default('none') }}"
+
+    - name: Display hardware inventory as JSON
+      debug:
+        msg: "{{ hardware_inventory | to_nice_json }}"

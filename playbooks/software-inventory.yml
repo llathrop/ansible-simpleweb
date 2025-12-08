@@ -1,0 +1,46 @@
+---
+- name: Software Inventory Collection
+  hosts: all
+  gather_facts: yes
+  tasks:
+    - name: Get all installed packages (Debian/Ubuntu)
+      shell: dpkg-query -W -f='${Package} ${Version}\n' 2>/dev/null | head -n 100
+      register: debian_packages
+      when: ansible_os_family == "Debian"
+      changed_when: false
+      ignore_errors: yes
+
+    - name: Get all installed packages (RedHat/Rocky/CentOS)
+      shell: rpm -qa --qf '%{NAME} %{VERSION}-%{RELEASE}\n' 2>/dev/null | head -n 100
+      register: redhat_packages
+      when: ansible_os_family == "RedHat"
+      changed_when: false
+      ignore_errors: yes
+
+    - name: Build package list (Debian)
+      set_fact:
+        package_raw: "{{ debian_packages.stdout_lines | default([]) }}"
+      when: ansible_os_family == "Debian"
+
+    - name: Build package list (RedHat)
+      set_fact:
+        package_raw: "{{ redhat_packages.stdout_lines | default([]) }}"
+      when: ansible_os_family == "RedHat"
+
+    - name: Compile software inventory
+      set_fact:
+        software_inventory:
+          hostname: "{{ ansible_hostname }}"
+          fqdn: "{{ ansible_fqdn }}"
+          timestamp: "{{ ansible_date_time.iso8601 }}"
+          os_family: "{{ ansible_os_family }}"
+          distribution: "{{ ansible_distribution }}"
+          distribution_version: "{{ ansible_distribution_version }}"
+          package_manager: "{{ 'apt' if ansible_os_family == 'Debian' else 'dnf/yum' }}"
+          note: "Showing first 100 packages only for brevity"
+          total_packages_shown: "{{ package_raw | default([]) | length }}"
+          packages: "{{ package_raw | default([]) }}"
+
+    - name: Display software inventory as JSON
+      debug:
+        msg: "{{ software_inventory | to_nice_json }}"

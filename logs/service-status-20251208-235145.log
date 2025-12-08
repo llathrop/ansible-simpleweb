@@ -1,0 +1,62 @@
+[DEPRECATION WARNING]: DEFAULT_GATHER_TIMEOUT option, the module_defaults 
+keyword is a more generic version and can apply to all calls to the 
+M(ansible.builtin.gather_facts) or M(ansible.builtin.setup) actions, use 
+module_defaults instead. This feature will be removed from ansible-core in 
+version 2.18. Deprecation warnings can be disabled by setting 
+deprecation_warnings=False in ansible.cfg.
+
+PLAY [Service Status Check] ****************************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [localhost]
+
+TASK [Get list of all systemd services] ****************************************
+skipping: [localhost]
+
+TASK [Get list of all init services] *******************************************
+ok: [localhost]
+
+TASK [Parse systemd services] **************************************************
+skipping: [localhost]
+
+TASK [Parse init services] *****************************************************
+ok: [localhost]
+
+TASK [Filter running services (systemd)] ***************************************
+skipping: [localhost]
+
+TASK [Filter running services (init)] ******************************************
+ok: [localhost]
+
+TASK [Filter failed services (systemd only)] ***********************************
+skipping: [localhost]
+
+TASK [Get enabled services (systemd)] ******************************************
+skipping: [localhost]
+
+TASK [Parse enabled services] **************************************************
+skipping: [localhost]
+
+TASK [Compile service status report] *******************************************
+ok: [localhost]
+
+TASK [Display service status report as JSON] ***********************************
+ok: [localhost] => 
+  msg: |-
+    {
+        "enabled_services": [],
+        "enabled_services_count": "0",
+        "failed_services": [],
+        "failed_services_count": "0",
+        "fqdn": "7e5a9fc7e1c4",
+        "hostname": "7e5a9fc7e1c4",
+        "running_services": [],
+        "running_services_count": "0",
+        "service_manager": "python3",
+        "timestamp": "2025-12-08T23:51:47Z",
+        "total_services": "0"
+    }
+
+PLAY RECAP *********************************************************************
+localhost                  : ok=6    changed=0    unreachable=0    failed=0    skipped=6    rescued=0    ignored=0   
+

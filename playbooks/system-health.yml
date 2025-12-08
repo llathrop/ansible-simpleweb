@@ -1,0 +1,116 @@
+---
+- name: System Health Check
+  hosts: all
+  gather_facts: yes
+  tasks:
+    - name: Get system uptime
+      set_fact:
+        uptime_seconds: "{{ ansible_uptime_seconds }}"
+
+    - name: Calculate uptime in human-readable format
+      set_fact:
+        uptime_days: "{{ (uptime_seconds | int / 86400) | int }}"
+        uptime_hours: "{{ ((uptime_seconds | int % 86400) / 3600) | int }}"
+        uptime_minutes: "{{ ((uptime_seconds | int % 3600) / 60) | int }}"
+
+    - name: Get load averages
+      set_fact:
+        load_average:
+          1min: "{{ ansible_loadavg['1m'] }}"
+          5min: "{{ ansible_loadavg['5m'] }}"
+          15min: "{{ ansible_loadavg['15m'] }}"
+
+    - name: Get disk usage for all mounts
+      set_fact:
+        disk_usage: >-
+          {{
+            ansible_mounts |
+            map(attribute='mount') |
+            zip(ansible_mounts | map(attribute='size_total')) |
+            zip(ansible_mounts | map(attribute='size_available')) |
+            map('zip', ['mount', 'total', 'available']) |
+            map('map', 'reverse') |
+            map('community.general.dict') |
+            list
+          }}
+
+    - name: Calculate disk usage percentages
+      set_fact:
+        disk_usage_detailed: >-
+          {{
+            ansible_mounts |
+            map('dict2items') |
+            map('items2dict') |
+            map('combine', {
+              'mount': item.mount,
+              'total_gb': (item.size_total / 1024 / 1024 / 1024) | round(2),
+              'used_gb': ((item.size_total - item.size_available) / 1024 / 1024 / 1024) | round(2),
+              'available_gb': (item.size_available / 1024 / 1024 / 1024) | round(2),
+              'percent_used': (((item.size_total - item.size_available) / item.size_total * 100) | round(1)) if item.size_total > 0 else 0
+            }) |
+            list
+          }}
+      loop: "{{ ansible_mounts }}"
+      loop_control:
+        loop_var: item
+      register: disk_details
+
+    - name: Format disk usage data
+      set_fact:
+        disk_usage_info: >-
+          {{
+            disk_details.results |
+            map(attribute='ansible_facts.disk_usage_detailed') |
+            list
+          }}
+
+    - name: Get memory usage
+      set_fact:
+        memory_usage:
+          total_mb: "{{ ansible_memtotal_mb }}"
+          free_mb: "{{ ansible_memfree_mb }}"
+          used_mb: "{{ ansible_memtotal_mb - ansible_memfree_mb }}"
+          cached_mb: "{{ ansible_memory_mb.real.cached | default(0) }}"
+          percent_used: "{{ ((ansible_memtotal_mb - ansible_memfree_mb) / ansible_memtotal_mb * 100) | round(1) }}"
+
+    - name: Get swap usage
+      set_fact:
+        swap_usage:
+          total_mb: "{{ ansible_swaptotal_mb }}"
+          free_mb: "{{ ansible_swapfree_mb }}"
+          used_mb: "{{ ansible_swaptotal_mb - ansible_swapfree_mb }}"
+          percent_used: "{{ ((ansible_swaptotal_mb - ansible_swapfree_mb) / ansible_swaptotal_mb * 100) | round(1) if ansible_swaptotal_mb > 0 else 0 }}"
+
+    - name: Check for system errors in logs (last 100 lines)
+      shell: journalctl -p err -n 100 --no-pager 2>/dev/null || tail -n 100 /var/log/messages 2>/dev/null || echo "Unable to read system logs"
+      register: system_errors
+      changed_when: false
+      ignore_errors: yes
+
+    - name: Count recent errors
+      set_fact:
+        error_count: "{{ system_errors.stdout_lines | length }}"
+
+    - name: Compile system health report
+      set_fact:
+        health_report:
+          hostname: "{{ ansible_hostname }}"
+          fqdn: "{{ ansible_fqdn }}"
+          timestamp: "{{ ansible_date_time.iso8601 }}"
+          uptime:
+            days: "{{ uptime_days }}"
+            hours: "{{ uptime_hours }}"
+            minutes: "{{ uptime_minutes }}"
+            total_seconds: "{{ uptime_seconds }}"
+          load_average: "{{ load_average }}"
+          cpu_count: "{{ ansible_processor_vcpus }}"
+          memory: "{{ memory_usage }}"
+          swap: "{{ swap_usage }}"
+          disk_usage: "{{ disk_usage_info }}"
+          recent_errors:
+            count: "{{ error_count }}"
+            log_sample: "{{ system_errors.stdout_lines[:10] if error_count | int > 0 else [] }}"
+
+    - name: Display system health report as JSON
+      debug:
+        msg: "{{ health_report | to_nice_json }}"
