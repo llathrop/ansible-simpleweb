@@ -159,6 +159,70 @@ docker-compose exec -T ansible-web ansible-playbook playbooks/your-playbook.yml 
 - SSH keys mounted read-only from `~/.ssh`
 - Service account recommended for target hosts (see [Configuration](docs/CONFIGURATION.md))
 
+## Future Enhancements / TODO
+
+### Planned Features
+
+**Authentication & Security**
+- [ ] Add authentication system (JWT, OAuth, or basic auth)
+- [ ] User management and role-based access control
+- [ ] API key authentication for programmatic access
+- [ ] Session management and timeouts
+
+**External Access**
+- [ ] Configure for external network access (beyond localhost)
+- [ ] HTTPS/TLS support with SSL certificates
+- [ ] Reverse proxy configuration guide (nginx/Apache)
+- [ ] CORS configuration for API access
+
+**Log Management**
+- [ ] Automatic log rotation system
+  - Archive to `last-week/` on Sundays before midnight
+  - Archive to `last-month/` at month end
+  - Archive to `last-year/` at year end
+- [ ] Log retention policies (configurable)
+- [ ] Log compression for archived logs
+- [ ] Log search/filter functionality in web interface
+
+**User Experience**
+- [ ] Playbook scheduling (cron-like interface)
+- [ ] Email notifications on playbook completion
+- [ ] Slack/Teams/Discord webhook integrations
+- [ ] Real-time log streaming (WebSocket)
+- [ ] Dark mode toggle
+- [ ] Mobile app or PWA support
+
+**Advanced Features**
+- [ ] Playbook templates library
+- [ ] Variable substitution in playbooks via UI
+- [ ] Playbook chaining (run multiple in sequence)
+- [ ] Conditional execution based on previous results
+- [ ] Inventory management UI (add/edit hosts via web)
+- [ ] SSH key management interface
+- [ ] Ansible Vault integration
+- [ ] Multi-user playbook execution queue
+
+**Monitoring & Reporting**
+- [ ] Execution history dashboard
+- [ ] Success/failure rate statistics
+- [ ] Host health monitoring
+- [ ] Performance metrics (execution time trends)
+- [ ] Export reports (PDF, CSV)
+
+**Documentation**
+- [ ] Video walkthrough/tutorial
+- [ ] Interactive demo environment
+- [ ] Community playbook repository
+- [ ] Best practices guide for playbook authors
+
+### Contribution Ideas
+
+Have an idea for improvement? Consider:
+1. Adding new example playbooks to `playbooks/`
+2. Improving documentation with real-world examples
+3. Creating integration guides for popular tools
+4. Submitting bug reports or feature requests
+
 ## License
 
 Internal use only.
