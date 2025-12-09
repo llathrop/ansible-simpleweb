@@ -1,8 +1,17 @@
 [local]
-localhost ansible_connection=local
+# Container's localhost (for testing container itself)
+# localhost ansible_connection=local
+
+[host_machine]
+# Actual host machine running Docker
+192.168.1.50 ansible_user=svc-ansible ansible_ssh_private_key_file=/app/.ssh/svc-ansible-key
 
 [remote_servers]
-# Add remote hosts here
+# Add additional remote hosts here
 # Example:
 # server1.example.com ansible_user=username ansible_ssh_pass=password
 # server2.example.com ansible_user=username ansible_ssh_private_key_file=/root/.ssh/id_rsa
+
+[all_hosts:children]
+host_machine
+remote_servers

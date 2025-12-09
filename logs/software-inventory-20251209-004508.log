@@ -1,0 +1,147 @@
+[DEPRECATION WARNING]: DEFAULT_GATHER_TIMEOUT option, the module_defaults 
+keyword is a more generic version and can apply to all calls to the 
+M(ansible.builtin.gather_facts) or M(ansible.builtin.setup) actions, use 
+module_defaults instead. This feature will be removed from ansible-core in 
+version 2.18. Deprecation warnings can be disabled by setting 
+deprecation_warnings=False in ansible.cfg.
+
+PLAY [Software Inventory Collection] *******************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [192.168.1.50]
+
+TASK [Get all installed packages (Debian/Ubuntu)] ******************************
+ok: [192.168.1.50]
+
+TASK [Get all installed packages (RedHat/Rocky/CentOS)] ************************
+skipping: [192.168.1.50]
+
+TASK [Build package list (Debian)] *********************************************
+ok: [192.168.1.50]
+
+TASK [Build package list (RedHat)] *********************************************
+skipping: [192.168.1.50]
+
+TASK [Compile software inventory] **********************************************
+ok: [192.168.1.50]
+
+TASK [Display software inventory as JSON] **************************************
+ok: [192.168.1.50] => 
+  msg: |-
+    {
+        "distribution": "Ubuntu",
+        "distribution_version": "25.04",
+        "fqdn": "bob",
+        "hostname": "bob",
+        "note": "Showing first 100 packages only for brevity",
+        "os_family": "Debian",
+        "package_manager": "apt",
+        "packages": [
+            "7zip 24.09+dfsg-7",
+            "accountsservice 23.13.9-7ubuntu1",
+            "acl 2.3.2-2",
+            "adduser 3.137ubuntu2",
+            "adwaita-icon-theme 48.0-1",
+            "aha 0.5.1-3build1",
+            "alsa-base 1.0.25+dfsg-0ubuntu8",
+            "alsa-topology-conf 1.2.5.1-3",
+            "alsa-ucm-conf 1.2.12-1ubuntu1.3",
+            "alsa-utils 1.2.13-1ubuntu1",
+            "amd64-microcode 3.20250708.0ubuntu0.25.04.2",
+            "anacron 2.3-42ubuntu1",
+            "apparmor 4.1.0~beta5-0ubuntu14.2",
+            "appmenu-gtk-module-common 24.05-1.1",
+            "appmenu-gtk3-module 24.05-1.1",
+            "apport 2.32.0-0ubuntu5.3",
+            "apport-core-dump-handler 2.32.0-0ubuntu5.3",
+            "apport-kde 2.32.0-0ubuntu5.3",
+            "apport-symptoms 0.25",
+            "appstream 1.0.4-1",
+            "apt 3.0.0",
+            "apt-config-icons 1.0.4-1",
+            "apt-config-icons-hidpi 1.0.4-1",
+            "apt-config-icons-large 1.0.4-1",
+            "apt-config-icons-large-hidpi 1.0.4-1",
+            "apt-transport-https 3.0.0",
+            "apt-utils 3.0.0",
+            "aptitude 0.8.13-7ubuntu2",
+            "aptitude-common 0.8.13-7ubuntu2",
+            "ark 4:24.12.3-1ubuntu1",
+            "aspell 0.60.8.1-4",
+            "aspell-en 2020.12.07-0-1",
+            "assistant-qt6 6.8.3-0ubuntu1",
+            "at-spi2-common 2.56.1-1",
+            "at-spi2-core 2.56.1-1",
+            "autoconf 2.72-3ubuntu1",
+            "automake 1:1.17-3ubuntu1",
+            "autotools-dev 20220109.1",
+            "avahi-daemon 0.8-16ubuntu2",
+            "b43-fwcutter 1:019-13",
+            "baloo-kf5 5.116.0-0ubuntu2",
+            "baloo6 6.12.0-0ubuntu1",
+            "barrier 2.4.0+dfsg-4build3",
+            "base-files 13.6ubuntu2",
+            "base-passwd 3.6.6",
+            "bash 5.2.37-1.1ubuntu1",
+            "bash-completion 1:2.16.0-7",
+            "bc 1.07.1-4",
+            "bind9-dnsutils 1:9.20.11-0ubuntu0.2",
+            "bind9-host 1:9.20.11-0ubuntu0.2",
+            "bind9-libs 1:9.20.11-0ubuntu0.2",
+            "binutils 2.44-3ubuntu1.2",
+            "binutils-common 2.44-3ubuntu1.2",
+            "binutils-x86-64-linux-gnu 2.44-3ubuntu1.2",
+            "blt 2.5.3+dfsg-8",
+            "bluedevil 4:6.3.4-0ubuntu1",
+            "bluez 5.79-2ubuntu1.3",
+            "bluez-cups 5.79-2ubuntu1.3",
+            "bluez-obexd 5.79-2ubuntu1.3",
+            "bolt 0.9.8-1",
+            "boot-repair 4ppa2081",
+            "boot-sav 4ppa2081",
+            "boot-sav-extra 4ppa2081",
+            "bpfcc-tools 0.30.0+ds-1ubuntu5",
+            "bpftool 7.6.0+6.14.0-36.36",
+            "bpftrace 0.21.2-2ubuntu3",
+            "breeze 4:6.3.4-0ubuntu1",
+            "breeze-cursor-theme 4:6.3.4-0ubuntu1",
+            "breeze-gtk-theme 6.3.4-0ubuntu1",
+            "breeze-icon-theme 4:5.116.0-0ubuntu2",
+            "breeze-wallpaper 4:6.3.4-0ubuntu1",
+            "bridge-utils 1.7.1-1ubuntu2",
+            "bsdextrautils 2.40.2-14ubuntu1.1",
+            "bsdutils 1:2.40.2-14ubuntu1.1",
+            "btrfs-progs 6.12-1build1",
+            "bubblewrap 0.11.0-2",
+            "build-essential 12.12ubuntu1",
+            "bup 0.33.7-1",
+            "bup-doc 0.33.7-1",
+            "busybox-initramfs 1:1.37.0-4ubuntu1",
+            "busybox-static 1:1.37.0-4ubuntu1",
+            "bzip2 1.0.8-6",
+            "bzip2-doc 1.0.8-6",
+            "ca-certificates 20241223",
+            "ca-certificates-java 20240118",
+            "cabextract 1.11-2",
+            "catdoc 1:0.95-5build1",
+            "clinfo 3.0.25.02.14-1",
+            "cmake 3.31.6-1ubuntu1",
+            "cmake-data 3.31.6-1ubuntu1",
+            "code 1.106.3-1764110892",
+            "colord 1.4.7-3",
+            "colord-data 1.4.7-3",
+            "comerr-dev 2.1-1.47.2-1ubuntu1",
+            "command-not-found 23.04.0",
+            "console-setup 1.226ubuntu3",
+            "console-setup-linux 1.226ubuntu3",
+            "containerd 1.7.27-0ubuntu1~24.04.1",
+            "containerd.io 2.2.0-2~ubuntu.24.04~noble",
+            "coreutils 9.5-1ubuntu1.25.04.2"
+        ],
+        "timestamp": "2025-12-09T00:45:09Z",
+        "total_packages_shown": "100"
+    }
+
+PLAY RECAP *********************************************************************
+192.168.1.50               : ok=5    changed=0    unreachable=0    failed=0    skipped=2    rescued=0    ignored=0   
+

@@ -1,0 +1,158 @@
+[DEPRECATION WARNING]: DEFAULT_GATHER_TIMEOUT option, the module_defaults 
+keyword is a more generic version and can apply to all calls to the 
+M(ansible.builtin.gather_facts) or M(ansible.builtin.setup) actions, use 
+module_defaults instead. This feature will be removed from ansible-core in 
+version 2.18. Deprecation warnings can be disabled by setting 
+deprecation_warnings=False in ansible.cfg.
+
+PLAY [Network Configuration Check] *********************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [192.168.1.50]
+
+TASK [Get network interfaces from ip command] **********************************
+ok: [192.168.1.50]
+
+TASK [Get interface details] ***************************************************
+ok: [192.168.1.50]
+
+TASK [Get default gateway] *****************************************************
+ok: [192.168.1.50]
+
+TASK [Get DNS servers] *********************************************************
+ok: [192.168.1.50]
+
+TASK [Get routing table] *******************************************************
+ok: [192.168.1.50]
+
+TASK [Get listening ports] *****************************************************
+ok: [192.168.1.50]
+
+TASK [Compile network configuration report] ************************************
+ok: [192.168.1.50]
+
+TASK [Display network configuration report as JSON] ****************************
+ok: [192.168.1.50] => 
+  msg: |-
+    {
+        "default_ipv4": {
+            "address": "192.168.1.124",
+            "gateway": "192.168.1.1\n192.168.1.1",
+            "interface": "enp11s0u2u4"
+        },
+        "default_ipv6": {
+            "address": "N/A",
+            "gateway": "N/A",
+            "interface": "N/A"
+        },
+        "dns_servers": [
+            "127.0.0.53"
+        ],
+        "fqdn": "bob",
+        "hostname": "bob",
+        "interface_details": [
+            "1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000",
+            "    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00",
+            "    inet 127.0.0.1/8 scope host lo",
+            "       valid_lft forever preferred_lft forever",
+            "    inet6 ::1/128 scope host noprefixroute ",
+            "       valid_lft forever preferred_lft forever",
+            "3: wlp2s0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UP group default qlen 1000",
+            "    link/ether 60:6d:c7:c6:19:83 brd ff:ff:ff:ff:ff:ff",
+            "    altname wlx606dc7c61983",
+            "    inet 192.168.1.50/24 brd 192.168.1.255 scope global dynamic noprefixroute wlp2s0",
+            "       valid_lft 534sec preferred_lft 534sec",
+            "    inet6 fdef:53ce:820d:22be:336c:178b:7341:53b3/64 scope global temporary dynamic ",
+            "       valid_lft 1646sec preferred_lft 1646sec",
+            "    inet6 fdef:53ce:820d:22be:3956:ef05:b7e9:2428/64 scope global temporary deprecated dynamic ",
+            "       valid_lft 1646sec preferred_lft 0sec",
+            "    inet6 fdef:53ce:820d:22be:63a3:703b:7a50:5462/64 scope global dynamic mngtmpaddr noprefixroute ",
+            "       valid_lft 1646sec preferred_lft 1646sec",
+            "    inet6 fe80::8a37:31c8:98bb:360a/64 scope link noprefixroute ",
+            "       valid_lft forever preferred_lft forever",
+            "4: virbr0: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc noqueue state DOWN group default qlen 1000",
+            "    link/ether 52:54:00:33:ce:5a brd ff:ff:ff:ff:ff:ff",
+            "    inet 192.168.122.1/24 brd 192.168.122.255 scope global virbr0",
+            "       valid_lft forever preferred_lft forever",
+            "5: br-138c760559ec: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc noqueue state DOWN group default ",
+            "    link/ether 36:99:87:c3:41:58 brd ff:ff:ff:ff:ff:ff",
+            "    inet 172.20.0.1/16 brd 172.20.255.255 scope global br-138c760559ec",
+            "       valid_lft forever preferred_lft forever",
+            "6: br-1b409626e943: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc noqueue state DOWN group default ",
+            "    link/ether 3a:77:09:2b:85:5c brd ff:ff:ff:ff:ff:ff",
+            "    inet 172.18.0.1/16 brd 172.18.255.255 scope global br-1b409626e943",
+            "       valid_lft forever preferred_lft forever",
+            "7: br-84eadfb3ac28: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc noqueue state DOWN group default ",
+            "    link/ether 7a:68:fc:38:7a:ed brd ff:ff:ff:ff:ff:ff",
+            "    inet 172.19.0.1/16 brd 172.19.255.255 scope global br-84eadfb3ac28",
+            "       valid_lft forever preferred_lft forever",
+            "8: docker0: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc noqueue state DOWN group default ",
+            "    link/ether 96:21:61:39:62:9f brd ff:ff:ff:ff:ff:ff",
+            "    inet 172.17.0.1/16 brd 172.17.255.255 scope global docker0",
+            "       valid_lft forever preferred_lft forever",
+            "    inet6 fe80::9421:61ff:fe39:629f/64 scope link proto kernel_ll ",
+            "       valid_lft forever preferred_lft forever",
+            "10: enp11s0u2u4: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UP group default qlen 1000",
+            "    link/ether 20:47:47:f4:80:b3 brd ff:ff:ff:ff:ff:ff",
+            "    inet 192.168.1.124/24 brd 192.168.1.255 scope global dynamic noprefixroute enp11s0u2u4",
+            "       valid_lft 593sec preferred_lft 593sec",
+            "    inet6 fdef:53ce:820d:22be:559a:862d:1ed:8d1a/64 scope global temporary dynamic ",
+            "       valid_lft 1646sec preferred_lft 1646sec",
+            "    inet6 fdef:53ce:820d:22be:b87b:9c9d:448f:11cc/64 scope global dynamic mngtmpaddr noprefixroute ",
+            "       valid_lft 1646sec preferred_lft 1646sec",
+            "    inet6 fe80::67f6:b5d8:e9fd:ff89/64 scope link noprefixroute ",
+            "       valid_lft forever preferred_lft forever",
+            "23: br-a6fe6907e66a: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default ",
+            "    link/ether 82:e6:0c:cc:12:22 brd ff:ff:ff:ff:ff:ff",
+            "    inet 172.21.0.1/16 brd 172.21.255.255 scope global br-a6fe6907e66a",
+            "       valid_lft forever preferred_lft forever",
+            "    inet6 fe80::80e6:cff:fecc:1222/64 scope link proto kernel_ll ",
+            "       valid_lft forever preferred_lft forever",
+            "24: vetha84a286@if2: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue master br-a6fe6907e66a state UP group default ",
+            "    link/ether 66:a2:fb:35:30:1f brd ff:ff:ff:ff:ff:ff link-netnsid 0",
+            "    inet6 fe80::64a2:fbff:fe35:301f/64 scope link proto kernel_ll ",
+            "       valid_lft forever preferred_lft forever"
+        ],
+        "interfaces": [
+            "wlp2s0",
+            "virbr0",
+            "br-138c760559ec",
+            "br-1b409626e943",
+            "br-84eadfb3ac28",
+            "docker0",
+            "enp11s0u2u4",
+            "br-a6fe6907e66a",
+            "vetha84a286@if2"
+        ],
+        "listening_ports": [
+            "tcp   LISTEN 0      4096        127.0.0.1:631        0.0.0.0:*   ",
+            "tcp   LISTEN 0      32      192.168.122.1:53         0.0.0.0:*   ",
+            "tcp   LISTEN 0      4096          0.0.0.0:22         0.0.0.0:*   ",
+            "tcp   LISTEN 0      4096          0.0.0.0:3001       0.0.0.0:*   ",
+            "tcp   LISTEN 0      511         127.0.0.1:44293      0.0.0.0:*   ",
+            "tcp   LISTEN 0      4096       127.0.0.54:53         0.0.0.0:*   ",
+            "tcp   LISTEN 0      4096    127.0.0.53%lo:53         0.0.0.0:*   ",
+            "tcp   LISTEN 0      50                  *:1716             *:*   ",
+            "tcp   LISTEN 0      4096             [::]:22            [::]:*   ",
+            "tcp   LISTEN 0      4096            [::1]:631           [::]:*   ",
+            "tcp   LISTEN 0      4096             [::]:3001          [::]:*   ",
+            "tcp   LISTEN 0      511                 *:35773            *:*   "
+        ],
+        "routing_table": [
+            "default via 192.168.1.1 dev enp11s0u2u4 proto dhcp src 192.168.1.124 metric 100 ",
+            "default via 192.168.1.1 dev wlp2s0 proto dhcp src 192.168.1.50 metric 600 ",
+            "172.17.0.0/16 dev docker0 proto kernel scope link src 172.17.0.1 linkdown ",
+            "172.18.0.0/16 dev br-1b409626e943 proto kernel scope link src 172.18.0.1 linkdown ",
+            "172.19.0.0/16 dev br-84eadfb3ac28 proto kernel scope link src 172.19.0.1 linkdown ",
+            "172.20.0.0/16 dev br-138c760559ec proto kernel scope link src 172.20.0.1 linkdown ",
+            "172.21.0.0/16 dev br-a6fe6907e66a proto kernel scope link src 172.21.0.1 ",
+            "192.168.1.0/24 dev enp11s0u2u4 proto kernel scope link src 192.168.1.124 metric 100 ",
+            "192.168.1.0/24 dev wlp2s0 proto kernel scope link src 192.168.1.50 metric 600 ",
+            "192.168.122.0/24 dev virbr0 proto kernel scope link src 192.168.122.1 linkdown "
+        ],
+        "timestamp": "2025-12-09T00:45:29Z"
+    }
+
+PLAY RECAP *********************************************************************
+192.168.1.50               : ok=9    changed=0    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0   
+

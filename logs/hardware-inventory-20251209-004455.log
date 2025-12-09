@@ -1,0 +1,159 @@
+[DEPRECATION WARNING]: DEFAULT_GATHER_TIMEOUT option, the module_defaults 
+keyword is a more generic version and can apply to all calls to the 
+M(ansible.builtin.gather_facts) or M(ansible.builtin.setup) actions, use 
+module_defaults instead. This feature will be removed from ansible-core in 
+version 2.18. Deprecation warnings can be disabled by setting 
+deprecation_warnings=False in ansible.cfg.
+
+PLAY [Hardware Inventory Collection] *******************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [192.168.1.50]
+
+TASK [Gather CPU information] **************************************************
+ok: [192.168.1.50]
+
+TASK [Gather memory information] ***********************************************
+ok: [192.168.1.50]
+
+TASK [Gather disk information] *************************************************
+ok: [192.168.1.50]
+
+TASK [Check for GPU (NVIDIA)] **************************************************
+ok: [192.168.1.50]
+
+TASK [Set GPU information] *****************************************************
+ok: [192.168.1.50]
+
+TASK [Compile hardware inventory] **********************************************
+ok: [192.168.1.50]
+
+TASK [Display hardware inventory as JSON] **************************************
+ok: [192.168.1.50] => 
+  msg: |-
+    {
+        "cpu": {
+            "architecture": "x86_64",
+            "cores": 4,
+            "count": 1,
+            "model": "Intel(R) Core(TM) i7-6700HQ CPU @ 2.60GHz",
+            "threads_per_core": 2,
+            "vcpus": 8
+        },
+        "disks": {
+            "devices": [
+                "loop1",
+                "loop29",
+                "loop19",
+                "nvme0n1",
+                "loop37",
+                "loop27",
+                "loop17",
+                "loop8",
+                "loop35",
+                "loop25",
+                "loop15",
+                "loop6",
+                "loop33",
+                "loop23",
+                "loop13",
+                "loop4",
+                "loop31",
+                "loop21",
+                "loop11",
+                "loop2",
+                "loop38",
+                "loop0",
+                "loop28",
+                "loop18",
+                "loop9",
+                "loop36",
+                "loop26",
+                "loop16",
+                "loop7",
+                "loop34",
+                "loop24",
+                "loop14",
+                "loop5",
+                "loop32",
+                "loop22",
+                "loop12",
+                "loop3",
+                "loop30",
+                "loop20",
+                "loop10",
+                "loop39"
+            ],
+            "mounts": [
+                "/",
+                "/snap/bare/5",
+                "/snap/canonical-livepatch/364",
+                "/snap/canonical-livepatch/372",
+                "/snap/core20/2669",
+                "/snap/core22/2163",
+                "/snap/core22/2139",
+                "/snap/core20/2682",
+                "/snap/core24/1196",
+                "/snap/core24/1225",
+                "/boot/efi",
+                "/snap/element-desktop/186",
+                "/snap/gnome-42-2204/202",
+                "/snap/ffmpeg-2204/126",
+                "/snap/snapd/25577",
+                "/snap/gtk-common-themes/1535",
+                "/snap/firefox/7423",
+                "/snap/kf5-5-113-qt-5-15-11-core22/1",
+                "/snap/thunderbird/915",
+                "/snap/gnome-46-2404/125",
+                "/snap/gnome-46-2404/145",
+                "/snap/gnome-3-38-2004/143",
+                "/snap/mesa-2404/912",
+                "/snap/firmware-updater/167",
+                "/snap/firefox/7355",
+                "/snap/winbox/182",
+                "/snap/subsurface/10721",
+                "/snap/wine-platform-7-stable-core20/6",
+                "/snap/firmware-updater/210",
+                "/snap/kf5-core22/3",
+                "/snap/gnome-42-2204/226",
+                "/snap/snapd/25202",
+                "/snap/winbox/183",
+                "/snap/krita/109",
+                "/snap/krita/108",
+                "/snap/mesa-2404/1165",
+                "/snap/subsurface/10722",
+                "/snap/thunderbird/877",
+                "/snap/wine-platform-runtime-core20/151",
+                "/snap/wine-platform-runtime-core20/152",
+                "/snap/element-desktop/188"
+            ],
+            "total_size_gb": "925.3933410644531"
+        },
+        "fqdn": "bob",
+        "gpu": {
+            "details": [
+                "00:02.0 VGA compatible controller: Intel Corporation HD Graphics 530 (rev 06)",
+                "01:00.0 3D controller: NVIDIA Corporation GM107M [GeForce GTX 960M] (rev a2)"
+            ],
+            "detected": true
+        },
+        "hostname": "bob",
+        "memory": {
+            "free_mb": 769,
+            "swap_free_mb": 510,
+            "swap_total_mb": 511,
+            "total_mb": 31909
+        },
+        "system": {
+            "distribution": "Ubuntu",
+            "distribution_version": "25.04",
+            "kernel": "6.14.0-36-generic",
+            "virtualization_role": "host",
+            "virtualization_type": "kvm"
+        },
+        "timestamp": "2025-12-09T00:44:57Z"
+    }
+
+PLAY RECAP *********************************************************************
+192.168.1.50               : ok=8    changed=0    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0   
+
