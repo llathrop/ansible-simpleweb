@@ -29,6 +29,7 @@ Thumbs.db
 *.key
 *.pem
 id_rsa*
+.ssh/
 
 # Logs (we'll commit logs manually as required)
 # logs/*.log

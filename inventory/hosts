@@ -4,7 +4,8 @@
 
 [host_machine]
 # Actual host machine running Docker
-192.168.1.50 ansible_user=svc-ansible ansible_ssh_private_key_file=/app/.ssh/svc-ansible-key
+# Replace with your host IP address
+# Example: 192.168.1.50 ansible_user=svc-ansible ansible_ssh_private_key_file=/app/.ssh/svc-ansible-key
 
 [remote_servers]
 # Add additional remote hosts here
