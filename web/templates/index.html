@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ansible Web Interface</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.0/socket.io.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -81,7 +82,7 @@
             color: #2e7d32;
         }
 
-        .status-running {
+        .status-running, .status-starting {
             background: #fff3e0;
             color: #e65100;
             animation: pulse 2s infinite;
@@ -209,6 +210,74 @@
             flex-direction: column;
             gap: 8px;
         }
+
+        .active-runs {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px dashed #ddd;
+        }
+
+        .active-runs-title {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+
+        .active-run-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 6px 10px;
+            background: #fff3e0;
+            border-radius: 4px;
+            margin-bottom: 5px;
+            font-size: 13px;
+        }
+
+        .active-run-item.completed {
+            background: #e3f2fd;
+        }
+
+        .active-run-item.failed {
+            background: #ffebee;
+        }
+
+        .active-run-target {
+            color: #333;
+            font-weight: 500;
+        }
+
+        .btn-watch {
+            padding: 4px 10px;
+            font-size: 12px;
+            background: #ff9800;
+            color: white;
+        }
+
+        .btn-watch:hover {
+            background: #f57c00;
+        }
+
+        .connection-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: #666;
+            margin-left: 10px;
+        }
+
+        .connection-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #ccc;
+        }
+
+        .connection-dot.connected {
+            background: #4caf50;
+        }
     </style>
 </head>
 <body>
@@ -220,19 +289,23 @@
             <a href="/">Home</a>
             <a href="/logs">All Logs</a>
             <a href="/api/playbooks">API</a>
+            <span class="connection-indicator">
+                <span class="connection-dot" id="connectionDot"></span>
+                <span id="connectionText">Connecting...</span>
+            </span>
         </div>
 
-        <div class="refresh-note">
-            ℹ️ Page refreshes automatically after running a playbook. Status updates in real-time.
+        <div class="refresh-note" id="statusNote">
+            ℹ️ Real-time updates via WebSocket. Click "Watch Live" to see playbook output as it runs.
         </div>
 
         {% if playbooks %}
         <div class="playbook-grid">
             {% for playbook in playbooks %}
-            <div class="playbook-card">
+            <div class="playbook-card" data-playbook="{{ playbook.name }}">
                 <div class="playbook-header">
                     <div class="playbook-name">{{ playbook.display_name }}</div>
-                    <span class="status-badge status-{{ playbook.status }}">{{ playbook.status }}</span>
+                    <span class="status-badge status-{{ playbook.status }}" data-status>{{ playbook.status }}</span>
                 </div>
 
                 <div class="playbook-info">
@@ -245,18 +318,15 @@
                 <div class="playbook-actions">
                     <form action="/run/{{ playbook.name }}" method="get" class="run-form">
                         <div class="target-label">Target Host/Group:</div>
-                        <select name="target" class="target-select" {% if playbook.status == 'running' %}disabled{% endif %}>
+                        <select name="target" class="target-select">
                             {% for target in targets %}
                             <option value="{{ target.value }}">{{ target.label }}</option>
                             {% endfor %}
                         </select>
 
                         <div style="display: flex; gap: 10px;">
-                            <button type="submit"
-                                    class="btn btn-primary"
-                                    style="flex: 1;"
-                                    {% if playbook.status == 'running' %}disabled{% endif %}>
-                                {% if playbook.status == 'running' %}Running...{% else %}Run Playbook{% endif %}
+                            <button type="submit" class="btn btn-primary" style="flex: 1;">
+                                Run Playbook
                             </button>
 
                             {% if playbook.latest_log %}
@@ -266,6 +336,19 @@
                             {% endif %}
                         </div>
                     </form>
+                </div>
+
+                <!-- Active runs section -->
+                <div class="active-runs" data-active-runs style="{% if not playbook.active_runs %}display: none;{% endif %}">
+                    <div class="active-runs-title">Active Runs:</div>
+                    <div class="active-runs-list">
+                        {% for run in playbook.active_runs %}
+                        <div class="active-run-item {{ run.status }}" data-run-id="{{ run.run_id }}">
+                            <span class="active-run-target">{{ run.target }}</span>
+                            <a href="/live/{{ run.run_id }}" class="btn btn-watch">Watch Live</a>
+                        </div>
+                        {% endfor %}
+                    </div>
                 </div>
             </div>
             {% endfor %}
@@ -281,26 +364,105 @@
     </div>
 
     <script>
-        // Auto-refresh status every 3 seconds
-        setInterval(function() {
-            fetch('/api/status')
-                .then(response => response.json())
-                .then(data => {
-                    // Check if any playbook status changed
-                    let needsRefresh = false;
-                    Object.keys(data).forEach(playbook => {
-                        const badge = document.querySelector(`[data-playbook="${playbook}"] .status-badge`);
-                        if (badge && badge.textContent.toLowerCase() !== data[playbook]) {
-                            needsRefresh = true;
-                        }
-                    });
+        const connectionDot = document.getElementById('connectionDot');
+        const connectionText = document.getElementById('connectionText');
 
-                    // Refresh page if status changed
-                    if (needsRefresh) {
-                        location.reload();
+        // Connect to WebSocket
+        const socket = io();
+
+        socket.on('connect', function() {
+            connectionDot.classList.add('connected');
+            connectionText.textContent = 'Live';
+        });
+
+        socket.on('disconnect', function() {
+            connectionDot.classList.remove('connected');
+            connectionText.textContent = 'Disconnected';
+        });
+
+        // Handle status updates from WebSocket
+        socket.on('status_update', function(data) {
+            updatePlaybookStatus(data.playbook, data.status, data.run_id, data.target);
+        });
+
+        function updatePlaybookStatus(playbookName, status, runId, target) {
+            const card = document.querySelector(`[data-playbook="${playbookName}"]`);
+            if (!card) return;
+
+            const badge = card.querySelector('[data-status]');
+            const activeRunsSection = card.querySelector('[data-active-runs]');
+            const activeRunsList = card.querySelector('.active-runs-list');
+
+            // Update badge
+            if (badge) {
+                badge.textContent = status;
+                badge.className = 'status-badge status-' + status;
+            }
+
+            // Handle active runs
+            if ((status === 'running' || status === 'starting') && runId) {
+                // Show active runs section
+                activeRunsSection.style.display = 'block';
+
+                // Check if this run already exists
+                let runItem = activeRunsList.querySelector(`[data-run-id="${runId}"]`);
+                if (!runItem) {
+                    // Add new run item
+                    runItem = document.createElement('div');
+                    runItem.className = 'active-run-item running';
+                    runItem.dataset.runId = runId;
+                    runItem.innerHTML = `
+                        <span class="active-run-target">${target || 'unknown'}</span>
+                        <a href="/live/${runId}" class="btn btn-watch">Watch Live</a>
+                    `;
+                    activeRunsList.appendChild(runItem);
+                }
+            } else if ((status === 'completed' || status === 'failed') && runId) {
+                // Update existing run item
+                const runItem = activeRunsList.querySelector(`[data-run-id="${runId}"]`);
+                if (runItem) {
+                    runItem.className = 'active-run-item ' + status;
+                    // Change button text
+                    const btn = runItem.querySelector('.btn-watch');
+                    if (btn) {
+                        btn.textContent = 'View Log';
+                        btn.classList.remove('btn-watch');
+                        btn.classList.add('btn-secondary');
                     }
+                    // Remove after a delay
+                    setTimeout(() => {
+                        runItem.remove();
+                        // Hide section if no more active runs
+                        if (activeRunsList.children.length === 0) {
+                            activeRunsSection.style.display = 'none';
+                        }
+                        // Update badge to ready if no other running
+                        fetch('/api/status')
+                            .then(r => r.json())
+                            .then(statusData => {
+                                const playbookStatus = statusData[playbookName];
+                                if (playbookStatus && playbookStatus.status) {
+                                    badge.textContent = playbookStatus.status;
+                                    badge.className = 'status-badge status-' + playbookStatus.status;
+                                }
+                            });
+                    }, 5000);
+                }
+            }
+        }
+
+        // Fallback: Poll for status every 10 seconds (in case WebSocket misses something)
+        setInterval(function() {
+            fetch('/api/runs')
+                .then(response => response.json())
+                .then(runs => {
+                    // Update active runs display
+                    Object.keys(runs).forEach(runId => {
+                        const run = runs[runId];
+                        updatePlaybookStatus(run.playbook, run.status, runId, run.target);
+                    });
                 });
-        }, 3000);
+        }, 10000);
     </script>
 </body>
 </html>

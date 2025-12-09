@@ -1,6 +1,7 @@
 FROM rockylinux:9
 
 # Install system dependencies
+# Note: stdbuf is included in coreutils-single which comes with the base image
 RUN dnf update -y && \
     dnf install -y \
     python3 \
@@ -27,6 +28,10 @@ COPY web/ ./web/
 COPY playbooks/ ./playbooks/
 COPY inventory/ ./inventory/
 COPY ansible.cfg ./
+COPY run-playbook.sh ./
+
+# Make run script executable
+RUN chmod +x /app/run-playbook.sh
 
 # Create logs directory
 RUN mkdir -p /app/logs
@@ -41,5 +46,5 @@ EXPOSE 3001
 ENV FLASK_APP=web/app.py
 ENV PYTHONUNBUFFERED=1
 
-# Run Flask application
-CMD ["python3", "-m", "flask", "run", "--host=0.0.0.0", "--port=3001"]
+# Run Flask application with SocketIO support
+CMD ["python3", "web/app.py"]

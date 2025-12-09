@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Log - {{ playbook }} | Ansible Web Interface</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.0/socket.io.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background: #2d2d2d;
+            padding: 15px 20px;
+            border-bottom: 1px solid #404040;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .header h1 {
+            font-size: 18px;
+            color: #fff;
+        }
+
+        .header-info {
+            font-size: 14px;
+            color: #888;
+        }
+
+        .header-info span {
+            margin-right: 15px;
+        }
+
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-starting, .status-running {
+            background: #3d3200;
+            color: #ffa500;
+            animation: pulse 2s infinite;
+        }
+
+        .status-completed {
+            background: #1a3d1a;
+            color: #4caf50;
+        }
+
+        .status-failed {
+            background: #3d1a1a;
+            color: #f44336;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: #1976d2;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #1565c0;
+        }
+
+        .btn-secondary {
+            background: #404040;
+            color: #d4d4d4;
+        }
+
+        .btn-secondary:hover {
+            background: #505050;
+        }
+
+        .btn-toggle {
+            background: #2e7d32;
+            color: white;
+        }
+
+        .btn-toggle.paused {
+            background: #e65100;
+        }
+
+        .controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+            color: #888;
+        }
+
+        .log-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .log-content {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        /* Syntax highlighting */
+        .log-line {
+            margin: 0;
+        }
+
+        .log-line.ok {
+            color: #4ec9b0;
+        }
+
+        .log-line.changed {
+            color: #dcdcaa;
+        }
+
+        .log-line.failed, .log-line.fatal {
+            color: #f48771;
+        }
+
+        .log-line.skipping {
+            color: #808080;
+        }
+
+        .log-line.task {
+            color: #569cd6;
+            font-weight: bold;
+        }
+
+        .log-line.play {
+            color: #c586c0;
+            font-weight: bold;
+        }
+
+        .log-line.recap {
+            color: #9cdcfe;
+            font-weight: bold;
+        }
+
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+        }
+
+        .connection-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #666;
+        }
+
+        .connection-dot.connected {
+            background: #4caf50;
+        }
+
+        .connection-dot.disconnected {
+            background: #f44336;
+        }
+
+        .footer {
+            background: #2d2d2d;
+            padding: 10px 20px;
+            border-top: 1px solid #404040;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-left">
+            <h1>{{ playbook.replace('-', ' ').title() }}</h1>
+            <div class="header-info">
+                <span>Target: <strong>{{ target }}</strong></span>
+                <span>Log: <strong>{{ log_file }}</strong></span>
+            </div>
+            <span id="statusBadge" class="status-badge status-{{ status }}">{{ status }}</span>
+        </div>
+        <div class="header-right">
+            <div class="connection-status">
+                <span class="connection-dot" id="connectionDot"></span>
+                <span id="connectionText">Connecting...</span>
+            </div>
+            <div class="controls">
+                <button id="scrollToggle" class="btn btn-toggle">Auto-scroll ON</button>
+                <button id="clearBtn" class="btn btn-secondary">Clear</button>
+            </div>
+            <a href="/" class="btn btn-primary">Back to Dashboard</a>
+        </div>
+    </div>
+
+    <div class="log-container" id="logContainer">
+        <div class="log-content" id="logContent"></div>
+    </div>
+
+    <div class="footer">
+        <span>Run ID: {{ run_id }}</span>
+        <span id="lineCount">0 lines</span>
+    </div>
+
+    <script>
+        const runId = "{{ run_id }}";
+        const logContent = document.getElementById('logContent');
+        const logContainer = document.getElementById('logContainer');
+        const statusBadge = document.getElementById('statusBadge');
+        const connectionDot = document.getElementById('connectionDot');
+        const connectionText = document.getElementById('connectionText');
+        const scrollToggle = document.getElementById('scrollToggle');
+        const clearBtn = document.getElementById('clearBtn');
+        const lineCountEl = document.getElementById('lineCount');
+
+        let autoScroll = true;
+        let lineCount = 0;
+
+        // Connect to WebSocket
+        const socket = io();
+
+        socket.on('connect', function() {
+            connectionDot.classList.add('connected');
+            connectionDot.classList.remove('disconnected');
+            connectionText.textContent = 'Connected';
+
+            // Join the run's room
+            socket.emit('join_run', { run_id: runId });
+        });
+
+        socket.on('disconnect', function() {
+            connectionDot.classList.remove('connected');
+            connectionDot.classList.add('disconnected');
+            connectionText.textContent = 'Disconnected';
+        });
+
+        // Receive catch-up content when joining
+        socket.on('log_catchup', function(data) {
+            if (data.run_id === runId && data.content) {
+                logContent.innerHTML = '';
+                lineCount = 0;
+                appendLogContent(data.content);
+                updateStatus(data.status);
+            }
+        });
+
+        // Receive new log lines
+        socket.on('log_line', function(data) {
+            if (data.run_id === runId) {
+                appendLogLine(data.line);
+            }
+        });
+
+        // Playbook finished
+        socket.on('playbook_finished', function(data) {
+            if (data.run_id === runId) {
+                updateStatus(data.status);
+            }
+        });
+
+        // Playbook error
+        socket.on('playbook_error', function(data) {
+            if (data.run_id === runId) {
+                appendLogLine('\n=== ERROR: ' + data.error + ' ===\n');
+                updateStatus('failed');
+            }
+        });
+
+        function appendLogContent(content) {
+            const lines = content.split('\n');
+            lines.forEach(line => {
+                if (line) {
+                    appendLogLine(line + '\n');
+                }
+            });
+        }
+
+        function appendLogLine(line) {
+            const lineEl = document.createElement('div');
+            lineEl.className = 'log-line ' + getLineClass(line);
+            lineEl.textContent = line;
+            logContent.appendChild(lineEl);
+            lineCount++;
+            lineCountEl.textContent = lineCount + ' lines';
+
+            if (autoScroll) {
+                logContainer.scrollTop = logContainer.scrollHeight;
+            }
+        }
+
+        function getLineClass(line) {
+            const lowerLine = line.toLowerCase();
+            if (lowerLine.includes('ok:')) return 'ok';
+            if (lowerLine.includes('changed:')) return 'changed';
+            if (lowerLine.includes('failed:') || lowerLine.includes('fatal:')) return 'failed';
+            if (lowerLine.includes('skipping:')) return 'skipping';
+            if (lowerLine.startsWith('task [') || lowerLine.startsWith('TASK [')) return 'task';
+            if (lowerLine.startsWith('play [') || lowerLine.startsWith('PLAY [')) return 'play';
+            if (lowerLine.includes('play recap') || lowerLine.includes('PLAY RECAP')) return 'recap';
+            return '';
+        }
+
+        function updateStatus(status) {
+            statusBadge.textContent = status;
+            statusBadge.className = 'status-badge status-' + status;
+        }
+
+        // Toggle auto-scroll
+        scrollToggle.addEventListener('click', function() {
+            autoScroll = !autoScroll;
+            scrollToggle.textContent = autoScroll ? 'Auto-scroll ON' : 'Auto-scroll OFF';
+            scrollToggle.classList.toggle('paused', !autoScroll);
+
+            if (autoScroll) {
+                logContainer.scrollTop = logContainer.scrollHeight;
+            }
+        });
+
+        // Clear log display (doesn't affect actual log file)
+        clearBtn.addEventListener('click', function() {
+            logContent.innerHTML = '';
+            lineCount = 0;
+            lineCountEl.textContent = '0 lines';
+        });
+
+        // Pause auto-scroll when user scrolls up
+        logContainer.addEventListener('scroll', function() {
+            const isAtBottom = logContainer.scrollHeight - logContainer.scrollTop <= logContainer.clientHeight + 50;
+            if (!isAtBottom && autoScroll) {
+                autoScroll = false;
+                scrollToggle.textContent = 'Auto-scroll OFF';
+                scrollToggle.classList.add('paused');
+            }
+        });
+    </script>
+</body>
+</html>

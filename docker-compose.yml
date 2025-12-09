@@ -15,7 +15,9 @@ services:
       - ./inventory:/app/inventory
       # Mount web app for development
       - ./web:/app/web
-      # Mount SSH keys if they exist
+      # Mount SSH keys for svc-ansible
+      - ./.ssh:/app/.ssh:ro
+      # Mount user SSH keys if they exist
       - ~/.ssh:/root/.ssh:ro
     environment:
       - FLASK_ENV=development

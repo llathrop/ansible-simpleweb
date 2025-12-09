@@ -1,12 +1,18 @@
 from flask import Flask, render_template, jsonify, request, send_file, redirect, url_for
+from flask_socketio import SocketIO, emit, join_room, leave_room
 import os
 import glob
 import subprocess
 import threading
 import time
+import uuid
 from datetime import datetime
 
 app = Flask(__name__)
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'ansible-simpleweb-dev-key')
+
+# Initialize SocketIO with eventlet for async support
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
 # Paths
 PLAYBOOKS_DIR = '/app/playbooks'
@@ -14,8 +20,12 @@ LOGS_DIR = '/app/logs'
 RUN_SCRIPT = '/app/run-playbook.sh'
 INVENTORY_FILE = '/app/inventory/hosts'
 
-# Track running playbooks
-running_playbooks = {}
+# Track running playbooks by run_id
+# Structure: {run_id: {playbook, target, status, started, log_file, ...}}
+active_runs = {}
+
+# Lock for thread-safe access to active_runs
+runs_lock = threading.Lock()
 
 def get_inventory_targets():
     """Parse inventory file and get available hosts and groups"""
@@ -96,34 +106,178 @@ def get_log_timestamp(log_file):
         return datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M:%S')
     return 'Never'
 
-def run_playbook_background(playbook_name, target='host_machine'):
-    """Run playbook in background thread"""
+def is_playbook_target_running(playbook_name, target):
+    """Check if a specific playbook+target combination is already running"""
+    with runs_lock:
+        for run_id, run_info in active_runs.items():
+            if (run_info['playbook'] == playbook_name and
+                run_info['target'] == target and
+                run_info['status'] in ['running', 'starting']):
+                return True, run_id
+    return False, None
+
+def get_running_playbooks():
+    """Get dict of currently running playbooks for backward compatibility"""
+    with runs_lock:
+        running = {}
+        for run_id, run_info in active_runs.items():
+            if run_info['status'] in ['running', 'starting']:
+                running[run_info['playbook']] = {
+                    'status': 'running',
+                    'run_id': run_id,
+                    'target': run_info['target']
+                }
+        return running
+
+def get_playbook_status(playbook_name):
+    """Get status for a playbook (returns most recent active run or 'ready')"""
+    with runs_lock:
+        # Check for running/starting first (active states)
+        for run_id, run_info in active_runs.items():
+            if run_info['playbook'] == playbook_name and run_info['status'] in ['running', 'starting']:
+                return 'running', run_id  # Normalize 'starting' to 'running' for display
+        # Then check for recently completed
+        for run_id, run_info in active_runs.items():
+            if run_info['playbook'] == playbook_name and run_info['status'] in ['completed', 'failed']:
+                return run_info['status'], run_id
+    return 'ready', None
+
+def get_active_runs_for_playbook(playbook_name):
+    """Get all active runs for a specific playbook"""
+    with runs_lock:
+        return [
+            {'run_id': run_id, **run_info}
+            for run_id, run_info in active_runs.items()
+            if run_info['playbook'] == playbook_name
+        ]
+
+def generate_log_filename(playbook_name, target, run_id):
+    """Generate a unique log filename"""
+    timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
+    # Sanitize target for filename (replace special chars)
+    safe_target = target.replace('/', '-').replace(':', '-')
+    short_id = run_id[:8]
+    return f"{playbook_name}-{safe_target}-{timestamp}-{short_id}.log"
+
+def run_playbook_streaming(run_id, playbook_name, target, log_file):
+    """Run playbook with real-time streaming to WebSocket and log file"""
+    log_path = os.path.join(LOGS_DIR, log_file)
+
     try:
-        running_playbooks[playbook_name] = {
-            'status': 'running',
-            'started': datetime.now().isoformat()
-        }
+        # Update status to running
+        with runs_lock:
+            active_runs[run_id]['status'] = 'running'
 
-        # Run the playbook
-        cmd = ['bash', RUN_SCRIPT, playbook_name, '-l', target]
-        result = subprocess.run(cmd, capture_output=True, text=True, cwd='/app')
+        # Notify clients that playbook started
+        socketio.emit('playbook_started', {
+            'run_id': run_id,
+            'playbook': playbook_name,
+            'target': target,
+            'log_file': log_file
+        }, room=f'run:{run_id}')
 
-        running_playbooks[playbook_name] = {
-            'status': 'completed' if result.returncode == 0 else 'failed',
-            'finished': datetime.now().isoformat(),
-            'exit_code': result.returncode
-        }
+        # Also broadcast to the main status room
+        socketio.emit('status_update', {
+            'run_id': run_id,
+            'playbook': playbook_name,
+            'target': target,
+            'status': 'running'
+        }, room='status')
 
-        # Remove from running after 5 seconds
-        time.sleep(5)
-        if playbook_name in running_playbooks:
-            del running_playbooks[playbook_name]
+        # Start the playbook process in stream mode
+        cmd = ['bash', RUN_SCRIPT, '--stream', playbook_name, '-l', target]
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,  # Line buffered
+            cwd='/app'
+        )
+
+        # Store process reference for potential cancellation
+        with runs_lock:
+            active_runs[run_id]['process'] = process
+
+        # Open log file for writing
+        with open(log_path, 'w', buffering=1) as log_f:  # Line buffered
+            # Write header
+            header = f"=== Playbook: {playbook_name} | Target: {target} | Started: {datetime.now().isoformat()} ===\n"
+            log_f.write(header)
+            log_f.flush()
+            socketio.emit('log_line', {'line': header, 'run_id': run_id}, room=f'run:{run_id}')
+
+            # Stream output line by line
+            for line in process.stdout:
+                # Write to file first (crash protection)
+                log_f.write(line)
+                log_f.flush()
+                os.fsync(log_f.fileno())  # Force OS to write to disk
+
+                # Then emit to WebSocket
+                socketio.emit('log_line', {'line': line, 'run_id': run_id}, room=f'run:{run_id}')
+
+            # Wait for process to complete
+            process.wait()
+            exit_code = process.returncode
+
+            # Write footer
+            status = 'completed' if exit_code == 0 else 'failed'
+            footer = f"\n=== Finished: {datetime.now().isoformat()} | Exit Code: {exit_code} | Status: {status.upper()} ===\n"
+            log_f.write(footer)
+            log_f.flush()
+            os.fsync(log_f.fileno())
+            socketio.emit('log_line', {'line': footer, 'run_id': run_id}, room=f'run:{run_id}')
+
+        # Update status
+        with runs_lock:
+            active_runs[run_id]['status'] = status
+            active_runs[run_id]['finished'] = datetime.now().isoformat()
+            active_runs[run_id]['exit_code'] = exit_code
+            if 'process' in active_runs[run_id]:
+                del active_runs[run_id]['process']
+
+        # Notify completion
+        socketio.emit('playbook_finished', {
+            'run_id': run_id,
+            'playbook': playbook_name,
+            'target': target,
+            'status': status,
+            'exit_code': exit_code,
+            'log_file': log_file
+        }, room=f'run:{run_id}')
+
+        socketio.emit('status_update', {
+            'run_id': run_id,
+            'playbook': playbook_name,
+            'target': target,
+            'status': status
+        }, room='status')
+
+        # Clean up from active_runs after delay (keep for UI display)
+        time.sleep(30)
+        with runs_lock:
+            if run_id in active_runs:
+                del active_runs[run_id]
 
     except Exception as e:
-        running_playbooks[playbook_name] = {
-            'status': 'error',
+        error_msg = f"Error: {str(e)}"
+        with runs_lock:
+            if run_id in active_runs:
+                active_runs[run_id]['status'] = 'failed'
+                active_runs[run_id]['error'] = str(e)
+
+        socketio.emit('playbook_error', {
+            'run_id': run_id,
             'error': str(e)
-        }
+        }, room=f'run:{run_id}')
+
+        socketio.emit('status_update', {
+            'run_id': run_id,
+            'playbook': playbook_name,
+            'target': target,
+            'status': 'failed'
+        }, room='status')
 
 @app.route('/')
 def index():
@@ -134,36 +288,83 @@ def index():
 
     for playbook in playbooks:
         latest_log = get_latest_log(playbook)
-        status = running_playbooks.get(playbook, {}).get('status', 'ready')
+        status, run_id = get_playbook_status(playbook)
+        active_runs_list = get_active_runs_for_playbook(playbook)
 
         playbook_data.append({
             'name': playbook,
             'display_name': playbook.replace('-', ' ').title(),
             'latest_log': latest_log,
             'last_run': get_log_timestamp(latest_log),
-            'status': status
+            'status': status,
+            'run_id': run_id,
+            'active_runs': active_runs_list
         })
 
     return render_template('index.html', playbooks=playbook_data, targets=targets)
 
 @app.route('/run/<playbook_name>')
 def run_playbook(playbook_name):
-    """Trigger playbook execution"""
+    """Trigger playbook execution with streaming"""
     if playbook_name not in get_playbooks():
         return jsonify({'error': 'Playbook not found'}), 404
-
-    if playbook_name in running_playbooks:
-        return jsonify({'error': 'Playbook already running'}), 400
 
     # Get target from query parameter, default to host_machine
     target = request.args.get('target', 'host_machine')
 
-    # Start playbook in background thread
-    thread = threading.Thread(target=run_playbook_background, args=(playbook_name, target))
+    # Check if this playbook+target combination is already running
+    is_running, existing_run_id = is_playbook_target_running(playbook_name, target)
+    if is_running:
+        # Redirect to watch the existing run instead of error
+        return redirect(url_for('live_log', run_id=existing_run_id))
+
+    # Generate unique run ID and log filename
+    run_id = str(uuid.uuid4())
+    log_file = generate_log_filename(playbook_name, target, run_id)
+
+    # Register the run
+    with runs_lock:
+        active_runs[run_id] = {
+            'playbook': playbook_name,
+            'target': target,
+            'status': 'starting',
+            'started': datetime.now().isoformat(),
+            'log_file': log_file
+        }
+
+    # Start playbook in background thread with streaming
+    thread = threading.Thread(
+        target=run_playbook_streaming,
+        args=(run_id, playbook_name, target, log_file)
+    )
     thread.daemon = True
     thread.start()
 
-    return redirect(url_for('index'))
+    # Redirect to live log view
+    return redirect(url_for('live_log', run_id=run_id))
+
+@app.route('/live/<run_id>')
+def live_log(run_id):
+    """View live streaming log for a run"""
+    with runs_lock:
+        run_info = active_runs.get(run_id)
+
+    if not run_info:
+        # Check if there's a log file we can show (run may have completed)
+        # Try to find the log file by run_id pattern
+        pattern = f'{LOGS_DIR}/*-{run_id[:8]}.log'
+        log_files = glob.glob(pattern)
+        if log_files:
+            # Redirect to static log view
+            return redirect(url_for('view_log', log_file=os.path.basename(log_files[0])))
+        return "Run not found", 404
+
+    return render_template('live_log.html',
+                          run_id=run_id,
+                          playbook=run_info['playbook'],
+                          target=run_info['target'],
+                          status=run_info['status'],
+                          log_file=run_info.get('log_file', ''))
 
 @app.route('/logs')
 def list_logs():
@@ -199,7 +400,11 @@ def api_status():
     status_data = {}
 
     for playbook in playbooks:
-        status_data[playbook] = running_playbooks.get(playbook, {}).get('status', 'ready')
+        status, run_id = get_playbook_status(playbook)
+        status_data[playbook] = {
+            'status': status,
+            'run_id': run_id
+        }
 
     return jsonify(status_data)
 
@@ -211,14 +416,110 @@ def api_playbooks():
 
     for playbook in playbooks:
         latest_log = get_latest_log(playbook)
+        status, run_id = get_playbook_status(playbook)
+        active_runs_list = get_active_runs_for_playbook(playbook)
+
         result.append({
             'name': playbook,
             'latest_log': latest_log,
             'last_run': get_log_timestamp(latest_log),
-            'status': running_playbooks.get(playbook, {}).get('status', 'ready')
+            'status': status,
+            'run_id': run_id,
+            'active_runs': active_runs_list
         })
 
     return jsonify(result)
 
+@app.route('/api/runs')
+def api_runs():
+    """Get all active runs"""
+    with runs_lock:
+        # Filter out process objects (not serializable)
+        runs = {}
+        for run_id, run_info in active_runs.items():
+            runs[run_id] = {k: v for k, v in run_info.items() if k != 'process'}
+    return jsonify(runs)
+
+@app.route('/api/runs/<run_id>')
+def api_run_detail(run_id):
+    """Get details of a specific run"""
+    with runs_lock:
+        run_info = active_runs.get(run_id)
+        if run_info:
+            return jsonify({k: v for k, v in run_info.items() if k != 'process'})
+    return jsonify({'error': 'Run not found'}), 404
+
+@app.route('/api/runs/<run_id>/log')
+def api_run_log(run_id):
+    """Get the log content for a run (for reconnection/catch-up)"""
+    with runs_lock:
+        run_info = active_runs.get(run_id)
+
+    if not run_info:
+        return jsonify({'error': 'Run not found'}), 404
+
+    log_file = run_info.get('log_file')
+    if not log_file:
+        return jsonify({'error': 'No log file'}), 404
+
+    log_path = os.path.join(LOGS_DIR, log_file)
+    if not os.path.exists(log_path):
+        return jsonify({'content': '', 'status': run_info['status']})
+
+    with open(log_path, 'r') as f:
+        content = f.read()
+
+    return jsonify({
+        'content': content,
+        'status': run_info['status'],
+        'playbook': run_info['playbook'],
+        'target': run_info['target']
+    })
+
+
+# WebSocket event handlers
+@socketio.on('connect')
+def handle_connect():
+    """Handle client connection"""
+    # Automatically join the status room for updates
+    join_room('status')
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    """Handle client disconnection"""
+    leave_room('status')
+
+@socketio.on('join_run')
+def handle_join_run(data):
+    """Join a specific run's room to receive log updates"""
+    run_id = data.get('run_id')
+    if run_id:
+        join_room(f'run:{run_id}')
+        # Send current log content for catch-up
+        with runs_lock:
+            run_info = active_runs.get(run_id)
+
+        if run_info:
+            log_file = run_info.get('log_file')
+            if log_file:
+                log_path = os.path.join(LOGS_DIR, log_file)
+                if os.path.exists(log_path):
+                    with open(log_path, 'r') as f:
+                        content = f.read()
+                    emit('log_catchup', {
+                        'content': content,
+                        'status': run_info['status'],
+                        'run_id': run_id
+                    })
+
+@socketio.on('leave_run')
+def handle_leave_run(data):
+    """Leave a specific run's room"""
+    run_id = data.get('run_id')
+    if run_id:
+        leave_room(f'run:{run_id}')
+
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=3001, debug=True)
+    # Use socketio.run instead of app.run for WebSocket support
+    socketio.run(app, host='0.0.0.0', port=3001, debug=True)
