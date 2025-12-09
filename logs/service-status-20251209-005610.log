@@ -1,0 +1,598 @@
+[DEPRECATION WARNING]: DEFAULT_GATHER_TIMEOUT option, the module_defaults 
+keyword is a more generic version and can apply to all calls to the 
+M(ansible.builtin.gather_facts) or M(ansible.builtin.setup) actions, use 
+module_defaults instead. This feature will be removed from ansible-core in 
+version 2.18. Deprecation warnings can be disabled by setting 
+deprecation_warnings=False in ansible.cfg.
+
+PLAY [Service Status Check] ****************************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [192.168.1.50]
+
+TASK [Get list of all systemd services] ****************************************
+ok: [192.168.1.50]
+
+TASK [Get list of all init services] *******************************************
+skipping: [192.168.1.50]
+
+TASK [Parse systemd services] **************************************************
+ok: [192.168.1.50]
+
+TASK [Parse init services] *****************************************************
+skipping: [192.168.1.50]
+
+TASK [Filter running services (systemd)] ***************************************
+ok: [192.168.1.50]
+
+TASK [Filter running services (init)] ******************************************
+skipping: [192.168.1.50]
+
+TASK [Filter failed services (systemd only)] ***********************************
+ok: [192.168.1.50]
+
+TASK [Get enabled services (systemd)] ******************************************
+ok: [192.168.1.50]
+
+TASK [Parse enabled services] **************************************************
+ok: [192.168.1.50]
+
+TASK [Compile service status report] *******************************************
+ok: [192.168.1.50]
+
+TASK [Display service status report as JSON] ***********************************
+ok: [192.168.1.50] => 
+  msg: |-
+    {
+        "enabled_services": [
+            "accounts-daemon.service",
+            "anacron.service",
+            "apparmor.service",
+            "apport.service",
+            "avahi-daemon.service",
+            "blk-availability.service",
+            "bluetooth.service",
+            "console-setup.service",
+            "containerd.service",
+            "cron.service",
+            "cups-browsed.service",
+            "cups.service",
+            "dmesg.service",
+            "docker.service",
+            "e2scrub_reap.service",
+            "finalrd.service",
+            "getty@.service",
+            "gpu-manager.service",
+            "grub-common.service",
+            "grub-initrd-fallback.service",
+            "jupyterlab.service",
+            "keyboard-setup.service",
+            "libvirt-guests.service",
+            "libvirtd.service",
+            "lvm2-monitor.service",
+            "ModemManager.service",
+            "networkd-dispatcher.service",
+            "NetworkManager-dispatcher.service",
+            "NetworkManager-wait-online.service",
+            "NetworkManager.service",
+            "nvidia-hibernate.service",
+            "nvidia-powerd.service",
+            "nvidia-resume.service",
+            "nvidia-suspend.service",
+            "open-iscsi.service",
+            "power-profiles-daemon.service",
+            "qemu-kvm.service",
+            "rsyslog.service",
+            "sddm.service",
+            "secureboot-db.service",
+            "setvtrgb.service",
+            "smartmontools.service",
+            "snap.canonical-livepatch.canonical-livepatchd.service",
+            "snapd.apparmor.service",
+            "snapd.autoimport.service",
+            "snapd.core-fixup.service",
+            "snapd.recovery-chooser-trigger.service",
+            "snapd.seeded.service",
+            "snapd.service",
+            "snapd.system-shutdown.service",
+            "ssh.service",
+            "ssl-cert.service",
+            "switcheroo-control.service",
+            "sysstat.service",
+            "systemd-pstore.service",
+            "systemd-resolved.service",
+            "systemd-timesyncd.service",
+            "thermald.service",
+            "ua-reboot-cmds.service",
+            "ubuntu-advantage.service",
+            "udisks2.service",
+            "ufw.service",
+            "unattended-upgrades.service",
+            "virtlockd.service",
+            "virtlogd.service",
+            "wpa_supplicant.service"
+        ],
+        "enabled_services_count": "66",
+        "failed_services": [],
+        "failed_services_count": "0",
+        "fqdn": "bob",
+        "hostname": "bob",
+        "running_services": [
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "accounts-daemon.service",
+                "sub": "running"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "alsa-restore.service",
+                "sub": "exited"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "apparmor.service",
+                "sub": "exited"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "apport.service",
+                "sub": "exited"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "avahi-daemon.service",
+                "sub": "running"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "blk-availability.service",
+                "sub": "exited"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "bluetooth.service",
+                "sub": "running"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "bolt.service",
+                "sub": "running"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "colord.service",
+                "sub": "running"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "console-setup.service",
+                "sub": "exited"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "containerd.service",
+                "sub": "running"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "cron.service",
+                "sub": "running"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "cups-browsed.service",
+                "sub": "running"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "cups.service",
+                "sub": "running"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "dbus.service",
+                "sub": "running"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "docker.service",
+                "sub": "running"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "finalrd.service",
+                "sub": "exited"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "fwupd.service",
+                "sub": "running"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "iio-sensor-proxy.service",
+                "sub": "running"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "keyboard-setup.service",
+                "sub": "exited"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "kmod-static-nodes.service",
+                "sub": "exited"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "libvirt-guests.service",
+                "sub": "exited"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "libvirtd.service",
+                "sub": "running"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "lvm2-monitor.service",
+                "sub": "exited"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "ModemManager.service",
+                "sub": "running"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "NetworkManager-wait-online.service",
+                "sub": "exited"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "NetworkManager.service",
+                "sub": "running"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "nvidia-persistenced.service",
+                "sub": "running"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "plymouth-quit.service",
+                "sub": "exited"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "plymouth-read-write.service",
+                "sub": "exited"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "plymouth-start.service",
+                "sub": "exited"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "polkit.service",
+                "sub": "running"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "power-profiles-daemon.service",
+                "sub": "running"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "qemu-kvm.service",
+                "sub": "exited"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "rsyslog.service",
+                "sub": "running"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "rtkit-daemon.service",
+                "sub": "running"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "sddm.service",
+                "sub": "running"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "setvtrgb.service",
+                "sub": "exited"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "smartmontools.service",
+                "sub": "running"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "snapd.apparmor.service",
+                "sub": "exited"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "snapd.seeded.service",
+                "sub": "exited"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "snapd.service",
+                "sub": "running"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "ssh.service",
+                "sub": "running"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "switcheroo-control.service",
+                "sub": "running"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "sysstat.service",
+                "sub": "exited"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "systemd-backlight@backlight:intel_backlight.service",
+                "sub": "exited"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "systemd-backlight@leds:dell::kbd_backlight.service",
+                "sub": "exited"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "systemd-binfmt.service",
+                "sub": "exited"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "systemd-fsck@dev-disk-by\\x2duuid-C407\\x2dD4EE.service",
+                "sub": "exited"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "systemd-journal-flush.service",
+                "sub": "exited"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "systemd-journald.service",
+                "sub": "running"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "systemd-logind.service",
+                "sub": "running"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "systemd-machined.service",
+                "sub": "running"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "systemd-modules-load.service",
+                "sub": "exited"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "systemd-random-seed.service",
+                "sub": "exited"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "systemd-remount-fs.service",
+                "sub": "exited"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "systemd-resolved.service",
+                "sub": "running"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "systemd-sysctl.service",
+                "sub": "exited"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "systemd-timesyncd.service",
+                "sub": "running"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "systemd-tmpfiles-setup-dev-early.service",
+                "sub": "exited"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "systemd-tmpfiles-setup-dev.service",
+                "sub": "exited"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "systemd-tmpfiles-setup.service",
+                "sub": "exited"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "systemd-udev-load-credentials.service",
+                "sub": "exited"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "systemd-udev-trigger.service",
+                "sub": "exited"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "systemd-udevd.service",
+                "sub": "running"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "systemd-user-sessions.service",
+                "sub": "exited"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "thermald.service",
+                "sub": "running"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "udisks2.service",
+                "sub": "running"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "ufw.service",
+                "sub": "exited"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "unattended-upgrades.service",
+                "sub": "running"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "upower.service",
+                "sub": "running"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "user-runtime-dir@1000.service",
+                "sub": "exited"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "user-runtime-dir@1001.service",
+                "sub": "exited"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "user@1000.service",
+                "sub": "running"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "user@1001.service",
+                "sub": "running"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "virtlockd.service",
+                "sub": "running"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "virtlogd.service",
+                "sub": "running"
+            },
+            {
+                "active": "active",
+                "load": "loaded",
+                "name": "wpa_supplicant.service",
+                "sub": "running"
+            }
+        ],
+        "running_services_count": "78",
+        "service_manager": "systemd",
+        "timestamp": "2025-12-09T00:56:14Z",
+        "total_services": "219"
+    }
+
+PLAY RECAP *********************************************************************
+192.168.1.50               : ok=9    changed=0    unreachable=0    failed=0    skipped=3    rescued=0    ignored=0   
+

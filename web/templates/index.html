@@ -185,6 +185,30 @@
             margin-bottom: 20px;
             font-size: 14px;
         }
+
+        .target-select {
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+            background: white;
+            cursor: pointer;
+            margin-bottom: 10px;
+            width: 100%;
+        }
+
+        .target-label {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
+            font-weight: 600;
+        }
+
+        .run-form {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
     </style>
 </head>
 <body>
@@ -219,17 +243,29 @@
                 </div>
 
                 <div class="playbook-actions">
-                    <a href="/run/{{ playbook.name }}"
-                       class="btn btn-primary"
-                       {% if playbook.status == 'running' %}disabled onclick="return false;"{% endif %}>
-                        {% if playbook.status == 'running' %}Running...{% else %}Run Playbook{% endif %}
-                    </a>
+                    <form action="/run/{{ playbook.name }}" method="get" class="run-form">
+                        <div class="target-label">Target Host/Group:</div>
+                        <select name="target" class="target-select" {% if playbook.status == 'running' %}disabled{% endif %}>
+                            {% for target in targets %}
+                            <option value="{{ target.value }}">{{ target.label }}</option>
+                            {% endfor %}
+                        </select>
 
-                    {% if playbook.latest_log %}
-                    <a href="/logs/{{ playbook.latest_log }}" class="btn btn-secondary">View Log</a>
-                    {% else %}
-                    <button class="btn btn-secondary" disabled>No Logs</button>
-                    {% endif %}
+                        <div style="display: flex; gap: 10px;">
+                            <button type="submit"
+                                    class="btn btn-primary"
+                                    style="flex: 1;"
+                                    {% if playbook.status == 'running' %}disabled{% endif %}>
+                                {% if playbook.status == 'running' %}Running...{% else %}Run Playbook{% endif %}
+                            </button>
+
+                            {% if playbook.latest_log %}
+                            <a href="/logs/{{ playbook.latest_log }}" class="btn btn-secondary">View Log</a>
+                            {% else %}
+                            <button class="btn btn-secondary" disabled>No Logs</button>
+                            {% endif %}
+                        </div>
+                    </form>
                 </div>
             </div>
             {% endfor %}

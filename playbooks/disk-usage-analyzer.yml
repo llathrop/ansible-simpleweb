@@ -1,0 +1,29 @@
+                                                                                                                                                                                             
+---  
+- name: Disk Usage Analysis                                                                                                                                                                                                               
+    hosts: all                                                                                                                                                                                                                              
+    gather_facts: yes                                                                                                                                                                                                                       
+    tasks:                                                                                                                                                                                                                                  
+      - name: Get detailed disk usage                                                                                                                                                                                                       
+        shell: df -h                                                                                                                                                                                                                        
+        register: disk_usage                                                                                                                                                                                                                
+        changed_when: false                                                                                                                                                                                                                 
+                                                                                                                                                                                                                                            
+      - name: Get largest directories                                                                                                                                                                                                       
+        shell: du -h / --max-depth=1 2>/dev/null | sort -hr | head -n 20                                                                                                                                                                    
+        register: large_dirs
+        changed_when: false
+
+      - name: Compile disk analysis
+        set_fact:
+          disk_analysis:
+            hostname: "{{ ansible_hostname }}"
+            timestamp: "{{ ansible_date_time.iso8601 }}"
+            disk_usage: "{{ disk_usage.stdout_lines }}"
+            largest_directories: "{{ large_dirs.stdout_lines }}"
+
+      - name: Display as JSON
+        debug:
+          msg: "{{ disk_analysis | to_nice_json }}"
+
+ 
