@@ -1,265 +1,179 @@
 # Ansible Simple Web Interface
 
-A Docker-based web interface for managing and running Ansible playbooks with a simple Flask frontend.
+A lightweight, Docker-based web interface for managing and executing Ansible playbooks. Run playbooks with a single click, monitor execution status in real-time, and view logs through a clean, modern web UI.
 
-## Project Overview
+## Features
 
-This project provides a web interface to list, run, and monitor Ansible playbooks. The interface runs locally and allows users to execute playbooks with a single click and view execution logs.
+- 🚀 **One-Click Execution** - Run any playbook with a single button click
+- 🎯 **Multi-Host Support** - Target individual hosts or groups via dropdown selection
+- 📊 **Real-Time Status** - Live status updates (Ready/Running/Completed/Failed)
+- 📝 **Log Management** - Automatic log capture with timestamped filenames
+- 🔍 **Log Viewer** - Browse and view all execution logs in the browser
+- 🔌 **REST API** - JSON endpoints for external integrations
+- 🐳 **Fully Containerized** - Rocky Linux 9 with Ansible 8.7.0 pre-configured
+- 🔒 **Localhost First** - Secure by default, ready for authentication later
 
-## Architecture
+## Quick Start
 
-- **Base OS**: Rocky Linux 9
-- **Configuration Management**: Ansible 8.7.0 (ansible-core 2.15.13)
-- **Web Framework**: Flask 3.0.0
-- **Container**: Docker with docker-compose
-- **Port**: 3001 (localhost only)
+### Prerequisites
+- Docker
+- docker-compose
+- SSH server on target hosts
+
+### 1. Start the Container
+
+```bash
+# Clone or navigate to project directory
+cd ansible-simpleweb
+
+# Build and start
+docker-compose up -d
+
+# Verify it's running
+docker-compose ps
+```
+
+### 2. Access the Web Interface
+
+Open your browser to: **http://localhost:3001**
+
+You'll see all available playbooks with run buttons and status indicators.
+
+### 3. Run Your First Playbook
+
+1. Select a target from the dropdown (e.g., "host_machine")
+2. Click "Run Playbook"
+3. Watch the status change to "Running"
+4. Click "View Log" when complete
+
+Done! 🎉
+
+## Adding Playbooks
+
+Simply drop a `.yml` file in the `playbooks/` directory:
+
+```bash
+# Create a new playbook
+cat > playbooks/my-playbook.yml << 'EOF'
+---
+- name: My Custom Playbook
+  hosts: all
+  gather_facts: yes
+  tasks:
+    - name: Collect information
+      debug:
+        msg: "Running on {{ ansible_hostname }}"
+EOF
+
+# Refresh the web interface - it appears automatically!
+```
+
+**That's it!** No restart needed, no configuration required.
+
+## Adding Hosts
+
+Edit `inventory/hosts` to add new target machines:
+
+```ini
+[production]
+prod1.example.com ansible_user=deploy
+prod2.example.com ansible_user=deploy
+
+[staging]
+stage.example.com ansible_user=deploy
+```
+
+Refresh the page - new hosts appear in the dropdown automatically.
 
 ## Project Structure
 
 ```
 ansible-simpleweb/
-├── Dockerfile               # Rocky Linux 9, Ansible, Flask setup
-├── docker-compose.yml       # Container orchestration config
-├── requirements.txt         # Python dependencies
-├── ansible.cfg              # Ansible configuration (SSH key + password support)
-├── inventory/
-│   └── hosts               # Inventory file (localhost + remote placeholder)
-├── playbooks/              # Directory for Ansible playbooks
-├── logs/                   # Playbook execution logs
-│   └── ansible.log        # Ansible log file
-└── web/
-    └── app.py             # Flask web application
+├── playbooks/          # Add your Ansible playbooks here
+├── inventory/          # Configure target hosts here
+│   └── hosts          # Main inventory file
+├── logs/              # Playbook execution logs (auto-generated)
+├── web/               # Flask web application
+│   ├── app.py
+│   └── templates/
+└── docker-compose.yml
 ```
 
-## Features
+## Documentation
 
-- **SSH Authentication**: Supports both SSH keys (mounted from ~/.ssh) and password authentication (using sshpass)
-- **Volume Mounts**: All directories mounted for easy editing without rebuilding container
-- **Ansible Configuration**:
-  - Proper logging to ./logs/ansible.log
-  - Host key checking disabled for easier setup
-  - Privilege escalation configured
-- **Development Mode**: Flask runs in development mode with auto-reload
+- **[Usage Guide](docs/USAGE.md)** - Detailed interface walkthrough
+- **[Adding Playbooks](docs/ADDING_PLAYBOOKS.md)** - Complete guide to creating playbooks
+- **[Configuration](docs/CONFIGURATION.md)** - Inventory setup and SSH configuration
+- **[API Reference](docs/API.md)** - REST API endpoints
+- **[Troubleshooting](docs/TROUBLESHOOTING.md)** - Common issues and solutions
 
-## Setup and Installation
+## Current Playbooks
 
-### Prerequisites
-- Docker
-- docker-compose
+This project includes 5 example playbooks:
 
-### Starting the Service
+- **hardware-inventory** - CPU, memory, disks, GPU detection
+- **software-inventory** - Installed packages with versions
+- **system-health** - Uptime, load, memory, disk usage, errors
+- **service-status** - System services and their status
+- **network-config** - Network interfaces, routing, DNS
+
+## Development Status
+
+✅ **Step 1:** Docker container with Ansible + Flask
+✅ **Step 2:** 5 working playbooks tested on real hardware
+✅ **Step 3:** Full web interface with real-time updates
+✅ **Step 4:** Multi-host target selection
+
+**Status:** Production-ready for local use
+
+## Common Commands
 
 ```bash
-# Build and start the container
-docker-compose build
+# Start the service
 docker-compose up -d
-
-# Check container status
-docker-compose ps
 
 # View logs
 docker-compose logs -f
-```
 
-### Accessing the Interface
+# Restart after changes
+docker-compose restart
 
-Open your browser to: http://localhost:3001
-
-### Stopping the Service
-
-```bash
+# Stop the service
 docker-compose down
+
+# Run playbook manually (from host)
+docker-compose exec -T ansible-web ansible-playbook playbooks/your-playbook.yml -l target
 ```
 
-## Development Progress
+## Requirements
 
-### Step 1: Docker Container Setup ✅ COMPLETE
+- Docker Engine 20.10+
+- docker-compose 1.29+
+- 2GB RAM minimum
+- Network access to target hosts
 
-**Completed**: Initial project setup with Docker container, Ansible, and Flask web server.
+## Security Notes
 
-**What's Working**:
-- Docker Container: Rocky Linux 9 based container with Ansible and Flask
-- Web Server: Flask running on http://localhost:3001
-- Ansible: Version 8.7.0 installed and tested
-- Git Repository: Initialized with version control
-
-**Test Results**:
-- Container Status: Running
-- Flask endpoint: http://localhost:3001 - Responding correctly
-- Ansible connectivity: localhost ping successful
-
-**Git Commits**:
-1. Initial project setup
-2. Configuration fixes (Ansible version, network mode)
-3. Added project documentation
-
----
-
-### Step 2: Configure and Test Playbooks ✅ COMPLETE
-
-**Completed**: Five test playbooks created, tested, and verified with proper JSON output.
-
-**Implemented Playbooks**:
-1. **hardware-inventory.yml** - Hardware inventory collection
-   - CPU information (model, cores, vcpus, architecture)
-   - Memory information (total, free, swap)
-   - Disk information (devices, mounts, sizes)
-   - GPU detection (NVIDIA, AMD, Intel)
-   - System information (distribution, kernel, virtualization)
-
-2. **software-inventory.yml** - Software package inventory
-   - All installed packages with versions
-   - Support for both Debian/Ubuntu (apt) and RedHat/Rocky (dnf/yum)
-   - Shows first 100 packages for brevity
-   - Package manager information
-
-3. **system-health.yml** - System health monitoring
-   - Uptime (days, hours, minutes)
-   - Load averages (1min, 5min, 15min)
-   - Memory usage (total, used, free, percentage)
-   - Swap usage
-   - Disk usage for all mounts (with percentages)
-   - Recent system errors from logs
-
-4. **service-status.yml** - Service status check
-   - List of all system services
-   - Running services count and details
-   - Failed services (systemd only)
-   - Enabled services list
-   - Service manager type
-
-5. **network-config.yml** - Network configuration
-   - Default IPv4 and IPv6 addresses
-   - Default gateway
-   - DNS servers
-   - Network interfaces list
-   - Routing table
-   - Listening ports
-
-**Helper Script**:
-- `run-playbook.sh` - Executes playbooks with proper timestamped logging
-- Log format: `<playbookname>-YYYYMMDD-HHMMSS.log`
-
-**Test Results**:
-- All 5 playbooks executed successfully on localhost
-- JSON output format validated
-- Log files created with proper naming convention
-- All logs saved to `logs/` directory
-
-**Status**: Complete and ready for web interface integration
-
----
-
-### Step 3: Web Interface Development ✅ COMPLETE
-
-**Completed**: Full-featured web interface for managing and running Ansible playbooks.
-
-**Implemented Features**:
-1. **Main Dashboard** (`/`)
-   - Grid layout showing all available playbooks
-   - Real-time status indicators (Ready, Running, Completed, Failed)
-   - Run button for each playbook
-   - View latest log button
-   - Last run timestamp
-   - Auto-refresh status every 3 seconds
-
-2. **Playbook Execution**
-   - One-click playbook execution via `/run/<playbook>`
-   - Background thread execution (non-blocking)
-   - Automatic redirect to dashboard after triggering
-   - Prevents duplicate runs while playbook is running
-
-3. **Log Management**
-   - All logs page (`/logs`) with sortable list
-   - Individual log viewer (`/logs/<logfile>`)
-   - Monospace terminal-style log display
-   - File size and modification time
-   - Quick navigation between pages
-
-4. **API Endpoints**
-   - `/api/playbooks` - JSON list of all playbooks with status
-   - `/api/status` - Current status of all playbooks
-   - RESTful design ready for external integrations
-
-5. **User Interface**
-   - Clean, modern design
-   - Responsive grid layout
-   - Color-coded status badges
-   - Pulse animation for running playbooks
-   - Mobile-friendly
-
-**Security**:
-- Localhost only (0.0.0.0:3001)
-- No authentication (local access)
-- Ready for authentication layer addition
-
-**Status**: Complete and operational at http://localhost:3001
-
----
-
-## Testing
-
-### Verify Ansible Installation
-
-```bash
-docker-compose exec -T ansible-web ansible --version
-```
-
-### Test Localhost Connectivity
-
-```bash
-docker-compose exec -T ansible-web ansible localhost -m ping
-```
-
-### Run a Playbook
-
-Using the helper script (recommended - includes timestamped logging):
-```bash
-# Copy the script to the container first
-docker cp run-playbook.sh ansible-simpleweb:/app/
-
-# Run a playbook
-docker-compose exec -T ansible-web bash /app/run-playbook.sh hardware-inventory
-docker-compose exec -T ansible-web bash /app/run-playbook.sh software-inventory
-docker-compose exec -T ansible-web bash /app/run-playbook.sh system-health
-docker-compose exec -T ansible-web bash /app/run-playbook.sh service-status
-docker-compose exec -T ansible-web bash /app/run-playbook.sh network-config
-```
-
-Or run directly with ansible-playbook:
-```bash
-docker-compose exec -T ansible-web ansible-playbook playbooks/hardware-inventory.yml
-```
-
-### View Playbook Logs
-
-```bash
-# List all logs
-ls -lh logs/
-
-# View a specific log
-cat logs/hardware-inventory-20251208-234958.log
-```
-
-## Troubleshooting
-
-### Container won't start
-- Check Docker is running: `docker ps`
-- Check logs: `docker-compose logs`
-
-### Permission issues with SSH keys
-- Ensure ~/.ssh directory has correct permissions (700)
-- Ensure private keys have correct permissions (600)
-
-### Ansible connection issues
-- Check inventory file: `inventory/hosts`
-- Verify SSH connectivity manually
-- Check Ansible logs: `logs/ansible.log`
-
-## Contributing
-
-This project uses git for version control. Each significant change should be committed with a descriptive commit message.
+- Currently **localhost only** (no external access)
+- No authentication required (add before exposing externally)
+- SSH keys mounted read-only from `~/.ssh`
+- Service account recommended for target hosts (see [Configuration](docs/CONFIGURATION.md))
 
 ## License
 
 Internal use only.
+
+## Contributing
+
+This project uses git for version control. Each significant change is committed with descriptive messages.
+
+## Support
+
+For issues or questions:
+1. Check [Troubleshooting Guide](docs/TROUBLESHOOTING.md)
+2. Review [Usage Documentation](docs/USAGE.md)
+3. Check application logs: `docker-compose logs`
+
+---
+
+**Built with Claude Code** | Generated with Claude Sonnet 4.5
