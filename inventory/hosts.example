@@ -1,0 +1,126 @@
+# Ansible Inventory Example
+# Copy this file to 'hosts' and customize for your environment
+
+# ==============================================================================
+# LOCAL TESTING (Container's localhost)
+# ==============================================================================
+[local]
+# Uncomment to run playbooks against the container itself
+# localhost ansible_connection=local
+
+# ==============================================================================
+# HOST MACHINE (Docker host)
+# ==============================================================================
+[host_machine]
+# Replace with your actual host machine IP address
+# Option 1: SSH Key Authentication (Recommended)
+192.168.1.100 ansible_user=svc-ansible ansible_ssh_private_key_file=/app/.ssh/svc-ansible-key
+
+# Option 2: SSH Password Authentication
+# 192.168.1.100 ansible_user=svc-ansible ansible_ssh_pass=YourPasswordHere
+
+# ==============================================================================
+# PRODUCTION SERVERS
+# ==============================================================================
+[production]
+# Example production servers
+# prod-web1.example.com ansible_user=deploy ansible_ssh_private_key_file=/app/.ssh/deploy_key
+# prod-web2.example.com ansible_user=deploy ansible_ssh_private_key_file=/app/.ssh/deploy_key
+# prod-db1.example.com ansible_user=dbadmin ansible_ssh_private_key_file=/app/.ssh/db_key
+
+# ==============================================================================
+# STAGING SERVERS
+# ==============================================================================
+[staging]
+# Example staging servers
+# stage-web1.example.com ansible_user=deploy ansible_ssh_private_key_file=/app/.ssh/deploy_key
+# stage-db1.example.com ansible_user=deploy ansible_ssh_private_key_file=/app/.ssh/deploy_key
+
+# ==============================================================================
+# DEVELOPMENT SERVERS
+# ==============================================================================
+[development]
+# Example development servers
+# dev1.example.com ansible_user=developer ansible_ssh_private_key_file=/app/.ssh/dev_key
+# dev2.example.com ansible_user=developer ansible_ssh_private_key_file=/app/.ssh/dev_key
+
+# ==============================================================================
+# REMOTE SERVERS (Generic)
+# ==============================================================================
+[remote_servers]
+# Add additional remote hosts here
+# server1.example.com ansible_user=admin ansible_ssh_private_key_file=/app/.ssh/id_rsa
+# server2.example.com ansible_user=admin ansible_ssh_pass=password
+# 192.168.1.50 ansible_user=admin ansible_port=2222
+
+# ==============================================================================
+# DATABASE SERVERS
+# ==============================================================================
+[databases]
+# Example database servers
+# db1.example.com ansible_user=dbadmin ansible_ssh_private_key_file=/app/.ssh/db_key
+# db2.example.com ansible_user=dbadmin ansible_ssh_private_key_file=/app/.ssh/db_key
+
+# ==============================================================================
+# WEB SERVERS
+# ==============================================================================
+[webservers]
+# Example web servers
+# web1.example.com ansible_user=www-data ansible_ssh_private_key_file=/app/.ssh/web_key
+# web2.example.com ansible_user=www-data ansible_ssh_private_key_file=/app/.ssh/web_key
+
+# ==============================================================================
+# GROUP COMPOSITION (Combine multiple groups)
+# ==============================================================================
+[all_production:children]
+production
+
+[all_staging:children]
+staging
+
+[all_development:children]
+development
+
+[all_webservers:children]
+webservers
+
+[all_databases:children]
+databases
+
+[all_hosts:children]
+host_machine
+production
+staging
+development
+remote_servers
+databases
+webservers
+
+# ==============================================================================
+# COMMON VARIABLES (Applied to all hosts)
+# ==============================================================================
+# You can also define these in group_vars/ or host_vars/ directories
+# [all:vars]
+# ansible_python_interpreter=/usr/bin/python3
+# ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+
+# ==============================================================================
+# USAGE EXAMPLES
+# ==============================================================================
+# Single host:
+# ansible 192.168.1.100 -m ping
+#
+# Group:
+# ansible production -m ping
+#
+# All hosts:
+# ansible all -m ping
+#
+# Run playbook on specific host:
+# ansible-playbook playbooks/hardware-inventory.yml -l 192.168.1.100
+#
+# Run playbook on group:
+# ansible-playbook playbooks/system-health.yml -l production
+#
+# Run playbook on all:
+# ansible-playbook playbooks/software-inventory.yml -l all

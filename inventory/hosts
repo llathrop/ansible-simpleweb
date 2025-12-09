@@ -1,18 +1,57 @@
+# Ansible Inventory File
+# Configure your target hosts here
+
+# ==============================================================================
+# QUICK START
+# ==============================================================================
+# 1. Uncomment and edit [host_machine] section with your host IP
+# 2. Choose SSH key or password authentication
+# 3. Refresh web interface - new targets appear in dropdown
+#
+# For more examples, see: inventory/hosts.example
+# For setup guide, see: docs/CONFIGURATION.md
+
+# ==============================================================================
+# LOCAL (Container localhost)
+# ==============================================================================
 [local]
-# Container's localhost (for testing container itself)
+# Uncomment to run playbooks against container itself
 # localhost ansible_connection=local
 
+# ==============================================================================
+# HOST MACHINE (Docker host)
+# ==============================================================================
 [host_machine]
-# Actual host machine running Docker
-# Replace with your host IP address
-# Example: 192.168.1.50 ansible_user=svc-ansible ansible_ssh_private_key_file=/app/.ssh/svc-ansible-key
+# Replace 192.168.1.100 with your actual host IP
+# Uncomment ONE of the options below:
 
+# Option 1: SSH Key (Recommended - more secure)
+# 192.168.1.100 ansible_user=svc-ansible ansible_ssh_private_key_file=/app/.ssh/svc-ansible-key
+
+# Option 2: SSH Password (Quick setup)
+# 192.168.1.100 ansible_user=your-username ansible_ssh_pass=your-password
+
+# ==============================================================================
+# REMOTE SERVERS
+# ==============================================================================
 [remote_servers]
-# Add additional remote hosts here
+# Add your remote servers here
 # Example:
-# server1.example.com ansible_user=username ansible_ssh_pass=password
-# server2.example.com ansible_user=username ansible_ssh_private_key_file=/root/.ssh/id_rsa
+# server1.example.com ansible_user=admin ansible_ssh_private_key_file=/app/.ssh/id_rsa
+# 192.168.1.50 ansible_user=admin ansible_ssh_pass=password
 
+# ==============================================================================
+# GROUP COMPOSITION
+# ==============================================================================
 [all_hosts:children]
 host_machine
 remote_servers
+
+# ==============================================================================
+# NOTES
+# ==============================================================================
+# - SSH keys should be placed in .ssh/ directory (auto-excluded from git)
+# - For service account setup, run: sudo bash setup-svc-ansible.sh
+# - All groups/hosts automatically appear in web interface dropdown
+# - Changes take effect immediately (no restart needed)
+# - See docs/CONFIGURATION.md for advanced configuration options
