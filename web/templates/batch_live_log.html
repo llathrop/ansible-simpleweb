@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Batch Job - {{ batch_name }} | Ansible Web Interface</title>
+    <link rel="stylesheet" href="/static/css/base.css">
+    <script>
+        // Immediately apply cached theme to prevent flash of unstyled content
+        (function() {
+            try {
+                var cached = localStorage.getItem('ansible-web-theme-vars');
+                if (cached) {
+                    var vars = JSON.parse(cached);
+                    var root = document.documentElement;
+                    for (var key in vars) {
+                        if (vars[key]) root.style.setProperty(key, vars[key]);
+                    }
+                }
+            } catch (e) {}
+        })();
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.0/socket.io.min.js"></script>
+    <script src="/static/js/theme.js"></script>
+    <style>
+        body {
+            padding: 0;
+        }
+
+        .batch-header {
+            background: var(--bg-tertiary);
+            padding: 15px 20px;
+            border-bottom: 1px solid var(--border-primary);
+        }
+
+        .batch-header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .batch-header-left h1 {
+            font-size: 18px;
+            margin-bottom: 5px;
+        }
+
+        .batch-header-info {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .batch-progress-section {
+            background: var(--bg-secondary);
+            border-radius: 6px;
+            padding: 12px 15px;
+        }
+
+        .batch-progress-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .batch-progress-title {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .batch-progress-count {
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .batch-progress-bar {
+            height: 10px;
+            background: var(--bg-tertiary);
+            border-radius: 5px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+
+        .batch-progress-fill {
+            height: 100%;
+            background: var(--btn-primary-bg);
+            transition: width 0.3s;
+        }
+
+        .batch-progress-fill.has-failures {
+            background: linear-gradient(90deg, var(--status-completed-text), var(--status-failed-text));
+        }
+
+        .playbook-tabs {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+        }
+
+        .playbook-tab {
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            cursor: pointer;
+            border: 1px solid var(--border-primary);
+            transition: all 0.2s;
+        }
+
+        .playbook-tab:hover {
+            background: var(--table-row-hover);
+        }
+
+        .playbook-tab.active {
+            background: var(--btn-primary-bg);
+            color: white;
+            border-color: var(--btn-primary-bg);
+        }
+
+        .playbook-tab.completed {
+            background: var(--status-completed-bg);
+            color: var(--status-completed-text);
+            border-color: var(--status-completed-text);
+        }
+
+        .playbook-tab.failed {
+            background: var(--status-failed-bg);
+            color: var(--status-failed-text);
+            border-color: var(--status-failed-text);
+        }
+
+        .playbook-tab.running {
+            animation: pulse 2s infinite;
+        }
+
+        .playbook-tab .tab-number {
+            display: inline-block;
+            width: 18px;
+            height: 18px;
+            line-height: 18px;
+            text-align: center;
+            background: rgba(255,255,255,0.3);
+            border-radius: 50%;
+            margin-right: 6px;
+            font-weight: 600;
+        }
+
+        .batch-log-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .current-playbook-indicator {
+            background: var(--status-running-bg);
+            color: var(--status-running-text);
+            padding: 8px 15px;
+            font-size: 13px;
+            border-bottom: 1px solid var(--border-primary);
+        }
+
+        .current-playbook-indicator strong {
+            color: var(--text-primary);
+        }
+
+        .log-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            background: var(--log-bg);
+        }
+
+        .log-content {
+            color: var(--log-text);
+        }
+    </style>
+</head>
+<body class="live-log-page">
+    <div class="batch-header">
+        <div class="batch-header-top">
+            <div class="batch-header-left">
+                <h1 id="batchName">{{ batch_name }}</h1>
+                <div class="batch-header-info">
+                    <span>Targets: <strong id="batchTargets">{{ targets | join(', ') }}</strong></span>
+                    <span style="margin-left: 15px;">Batch ID: <strong>{{ batch_id[:8] }}</strong></span>
+                </div>
+            </div>
+            <div class="header-right" style="display: flex; align-items: center; gap: 15px;">
+                <span id="statusBadge" class="status-badge status-{{ status }}">{{ status }}</span>
+                <div class="connection-status">
+                    <span class="connection-dot" id="connectionDot"></span>
+                    <span id="connectionText">Connecting...</span>
+                </div>
+                <div class="controls">
+                    <button id="scrollToggle" class="btn btn-toggle">Auto-scroll ON</button>
+                </div>
+                <div class="theme-selector">
+                    <label for="themeSelect">Theme:</label>
+                    <select id="themeSelect" class="theme-select"></select>
+                </div>
+                <a href="/" class="btn btn-primary">Back to Dashboard</a>
+            </div>
+        </div>
+
+        <div class="batch-progress-section">
+            <div class="batch-progress-header">
+                <span class="batch-progress-title">Overall Progress</span>
+                <span class="batch-progress-count">
+                    <span id="completedCount">0</span>/<span id="totalCount">{{ total }}</span> playbooks
+                    <span id="failedInfo" style="color: var(--status-failed-text); display: none;"> (<span id="failedCount">0</span> failed)</span>
+                </span>
+            </div>
+            <div class="batch-progress-bar">
+                <div class="batch-progress-fill" id="progressFill" style="width: 0%"></div>
+            </div>
+            <div class="playbook-tabs" id="playbookTabs">
+                {% for playbook in playbooks %}
+                <div class="playbook-tab" data-playbook="{{ playbook }}" onclick="switchToPlaybook('{{ playbook }}')">
+                    <span class="tab-number">{{ loop.index }}</span>
+                    {{ playbook.replace('-', ' ').title() }}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="batch-log-container">
+        <div class="current-playbook-indicator" id="currentIndicator">
+            Waiting to start...
+        </div>
+        <div class="log-container" id="logContainer">
+            <div class="log-content" id="logContent"></div>
+        </div>
+    </div>
+
+    <div class="footer-bar">
+        <span>Batch ID: {{ batch_id }}</span>
+        <span id="lineCount">0 lines</span>
+    </div>
+
+    <script>
+        const batchId = "{{ batch_id }}";
+        const logContent = document.getElementById('logContent');
+        const logContainer = document.getElementById('logContainer');
+        const statusBadge = document.getElementById('statusBadge');
+        const connectionDot = document.getElementById('connectionDot');
+        const connectionText = document.getElementById('connectionText');
+        const scrollToggle = document.getElementById('scrollToggle');
+        const lineCountEl = document.getElementById('lineCount');
+        const progressFill = document.getElementById('progressFill');
+        const completedCountEl = document.getElementById('completedCount');
+        const totalCountEl = document.getElementById('totalCount');
+        const failedCountEl = document.getElementById('failedCount');
+        const failedInfoEl = document.getElementById('failedInfo');
+        const currentIndicator = document.getElementById('currentIndicator');
+        const playbookTabs = document.getElementById('playbookTabs');
+
+        let autoScroll = true;
+        let lineCount = 0;
+        let currentPlaybook = null;
+        let playbooks = {{ playbooks | tojson }};
+        let playbookLogs = {};  // Store logs for each playbook
+        let playbookStatuses = {};  // Track status of each playbook
+
+        // Initialize playbook logs
+        playbooks.forEach(pb => {
+            playbookLogs[pb] = [];
+            playbookStatuses[pb] = 'pending';
+        });
+
+        // Connect to WebSocket
+        const socket = io();
+
+        socket.on('connect', function() {
+            connectionDot.classList.add('connected');
+            connectionDot.classList.remove('disconnected');
+            connectionText.textContent = 'Connected';
+
+            // Join batch rooms
+            socket.emit('join_batch_jobs');
+            socket.emit('join_batch', { batch_id: batchId });
+        });
+
+        socket.on('disconnect', function() {
+            connectionDot.classList.remove('connected');
+            connectionDot.classList.add('disconnected');
+            connectionText.textContent = 'Disconnected';
+        });
+
+        // Receive catch-up data
+        socket.on('batch_catchup', function(data) {
+            if (data.batch_id === batchId) {
+                updateProgress(data);
+                if (data.current_playbook) {
+                    switchToPlaybook(data.current_playbook);
+                }
+            }
+        });
+
+        // Batch job progress updates
+        socket.on('batch_job_progress', function(data) {
+            if (data.batch_id === batchId) {
+                updateProgress(data);
+                if (data.current_playbook && data.current_playbook !== currentPlaybook) {
+                    switchToPlaybook(data.current_playbook);
+                }
+            }
+        });
+
+        // Receive log lines for current batch
+        socket.on('batch_log_line', function(data) {
+            if (data.batch_id === batchId) {
+                const playbook = data.playbook;
+
+                // Store log line
+                if (!playbookLogs[playbook]) {
+                    playbookLogs[playbook] = [];
+                }
+                playbookLogs[playbook].push(data.line);
+
+                // If this is the current playbook, display it
+                if (playbook === currentPlaybook) {
+                    appendLogLine(data.line);
+                }
+
+                // Update tab status to running
+                if (playbookStatuses[playbook] !== 'completed' && playbookStatuses[playbook] !== 'failed') {
+                    updateTabStatus(playbook, 'running');
+                }
+            }
+        });
+
+        // Batch job finished
+        socket.on('batch_job_finished', function(data) {
+            if (data.batch_id === batchId) {
+                updateProgress(data);
+                updateStatus(data.status);
+
+                // Update all tab statuses from results
+                if (data.results) {
+                    data.results.forEach(result => {
+                        updateTabStatus(result.playbook, result.status);
+                    });
+                }
+            }
+        });
+
+        // Batch job error
+        socket.on('batch_job_error', function(data) {
+            if (data.batch_id === batchId) {
+                appendLogLine('\n=== BATCH ERROR: ' + data.error + ' ===\n');
+                updateStatus('failed');
+            }
+        });
+
+        function updateProgress(data) {
+            const completed = (data.completed || 0);
+            const failed = (data.failed || 0);
+            const total = data.total || playbooks.length;
+            const percent = total > 0 ? Math.round(((completed + failed) / total) * 100) : 0;
+
+            completedCountEl.textContent = completed;
+            totalCountEl.textContent = total;
+            progressFill.style.width = percent + '%';
+
+            if (failed > 0) {
+                failedInfoEl.style.display = 'inline';
+                failedCountEl.textContent = failed;
+                progressFill.classList.add('has-failures');
+            }
+
+            if (data.status) {
+                updateStatus(data.status);
+            }
+
+            // Update tab statuses from results
+            if (data.results) {
+                data.results.forEach(result => {
+                    updateTabStatus(result.playbook, result.status);
+                    playbookStatuses[result.playbook] = result.status;
+                });
+            }
+
+            // Update current playbook indicator
+            if (data.current_playbook && data.status === 'running') {
+                currentIndicator.innerHTML = `Currently running: <strong>${data.current_playbook.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</strong>`;
+                updateTabStatus(data.current_playbook, 'running');
+            } else if (data.status === 'completed') {
+                currentIndicator.innerHTML = `<span style="color: var(--status-completed-text);">All playbooks completed successfully</span>`;
+            } else if (data.status === 'failed') {
+                currentIndicator.innerHTML = `<span style="color: var(--status-failed-text);">Batch job failed</span>`;
+            } else if (data.status === 'partial') {
+                currentIndicator.innerHTML = `<span style="color: var(--notify-info-border);">Batch completed with some failures</span>`;
+            }
+        }
+
+        function updateStatus(status) {
+            statusBadge.textContent = status;
+            statusBadge.className = 'status-badge status-' + status;
+        }
+
+        function updateTabStatus(playbook, status) {
+            const tab = document.querySelector(`.playbook-tab[data-playbook="${playbook}"]`);
+            if (tab) {
+                tab.classList.remove('running', 'completed', 'failed', 'pending');
+                if (status !== 'active') {
+                    tab.classList.add(status);
+                }
+                playbookStatuses[playbook] = status;
+            }
+        }
+
+        function switchToPlaybook(playbook) {
+            currentPlaybook = playbook;
+
+            // Update active tab
+            document.querySelectorAll('.playbook-tab').forEach(tab => {
+                tab.classList.remove('active');
+                if (tab.dataset.playbook === playbook) {
+                    tab.classList.add('active');
+                }
+            });
+
+            // Clear and reload log content
+            logContent.innerHTML = '';
+            lineCount = 0;
+
+            // Display stored logs for this playbook
+            if (playbookLogs[playbook]) {
+                playbookLogs[playbook].forEach(line => {
+                    appendLogLine(line);
+                });
+            }
+
+            // Update indicator
+            const status = playbookStatuses[playbook];
+            if (status === 'running') {
+                currentIndicator.innerHTML = `Currently running: <strong>${playbook.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</strong>`;
+            } else if (status === 'completed') {
+                currentIndicator.innerHTML = `Viewing: <strong>${playbook.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</strong> <span style="color: var(--status-completed-text);">(completed)</span>`;
+            } else if (status === 'failed') {
+                currentIndicator.innerHTML = `Viewing: <strong>${playbook.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</strong> <span style="color: var(--status-failed-text);">(failed)</span>`;
+            } else {
+                currentIndicator.innerHTML = `Viewing: <strong>${playbook.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</strong> <span style="color: var(--text-muted);">(pending)</span>`;
+            }
+        }
+
+        function appendLogLine(line) {
+            const lineEl = document.createElement('div');
+            lineEl.className = 'log-line ' + getLineClass(line);
+            lineEl.textContent = line;
+            logContent.appendChild(lineEl);
+            lineCount++;
+            lineCountEl.textContent = lineCount + ' lines';
+
+            if (autoScroll) {
+                logContainer.scrollTop = logContainer.scrollHeight;
+            }
+        }
+
+        function getLineClass(line) {
+            const lowerLine = line.toLowerCase();
+            if (lowerLine.includes('ok:')) return 'ok';
+            if (lowerLine.includes('changed:')) return 'changed';
+            if (lowerLine.includes('failed:') || lowerLine.includes('fatal:')) return 'failed';
+            if (lowerLine.includes('skipping:')) return 'skipping';
+            if (lowerLine.startsWith('task [') || lowerLine.startsWith('TASK [')) return 'task';
+            if (lowerLine.startsWith('play [') || lowerLine.startsWith('PLAY [')) return 'play';
+            if (lowerLine.includes('play recap') || lowerLine.includes('PLAY RECAP')) return 'recap';
+            return '';
+        }
+
+        // Toggle auto-scroll
+        scrollToggle.addEventListener('click', function() {
+            autoScroll = !autoScroll;
+            scrollToggle.textContent = autoScroll ? 'Auto-scroll ON' : 'Auto-scroll OFF';
+            scrollToggle.classList.toggle('paused', !autoScroll);
+
+            if (autoScroll) {
+                logContainer.scrollTop = logContainer.scrollHeight;
+            }
+        });
+
+        // Pause auto-scroll when user scrolls up
+        logContainer.addEventListener('scroll', function() {
+            const isAtBottom = logContainer.scrollHeight - logContainer.scrollTop <= logContainer.clientHeight + 50;
+            if (!isAtBottom && autoScroll) {
+                autoScroll = false;
+                scrollToggle.textContent = 'Auto-scroll OFF';
+                scrollToggle.classList.add('paused');
+            }
+        });
+
+        // Initialize - select first playbook or current one
+        {% if current_playbook %}
+        switchToPlaybook("{{ current_playbook }}");
+        {% elif playbooks %}
+        switchToPlaybook(playbooks[0]);
+        {% endif %}
+    </script>
+</body>
+</html>

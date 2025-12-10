@@ -35,8 +35,10 @@
         <p class="subtitle">Manage automated playbook execution</p>
 
         <div class="nav-links">
-            <a href="/">Home</a>
-            <a href="/schedules">Schedules</a>
+            <a href="/">Batch Execution</a>
+            <a href="/playbooks">Playbooks</a>
+            <a href="/schedules" style="font-weight: bold;">Schedules</a>
+            <a href="/cmdb">CMDB</a>
             <a href="/inventory">Inventory</a>
             <a href="/storage">Storage</a>
             <a href="/logs">All Logs</a>
@@ -69,19 +71,41 @@
                 <tr data-schedule-id="{{ schedule.id }}">
                     <td>
                         <strong>{{ schedule.name }}</strong>
+                        {% if schedule.is_batch %}
+                        <span class="recurrence-badge" style="margin-left: 5px; background: var(--status-running-bg); color: var(--status-running-text);">Batch</span>
+                        {% endif %}
                         {% if schedule.description %}
                         <br><small class="text-muted">{{ schedule.description }}</small>
                         {% endif %}
                     </td>
-                    <td>{{ schedule.playbook }}</td>
-                    <td>{{ schedule.target }}</td>
+                    <td>
+                        {% if schedule.is_batch and schedule.playbooks %}
+                        <span title="{{ schedule.playbooks|join(', ') }}">{{ schedule.playbooks|length }} playbooks</span>
+                        {% else %}
+                        {{ schedule.playbook }}
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if schedule.is_batch and schedule.targets %}
+                        <span title="{{ schedule.targets|join(', ') }}">{{ schedule.targets|length }} targets</span>
+                        {% else %}
+                        {{ schedule.target }}
+                        {% endif %}
+                    </td>
                     <td><span class="recurrence-badge">{{ schedule.recurrence_display }}</span></td>
                     <td>{{ schedule.next_run_display }}</td>
                     <td>{{ schedule.last_run_display }}</td>
                     <td>
-                        <span class="status-badge status-{{ schedule.status }}" data-status>
-                            {{ schedule.status }}
+                        <span class="status-badge status-{{ schedule.last_status or 'ready' }}" data-status>
+                            {% if schedule.run_count > 0 %}
+                            {{ schedule.success_display }} completed
+                            {% else %}
+                            No runs
+                            {% endif %}
                         </span>
+                        {% if schedule.last_status %}
+                        <br><small class="text-muted">Last: {{ schedule.last_status }}</small>
+                        {% endif %}
                     </td>
                     <td class="actions">
                         <a href="/schedules/{{ schedule.id }}/history" class="btn btn-secondary btn-small">History</a>
@@ -119,15 +143,38 @@
                 <tr data-schedule-id="{{ schedule.id }}" class="paused-row">
                     <td>
                         <strong>{{ schedule.name }}</strong>
+                        {% if schedule.is_batch %}
+                        <span class="recurrence-badge" style="margin-left: 5px; background: var(--status-running-bg); color: var(--status-running-text);">Batch</span>
+                        {% endif %}
                         {% if schedule.description %}
                         <br><small class="text-muted">{{ schedule.description }}</small>
                         {% endif %}
                     </td>
-                    <td>{{ schedule.playbook }}</td>
-                    <td>{{ schedule.target }}</td>
+                    <td>
+                        {% if schedule.is_batch and schedule.playbooks %}
+                        <span title="{{ schedule.playbooks|join(', ') }}">{{ schedule.playbooks|length }} playbooks</span>
+                        {% else %}
+                        {{ schedule.playbook }}
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if schedule.is_batch and schedule.targets %}
+                        <span title="{{ schedule.targets|join(', ') }}">{{ schedule.targets|length }} targets</span>
+                        {% else %}
+                        {{ schedule.target }}
+                        {% endif %}
+                    </td>
                     <td><span class="recurrence-badge">{{ schedule.recurrence_display }}</span></td>
                     <td>{{ schedule.last_run_display }}</td>
-                    <td>{{ schedule.run_count }}</td>
+                    <td>
+                        {% if schedule.run_count > 0 %}
+                        <span class="status-badge status-{{ schedule.last_status or 'ready' }}">
+                            {{ schedule.success_display }} completed
+                        </span>
+                        {% else %}
+                        <span class="text-muted">No runs</span>
+                        {% endif %}
+                    </td>
                     <td class="actions">
                         <a href="/schedules/{{ schedule.id }}/history" class="btn btn-secondary btn-small">History</a>
                         <button class="btn btn-primary btn-small" onclick="resumeSchedule('{{ schedule.id }}')">Resume</button>

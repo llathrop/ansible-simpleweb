@@ -26,6 +26,96 @@
         body {
             padding: 20px;
         }
+
+        /* Schedule type toggle */
+        .schedule-type-toggle {
+            display: flex;
+            gap: 0;
+            border: 1px solid var(--border-primary);
+            border-radius: 4px;
+            overflow: hidden;
+            width: fit-content;
+        }
+
+        .toggle-btn {
+            padding: 10px 20px;
+            border: none;
+            background: var(--bg-secondary);
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .toggle-btn:hover {
+            background: var(--table-row-hover);
+        }
+
+        .toggle-btn.active {
+            background: var(--btn-primary-bg);
+            color: var(--btn-primary-text);
+        }
+
+        /* Batch order item */
+        .batch-order-item {
+            display: flex;
+            align-items: center;
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border-primary);
+            background: var(--bg-secondary);
+        }
+
+        .batch-order-item:last-child {
+            border-bottom: none;
+        }
+
+        .batch-order-item .order-number {
+            width: 24px;
+            height: 24px;
+            background: var(--btn-primary-bg);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 600;
+            margin-right: 10px;
+        }
+
+        .batch-order-item .playbook-name {
+            flex: 1;
+            font-size: 14px;
+        }
+
+        .batch-order-item .order-buttons {
+            display: flex;
+            gap: 4px;
+        }
+
+        .batch-order-item .order-btn {
+            width: 28px;
+            height: 28px;
+            border: 1px solid var(--border-primary);
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .batch-order-item .order-btn:hover {
+            background: var(--table-row-hover);
+        }
+
+        @media (max-width: 768px) {
+            .batch-grid {
+                grid-template-columns: 1fr !important;
+            }
+        }
     </style>
 </head>
 <body>
@@ -37,13 +127,33 @@
         </div>
 
         <form action="{% if edit_mode %}/schedules/{{ schedule.id }}/update{% else %}/schedules/create{% endif %}"
-              method="POST" class="schedule-form">
+              method="POST" class="schedule-form" id="scheduleForm">
+
+            <!-- Hidden fields for batch mode -->
+            <input type="hidden" id="is_batch" name="is_batch" value="{{ 'true' if (schedule and schedule.is_batch) or batch_mode else 'false' }}">
+            <input type="hidden" id="playbooks_hidden" name="playbooks" value="{{ batch_playbooks|default('', true) }}">
+            <input type="hidden" id="targets_hidden" name="targets" value="{{ batch_targets|default('', true) }}">
+
+            <!-- Schedule Type Toggle (only show on create) -->
+            {% if not edit_mode %}
+            <div class="form-group">
+                <label>Schedule Type</label>
+                <div class="schedule-type-toggle">
+                    <button type="button" id="singleModeBtn" class="toggle-btn {% if not batch_mode %}active{% endif %}" onclick="setScheduleMode('single')">
+                        Single Playbook
+                    </button>
+                    <button type="button" id="batchModeBtn" class="toggle-btn {% if batch_mode %}active{% endif %}" onclick="setScheduleMode('batch')">
+                        Batch Job
+                    </button>
+                </div>
+            </div>
+            {% endif %}
 
             <div class="form-group">
                 <label for="name">Schedule Name *</label>
                 <input type="text" id="name" name="name" required
                        placeholder="e.g., Daily Backup, Weekly Health Check"
-                       value="{{ schedule.name if schedule else '' }}">
+                       value="{{ schedule.name if schedule else (batch_name|default('', true)) }}">
             </div>
 
             <div class="form-group">
@@ -53,32 +163,75 @@
                        value="{{ schedule.description if schedule else '' }}">
             </div>
 
-            <div class="form-group">
-                <label for="playbook">Playbook *</label>
-                <select id="playbook" name="playbook" required {% if edit_mode %}disabled{% endif %}>
-                    {% for pb in playbooks %}
-                    <option value="{{ pb }}"
-                            {% if (schedule and schedule.playbook == pb) or (selected_playbook == pb) %}selected{% endif %}>
-                        {{ pb.replace('-', ' ').title() }}
-                    </option>
-                    {% endfor %}
-                </select>
-                {% if edit_mode %}
-                <input type="hidden" name="playbook" value="{{ schedule.playbook }}">
-                <small class="text-muted">Playbook cannot be changed after creation</small>
-                {% endif %}
+            <!-- Single Playbook Mode -->
+            <div id="singleModeFields" style="{% if batch_mode %}display: none;{% endif %}">
+                <div class="form-group">
+                    <label for="playbook">Playbook *</label>
+                    <select id="playbook" name="playbook" {% if edit_mode %}disabled{% endif %}>
+                        {% for pb in playbooks %}
+                        <option value="{{ pb }}"
+                                {% if (schedule and schedule.playbook == pb) or (selected_playbook == pb) %}selected{% endif %}>
+                            {{ pb.replace('-', ' ').title() }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    {% if edit_mode %}
+                    <input type="hidden" name="playbook" value="{{ schedule.playbook }}">
+                    <small class="text-muted">Playbook cannot be changed after creation</small>
+                    {% endif %}
+                </div>
+
+                <div class="form-group">
+                    <label for="target">Target Host/Group *</label>
+                    <select id="target" name="target">
+                        {% for t in targets %}
+                        <option value="{{ t.value }}"
+                                {% if schedule and schedule.target == t.value %}selected{% endif %}>
+                            {{ t.label }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
             </div>
 
-            <div class="form-group">
-                <label for="target">Target Host/Group *</label>
-                <select id="target" name="target" required>
-                    {% for t in targets %}
-                    <option value="{{ t.value }}"
-                            {% if schedule and schedule.target == t.value %}selected{% endif %}>
-                        {{ t.label }}
-                    </option>
-                    {% endfor %}
-                </select>
+            <!-- Batch Mode Fields -->
+            <div id="batchModeFields" style="{% if not batch_mode %}display: none;{% endif %}">
+                <div class="batch-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div class="form-group">
+                        <label>Select Playbooks</label>
+                        <div class="multi-select-list" id="batchPlaybookList" style="max-height: 200px; overflow-y: auto; border: 1px solid var(--border-primary); border-radius: 4px;">
+                            {% for pb in playbooks %}
+                            <div class="multi-select-item" onclick="toggleBatchPlaybook(this, '{{ pb }}')">
+                                <input type="checkbox" value="{{ pb }}" {% if pb in (batch_playbooks_list|default([], true)) %}checked{% endif %}>
+                                <label>{{ pb.replace('-', ' ').title() }}</label>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        <small id="playbookCount" style="color: var(--text-muted);">0 playbook(s) selected</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Select Targets</label>
+                        <div class="multi-select-list" id="batchTargetList" style="max-height: 200px; overflow-y: auto; border: 1px solid var(--border-primary); border-radius: 4px;">
+                            {% for t in targets %}
+                            <div class="multi-select-item" onclick="toggleBatchTarget(this, '{{ t.value }}')">
+                                <input type="checkbox" value="{{ t.value }}" {% if t.value in (batch_targets_list|default([], true)) %}checked{% endif %}>
+                                <label>{{ t.label }}</label>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        <small id="targetCount" style="color: var(--text-muted);">0 target(s) selected</small>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Execution Order</label>
+                    <div id="batchOrderList" style="border: 1px solid var(--border-primary); border-radius: 4px; min-height: 60px; background: var(--bg-primary);">
+                        <div id="batchOrderEmpty" style="padding: 20px; text-align: center; color: var(--text-muted);">
+                            Select playbooks above to set execution order
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div class="form-group">
@@ -207,6 +360,147 @@
     </div>
 
     <script>
+        // Batch mode state
+        const batchState = {
+            playbooks: [],
+            targets: []
+        };
+
+        // Initialize from URL params (when coming from main page "Schedule Batch" button)
+        function initFromUrlParams() {
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('batch') === 'true') {
+                setScheduleMode('batch');
+
+                const playbooks = urlParams.get('playbooks');
+                const targets = urlParams.get('targets');
+                const name = urlParams.get('name');
+
+                if (playbooks) {
+                    playbooks.split(',').forEach(pb => {
+                        if (pb.trim()) {
+                            batchState.playbooks.push(pb.trim());
+                            // Check the checkbox
+                            const item = document.querySelector(`#batchPlaybookList .multi-select-item input[value="${pb.trim()}"]`);
+                            if (item) {
+                                item.checked = true;
+                                item.closest('.multi-select-item').classList.add('selected');
+                            }
+                        }
+                    });
+                }
+
+                if (targets) {
+                    targets.split(',').forEach(t => {
+                        if (t.trim()) {
+                            batchState.targets.push(t.trim());
+                            // Check the checkbox
+                            const item = document.querySelector(`#batchTargetList .multi-select-item input[value="${t.trim()}"]`);
+                            if (item) {
+                                item.checked = true;
+                                item.closest('.multi-select-item').classList.add('selected');
+                            }
+                        }
+                    });
+                }
+
+                if (name) {
+                    document.getElementById('name').value = name;
+                }
+
+                updateBatchUI();
+            }
+        }
+
+        // Set schedule mode
+        function setScheduleMode(mode) {
+            const isBatch = mode === 'batch';
+
+            document.getElementById('is_batch').value = isBatch ? 'true' : 'false';
+            document.getElementById('singleModeFields').style.display = isBatch ? 'none' : 'block';
+            document.getElementById('batchModeFields').style.display = isBatch ? 'block' : 'none';
+
+            document.getElementById('singleModeBtn').classList.toggle('active', !isBatch);
+            document.getElementById('batchModeBtn').classList.toggle('active', isBatch);
+
+            // Update required attributes
+            document.getElementById('playbook').required = !isBatch;
+            document.getElementById('target').required = !isBatch;
+        }
+
+        // Toggle batch playbook selection
+        function toggleBatchPlaybook(element, playbook) {
+            const checkbox = element.querySelector('input[type="checkbox"]');
+            checkbox.checked = !checkbox.checked;
+            element.classList.toggle('selected', checkbox.checked);
+
+            if (checkbox.checked) {
+                if (!batchState.playbooks.includes(playbook)) {
+                    batchState.playbooks.push(playbook);
+                }
+            } else {
+                batchState.playbooks = batchState.playbooks.filter(p => p !== playbook);
+            }
+
+            updateBatchUI();
+        }
+
+        // Toggle batch target selection
+        function toggleBatchTarget(element, target) {
+            const checkbox = element.querySelector('input[type="checkbox"]');
+            checkbox.checked = !checkbox.checked;
+            element.classList.toggle('selected', checkbox.checked);
+
+            if (checkbox.checked) {
+                if (!batchState.targets.includes(target)) {
+                    batchState.targets.push(target);
+                }
+            } else {
+                batchState.targets = batchState.targets.filter(t => t !== target);
+            }
+
+            updateBatchUI();
+        }
+
+        // Move playbook in order
+        function moveBatchPlaybook(index, direction) {
+            const newIndex = index + direction;
+            if (newIndex < 0 || newIndex >= batchState.playbooks.length) return;
+
+            const temp = batchState.playbooks[index];
+            batchState.playbooks[index] = batchState.playbooks[newIndex];
+            batchState.playbooks[newIndex] = temp;
+            updateBatchUI();
+        }
+
+        // Update batch UI
+        function updateBatchUI() {
+            // Update counts
+            document.getElementById('playbookCount').textContent = batchState.playbooks.length + ' playbook(s) selected';
+            document.getElementById('targetCount').textContent = batchState.targets.length + ' target(s) selected';
+
+            // Update hidden fields
+            document.getElementById('playbooks_hidden').value = batchState.playbooks.join(',');
+            document.getElementById('targets_hidden').value = batchState.targets.join(',');
+
+            // Update order list
+            const orderList = document.getElementById('batchOrderList');
+            if (batchState.playbooks.length === 0) {
+                orderList.innerHTML = '<div id="batchOrderEmpty" style="padding: 20px; text-align: center; color: var(--text-muted);">Select playbooks above to set execution order</div>';
+            } else {
+                orderList.innerHTML = batchState.playbooks.map((pb, index) => `
+                    <div class="batch-order-item">
+                        <span class="order-number">${index + 1}</span>
+                        <span class="playbook-name">${pb.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</span>
+                        <div class="order-buttons">
+                            <button type="button" class="order-btn" onclick="moveBatchPlaybook(${index}, -1)" ${index === 0 ? 'disabled' : ''}>&#9650;</button>
+                            <button type="button" class="order-btn" onclick="moveBatchPlaybook(${index}, 1)" ${index === batchState.playbooks.length - 1 ? 'disabled' : ''}>&#9660;</button>
+                        </div>
+                    </div>
+                `).join('');
+            }
+        }
+
         function updateRecurrenceOptions() {
             // Hide all option sections
             document.querySelectorAll('.recurrence-option').forEach(el => {
@@ -224,6 +518,7 @@
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', function() {
             updateRecurrenceOptions();
+            initFromUrlParams();
         });
     </script>
 </body>

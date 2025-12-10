@@ -36,6 +36,13 @@ active_runs = {}
 # Lock for thread-safe access to active_runs
 runs_lock = threading.Lock()
 
+# Track active batch jobs by batch_id
+# Structure: {batch_id: {playbooks, targets, status, total, completed, failed, ...}}
+active_batch_jobs = {}
+
+# Lock for thread-safe access to active_batch_jobs
+batch_lock = threading.Lock()
+
 # Schedule manager (initialized in main block)
 schedule_manager = None
 
@@ -200,6 +207,182 @@ def generate_managed_inventory(hostname):
         os.close(fd)
 
     return temp_path
+
+
+def generate_batch_inventory(targets):
+    """
+    Generate a temporary Ansible inventory file for batch execution.
+
+    Creates a combined inventory containing all selected hosts and groups,
+    merging hosts from both the INI inventory file and managed inventory.
+
+    Args:
+        targets: List of target names (hostnames, group names, or 'all')
+
+    Returns:
+        Tuple of (temp_inventory_path, hosts_included, error_message)
+        - temp_inventory_path: Path to temporary inventory file, or None on error
+        - hosts_included: List of hostnames that will be targeted
+        - error_message: Error description if failed, None on success
+    """
+    if not targets:
+        return None, [], "No targets specified"
+
+    # Special case: 'all' means use the default inventory
+    if 'all' in targets:
+        return None, ['all'], None  # None path means use default inventory
+
+    # Collect hosts and their variables
+    # Structure: {hostname: {'group': str, 'variables': dict, 'source': 'ini'|'managed'}}
+    hosts_data = {}
+    groups_to_include = set()
+
+    # Parse the INI inventory file to get hosts and groups
+    ini_hosts = {}  # {hostname: {'groups': [list], 'variables': {}}}
+    ini_groups = {}  # {groupname: [list of hostnames]}
+
+    if os.path.exists(INVENTORY_FILE):
+        try:
+            with open(INVENTORY_FILE, 'r') as f:
+                current_group = None
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith('#'):
+                        continue
+
+                    if line.startswith('[') and line.endswith(']'):
+                        group_name = line[1:-1]
+                        if ':children' not in group_name:
+                            current_group = group_name
+                            if current_group not in ini_groups:
+                                ini_groups[current_group] = []
+                    elif current_group and not line.startswith('['):
+                        parts = line.split()
+                        if parts:
+                            hostname = parts[0]
+                            # Parse variables from the line
+                            variables = {}
+                            for part in parts[1:]:
+                                if '=' in part:
+                                    key, value = part.split('=', 1)
+                                    # Remove quotes if present
+                                    value = value.strip('"\'')
+                                    variables[key] = value
+
+                            if hostname not in ini_hosts:
+                                ini_hosts[hostname] = {'groups': [], 'variables': variables}
+                            ini_hosts[hostname]['groups'].append(current_group)
+
+                            ini_groups[current_group].append(hostname)
+        except Exception as e:
+            print(f"Error parsing INI inventory: {e}")
+
+    # Get managed inventory
+    managed_hosts = {}
+    if storage_backend:
+        managed_inventory = storage_backend.get_all_inventory()
+        for item in managed_inventory:
+            hostname = item.get('hostname')
+            if hostname:
+                managed_hosts[hostname] = {
+                    'group': item.get('group', 'managed'),
+                    'variables': item.get('variables', {})
+                }
+
+    # Process each target
+    for target in targets:
+        # Check if target is a group in INI inventory
+        if target in ini_groups:
+            groups_to_include.add(target)
+            for hostname in ini_groups[target]:
+                if hostname not in hosts_data:
+                    hosts_data[hostname] = {
+                        'groups': ini_hosts.get(hostname, {}).get('groups', [target]),
+                        'variables': ini_hosts.get(hostname, {}).get('variables', {}),
+                        'source': 'ini'
+                    }
+
+        # Check if target is a group in managed inventory
+        elif storage_backend:
+            managed_in_group = [h for h, data in managed_hosts.items() if data.get('group') == target]
+            if managed_in_group:
+                groups_to_include.add(target)
+                for hostname in managed_in_group:
+                    if hostname not in hosts_data:
+                        hosts_data[hostname] = {
+                            'groups': [managed_hosts[hostname]['group']],
+                            'variables': managed_hosts[hostname]['variables'],
+                            'source': 'managed'
+                        }
+                continue
+
+        # Check if target is an individual host in INI
+        if target in ini_hosts:
+            if target not in hosts_data:
+                hosts_data[target] = {
+                    'groups': ini_hosts[target]['groups'],
+                    'variables': ini_hosts[target]['variables'],
+                    'source': 'ini'
+                }
+
+        # Check if target is a managed host
+        elif target in managed_hosts:
+            if target not in hosts_data:
+                hosts_data[target] = {
+                    'groups': [managed_hosts[target]['group']],
+                    'variables': managed_hosts[target]['variables'],
+                    'source': 'managed'
+                }
+
+    if not hosts_data:
+        return None, [], f"No hosts found for targets: {targets}"
+
+    # Build inventory content organized by group
+    inventory_lines = [
+        "# Temporary batch inventory",
+        "# Generated by ansible-simpleweb",
+        ""
+    ]
+
+    # Organize hosts by their primary group
+    groups_with_hosts = {}
+    for hostname, data in hosts_data.items():
+        # Use first group as primary
+        primary_group = data['groups'][0] if data['groups'] else 'batch_targets'
+        if primary_group not in groups_with_hosts:
+            groups_with_hosts[primary_group] = []
+
+        # Format host line with variables
+        var_parts = []
+        for key, value in data['variables'].items():
+            if isinstance(value, str) and ' ' in value:
+                var_parts.append(f'{key}="{value}"')
+            else:
+                var_parts.append(f'{key}={value}')
+
+        host_line = hostname
+        if var_parts:
+            host_line += ' ' + ' '.join(var_parts)
+
+        groups_with_hosts[primary_group].append(host_line)
+
+    # Write groups and hosts
+    for group_name, host_lines in sorted(groups_with_hosts.items()):
+        inventory_lines.append(f"[{group_name}]")
+        for host_line in sorted(host_lines):
+            inventory_lines.append(host_line)
+        inventory_lines.append("")
+
+    inventory_content = '\n'.join(inventory_lines)
+
+    # Write to temporary file
+    fd, temp_path = tempfile.mkstemp(prefix='batch_inv_', suffix='.ini', dir='/tmp')
+    try:
+        os.write(fd, inventory_content.encode('utf-8'))
+    finally:
+        os.close(fd)
+
+    return temp_path, list(hosts_data.keys()), None
 
 
 def is_managed_host(hostname):
@@ -441,6 +624,393 @@ def run_playbook_streaming(run_id, playbook_name, target, log_file, inventory_pa
             except Exception:
                 pass  # Ignore cleanup errors
 
+
+def run_batch_job_streaming(batch_id, playbooks, targets, name=None):
+    """
+    Execute a batch job - multiple playbooks against multiple targets sequentially.
+
+    Playbooks run in order. Each playbook runs against the combined inventory
+    of all targets before the next playbook starts.
+
+    Args:
+        batch_id: Unique batch job identifier
+        playbooks: List of playbook names in execution order
+        targets: List of target hosts/groups
+        name: Optional display name for the batch job
+    """
+    inventory_path = None
+
+    try:
+        # Generate combined inventory for all targets
+        inventory_path, hosts_included, inv_error = generate_batch_inventory(targets)
+
+        if inv_error and not hosts_included:
+            # Fatal error - can't proceed
+            with batch_lock:
+                if batch_id in active_batch_jobs:
+                    active_batch_jobs[batch_id]['status'] = 'failed'
+                    active_batch_jobs[batch_id]['error'] = inv_error
+                    active_batch_jobs[batch_id]['finished'] = datetime.now().isoformat()
+
+            if storage_backend:
+                batch_job = storage_backend.get_batch_job(batch_id)
+                if batch_job:
+                    batch_job['status'] = 'failed'
+                    batch_job['error'] = inv_error
+                    batch_job['finished'] = datetime.now().isoformat()
+                    storage_backend.save_batch_job(batch_id, batch_job)
+
+            socketio.emit('batch_job_error', {
+                'batch_id': batch_id,
+                'error': inv_error
+            }, room='batch_jobs')
+            return
+
+        # Update batch job status to running
+        with batch_lock:
+            active_batch_jobs[batch_id]['status'] = 'running'
+            active_batch_jobs[batch_id]['started'] = datetime.now().isoformat()
+            active_batch_jobs[batch_id]['hosts_included'] = hosts_included
+
+        if storage_backend:
+            batch_job = storage_backend.get_batch_job(batch_id)
+            if batch_job:
+                batch_job['status'] = 'running'
+                batch_job['started'] = datetime.now().isoformat()
+                batch_job['hosts_included'] = hosts_included
+                storage_backend.save_batch_job(batch_id, batch_job)
+
+        socketio.emit('batch_job_started', {
+            'batch_id': batch_id,
+            'playbooks': playbooks,
+            'targets': targets,
+            'hosts_included': hosts_included,
+            'total': len(playbooks)
+        }, room='batch_jobs')
+
+        # Execute each playbook sequentially
+        completed_count = 0
+        failed_count = 0
+        results = []
+
+        for i, playbook_name in enumerate(playbooks):
+            # Check if playbook exists
+            if playbook_name not in get_playbooks():
+                result = {
+                    'playbook': playbook_name,
+                    'status': 'failed',
+                    'error': 'Playbook not found',
+                    'started': datetime.now().isoformat(),
+                    'finished': datetime.now().isoformat()
+                }
+                results.append(result)
+                failed_count += 1
+
+                # Update progress
+                _update_batch_progress(batch_id, playbook_name, i + 1, len(playbooks),
+                                       completed_count, failed_count, results, 'failed')
+                continue
+
+            # Generate run_id and log file for this playbook execution
+            run_id = str(uuid.uuid4())
+            # Use 'batch' as target indicator in filename since we're running against inventory
+            target_label = f"batch-{len(targets)}targets"
+            log_file = generate_log_filename(playbook_name, target_label, run_id)
+            log_path = os.path.join(LOGS_DIR, log_file)
+
+            playbook_started = datetime.now().isoformat()
+
+            # Update current playbook in batch job
+            with batch_lock:
+                if batch_id in active_batch_jobs:
+                    active_batch_jobs[batch_id]['current_playbook'] = playbook_name
+                    active_batch_jobs[batch_id]['current_run_id'] = run_id
+
+            socketio.emit('batch_job_progress', {
+                'batch_id': batch_id,
+                'current_playbook': playbook_name,
+                'current_index': i + 1,
+                'total': len(playbooks),
+                'completed': completed_count,
+                'failed': failed_count,
+                'status': 'running'
+            }, room='batch_jobs')
+
+            # Build and execute the playbook command
+            try:
+                cmd = ['bash', RUN_SCRIPT, '--stream', playbook_name]
+                if inventory_path:
+                    cmd.extend(['-i', inventory_path])
+                # No -l limit since the inventory already contains only our targets
+
+                process = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1,
+                    cwd='/app'
+                )
+
+                # Write log file with streaming
+                with open(log_path, 'w', buffering=1) as log_f:
+                    header = f"=== Batch Job: {batch_id[:8]} | Playbook: {playbook_name} | Targets: {', '.join(targets)} | Started: {playbook_started} ===\n"
+                    log_f.write(header)
+                    log_f.flush()
+
+                    # Emit to batch-specific room
+                    socketio.emit('batch_log_line', {
+                        'batch_id': batch_id,
+                        'playbook': playbook_name,
+                        'line': header
+                    }, room=f'batch:{batch_id}')
+
+                    for line in process.stdout:
+                        log_f.write(line)
+                        log_f.flush()
+                        socketio.emit('batch_log_line', {
+                            'batch_id': batch_id,
+                            'playbook': playbook_name,
+                            'line': line
+                        }, room=f'batch:{batch_id}')
+
+                    process.wait()
+                    exit_code = process.returncode
+
+                    playbook_status = 'completed' if exit_code == 0 else 'failed'
+                    footer = f"\n=== Finished: {datetime.now().isoformat()} | Exit Code: {exit_code} | Status: {playbook_status.upper()} ===\n"
+                    log_f.write(footer)
+                    log_f.flush()
+                    socketio.emit('batch_log_line', {
+                        'batch_id': batch_id,
+                        'playbook': playbook_name,
+                        'line': footer
+                    }, room=f'batch:{batch_id}')
+
+                playbook_finished = datetime.now().isoformat()
+
+                if exit_code == 0:
+                    completed_count += 1
+                else:
+                    failed_count += 1
+
+                result = {
+                    'playbook': playbook_name,
+                    'status': playbook_status,
+                    'run_id': run_id,
+                    'log_file': log_file,
+                    'exit_code': exit_code,
+                    'started': playbook_started,
+                    'finished': playbook_finished
+                }
+                results.append(result)
+
+            except Exception as e:
+                failed_count += 1
+                result = {
+                    'playbook': playbook_name,
+                    'status': 'failed',
+                    'error': str(e),
+                    'started': playbook_started,
+                    'finished': datetime.now().isoformat()
+                }
+                results.append(result)
+
+            # Update progress after each playbook
+            _update_batch_progress(batch_id, playbook_name, i + 1, len(playbooks),
+                                   completed_count, failed_count, results, 'running')
+
+        # Determine final batch status
+        if failed_count == 0:
+            final_status = 'completed'
+        elif completed_count == 0:
+            final_status = 'failed'
+        else:
+            final_status = 'partial'
+
+        finished_time = datetime.now().isoformat()
+
+        # Update final batch job status
+        with batch_lock:
+            if batch_id in active_batch_jobs:
+                active_batch_jobs[batch_id]['status'] = final_status
+                active_batch_jobs[batch_id]['finished'] = finished_time
+                active_batch_jobs[batch_id]['completed'] = completed_count
+                active_batch_jobs[batch_id]['failed'] = failed_count
+                active_batch_jobs[batch_id]['results'] = results
+                active_batch_jobs[batch_id]['current_playbook'] = None
+                active_batch_jobs[batch_id]['current_run_id'] = None
+
+        if storage_backend:
+            batch_job = storage_backend.get_batch_job(batch_id)
+            if batch_job:
+                batch_job['status'] = final_status
+                batch_job['finished'] = finished_time
+                batch_job['completed'] = completed_count
+                batch_job['failed'] = failed_count
+                batch_job['results'] = results
+                batch_job['current_playbook'] = None
+                batch_job['current_run_id'] = None
+                storage_backend.save_batch_job(batch_id, batch_job)
+
+        socketio.emit('batch_job_finished', {
+            'batch_id': batch_id,
+            'status': final_status,
+            'completed': completed_count,
+            'failed': failed_count,
+            'total': len(playbooks),
+            'results': results
+        }, room='batch_jobs')
+
+        # Clean up from active_batch_jobs after delay
+        time.sleep(60)
+        with batch_lock:
+            if batch_id in active_batch_jobs:
+                del active_batch_jobs[batch_id]
+
+    except Exception as e:
+        error_msg = str(e)
+        with batch_lock:
+            if batch_id in active_batch_jobs:
+                active_batch_jobs[batch_id]['status'] = 'failed'
+                active_batch_jobs[batch_id]['error'] = error_msg
+                active_batch_jobs[batch_id]['finished'] = datetime.now().isoformat()
+
+        if storage_backend:
+            batch_job = storage_backend.get_batch_job(batch_id)
+            if batch_job:
+                batch_job['status'] = 'failed'
+                batch_job['error'] = error_msg
+                batch_job['finished'] = datetime.now().isoformat()
+                storage_backend.save_batch_job(batch_id, batch_job)
+
+        socketio.emit('batch_job_error', {
+            'batch_id': batch_id,
+            'error': error_msg
+        }, room='batch_jobs')
+
+    finally:
+        # Clean up temporary inventory file
+        if inventory_path and os.path.exists(inventory_path):
+            try:
+                os.remove(inventory_path)
+            except Exception:
+                pass
+
+
+def _update_batch_progress(batch_id, current_playbook, current_index, total,
+                           completed, failed, results, status):
+    """Helper to update batch job progress in memory and storage."""
+    with batch_lock:
+        if batch_id in active_batch_jobs:
+            active_batch_jobs[batch_id]['completed'] = completed
+            active_batch_jobs[batch_id]['failed'] = failed
+            active_batch_jobs[batch_id]['results'] = results
+
+    if storage_backend:
+        batch_job = storage_backend.get_batch_job(batch_id)
+        if batch_job:
+            batch_job['completed'] = completed
+            batch_job['failed'] = failed
+            batch_job['results'] = results
+            storage_backend.save_batch_job(batch_id, batch_job)
+
+    socketio.emit('batch_job_progress', {
+        'batch_id': batch_id,
+        'current_playbook': current_playbook,
+        'current_index': current_index,
+        'total': total,
+        'completed': completed,
+        'failed': failed,
+        'status': status
+    }, room='batch_jobs')
+
+
+def create_batch_job(playbooks, targets, name=None):
+    """
+    Create and start a new batch job.
+
+    Args:
+        playbooks: List of playbook names in execution order
+        targets: List of target hosts/groups
+        name: Optional display name for the batch job
+
+    Returns:
+        Tuple of (batch_id, error_message)
+    """
+    if not playbooks:
+        return None, "No playbooks specified"
+
+    if not targets:
+        return None, "No targets specified"
+
+    # Validate playbooks exist
+    available_playbooks = get_playbooks()
+    invalid_playbooks = [p for p in playbooks if p not in available_playbooks]
+    if invalid_playbooks:
+        return None, f"Invalid playbooks: {', '.join(invalid_playbooks)}"
+
+    batch_id = str(uuid.uuid4())
+    created_time = datetime.now().isoformat()
+
+    batch_job = {
+        'id': batch_id,
+        'name': name or f"Batch {batch_id[:8]}",
+        'playbooks': playbooks,
+        'targets': targets,
+        'status': 'pending',
+        'total': len(playbooks),
+        'completed': 0,
+        'failed': 0,
+        'current_playbook': None,
+        'current_run_id': None,
+        'results': [],
+        'created': created_time,
+        'started': None,
+        'finished': None
+    }
+
+    # Save to storage
+    if storage_backend:
+        storage_backend.save_batch_job(batch_id, batch_job)
+
+    # Add to active tracking
+    with batch_lock:
+        active_batch_jobs[batch_id] = batch_job.copy()
+
+    # Start execution in background thread
+    thread = threading.Thread(
+        target=run_batch_job_streaming,
+        args=(batch_id, playbooks, targets, name)
+    )
+    thread.daemon = True
+    thread.start()
+
+    return batch_id, None
+
+
+def get_batch_job_status(batch_id):
+    """
+    Get the current status of a batch job.
+
+    Args:
+        batch_id: Batch job identifier
+
+    Returns:
+        Batch job dict or None if not found
+    """
+    # Check active jobs first (most up-to-date)
+    with batch_lock:
+        if batch_id in active_batch_jobs:
+            return active_batch_jobs[batch_id].copy()
+
+    # Fall back to storage
+    if storage_backend:
+        return storage_backend.get_batch_job(batch_id)
+
+    return None
+
+
 @app.route('/')
 def index():
     """Main page - list all playbooks"""
@@ -535,6 +1105,50 @@ def live_log(run_id):
                           target=run_info['target'],
                           status=run_info['status'],
                           log_file=run_info.get('log_file', ''))
+
+
+@app.route('/live/batch/<batch_id>')
+def batch_live_log(batch_id):
+    """View live streaming log for a batch job"""
+    batch_job = get_batch_job_status(batch_id)
+
+    if not batch_job:
+        return "Batch job not found", 404
+
+    return render_template('batch_live_log.html',
+                          batch_id=batch_id,
+                          batch_name=batch_job.get('name', f'Batch {batch_id[:8]}'),
+                          playbooks=batch_job.get('playbooks', []),
+                          targets=batch_job.get('targets', []),
+                          status=batch_job.get('status', 'pending'),
+                          total=batch_job.get('total', 0),
+                          current_playbook=batch_job.get('current_playbook'))
+
+
+@app.route('/playbooks')
+def playbooks_page():
+    """Individual playbooks page - run single playbooks against targets"""
+    playbooks = get_playbooks()
+    targets = get_inventory_targets()
+    playbook_data = []
+
+    for playbook in playbooks:
+        latest_log = get_latest_log(playbook)
+        status, run_id = get_playbook_status(playbook)
+        active_runs_list = get_active_runs_for_playbook(playbook)
+
+        playbook_data.append({
+            'name': playbook,
+            'display_name': playbook.replace('-', ' ').title(),
+            'latest_log': latest_log,
+            'last_run': get_log_timestamp(latest_log),
+            'status': status,
+            'run_id': run_id,
+            'active_runs': active_runs_list
+        })
+
+    return render_template('playbooks.html', playbooks=playbook_data, targets=targets)
+
 
 @app.route('/logs')
 def list_logs():
@@ -645,6 +1259,226 @@ def api_run_log(run_id):
         'playbook': run_info['playbook'],
         'target': run_info['target']
     })
+
+
+# =============================================================================
+# Batch Job API Endpoints
+# Handles batch execution of multiple playbooks against multiple targets
+# =============================================================================
+
+@app.route('/api/batch', methods=['GET'])
+def api_batch_list():
+    """
+    Get all batch jobs.
+
+    Query params:
+        - status: Filter by status (pending, running, completed, failed, partial)
+        - limit: Max number of jobs to return (default 50)
+    """
+    status_filter = request.args.get('status')
+    limit = request.args.get('limit', 50, type=int)
+
+    if storage_backend:
+        if status_filter:
+            batch_jobs = storage_backend.get_batch_jobs_by_status(status_filter)
+        else:
+            batch_jobs = storage_backend.get_all_batch_jobs()
+    else:
+        # Fall back to in-memory only
+        with batch_lock:
+            batch_jobs = list(active_batch_jobs.values())
+            if status_filter:
+                batch_jobs = [j for j in batch_jobs if j.get('status') == status_filter]
+
+    # Apply limit
+    batch_jobs = batch_jobs[:limit]
+
+    return jsonify({
+        'batch_jobs': batch_jobs,
+        'count': len(batch_jobs)
+    })
+
+
+@app.route('/api/batch/<batch_id>', methods=['GET'])
+def api_batch_detail(batch_id):
+    """Get details of a specific batch job."""
+    batch_job = get_batch_job_status(batch_id)
+    if batch_job:
+        return jsonify(batch_job)
+    return jsonify({'error': 'Batch job not found'}), 404
+
+
+@app.route('/api/batch', methods=['POST'])
+def api_batch_create():
+    """
+    Create and start a new batch job.
+
+    Request body:
+    {
+        "playbooks": ["playbook1", "playbook2"],  // Required, in execution order
+        "targets": ["host1", "group1"],           // Required
+        "name": "Optional display name"           // Optional
+    }
+    """
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'Request body required'}), 400
+
+    playbooks = data.get('playbooks', [])
+    targets = data.get('targets', [])
+    name = data.get('name')
+
+    if not playbooks:
+        return jsonify({'error': 'playbooks list is required'}), 400
+
+    if not targets:
+        return jsonify({'error': 'targets list is required'}), 400
+
+    # Ensure playbooks is a list
+    if isinstance(playbooks, str):
+        playbooks = [playbooks]
+
+    # Ensure targets is a list
+    if isinstance(targets, str):
+        targets = [targets]
+
+    batch_id, error = create_batch_job(playbooks, targets, name)
+
+    if error:
+        return jsonify({'error': error}), 400
+
+    return jsonify({
+        'batch_id': batch_id,
+        'status': 'pending',
+        'message': 'Batch job created and started'
+    }), 201
+
+
+@app.route('/api/batch/<batch_id>', methods=['DELETE'])
+def api_batch_delete(batch_id):
+    """
+    Delete a batch job.
+
+    Note: Cannot delete a running batch job.
+    """
+    batch_job = get_batch_job_status(batch_id)
+
+    if not batch_job:
+        return jsonify({'error': 'Batch job not found'}), 404
+
+    if batch_job.get('status') == 'running':
+        return jsonify({'error': 'Cannot delete a running batch job'}), 400
+
+    # Remove from active tracking
+    with batch_lock:
+        if batch_id in active_batch_jobs:
+            del active_batch_jobs[batch_id]
+
+    # Remove from storage
+    if storage_backend:
+        storage_backend.delete_batch_job(batch_id)
+
+    return jsonify({'message': 'Batch job deleted', 'batch_id': batch_id})
+
+
+@app.route('/api/batch/<batch_id>/logs', methods=['GET'])
+def api_batch_logs(batch_id):
+    """
+    Get log files for a batch job.
+
+    Returns list of log files for each playbook execution in the batch.
+    """
+    batch_job = get_batch_job_status(batch_id)
+
+    if not batch_job:
+        return jsonify({'error': 'Batch job not found'}), 404
+
+    results = batch_job.get('results', [])
+    logs = []
+
+    for result in results:
+        log_file = result.get('log_file')
+        if log_file:
+            log_path = os.path.join(LOGS_DIR, log_file)
+            logs.append({
+                'playbook': result.get('playbook'),
+                'log_file': log_file,
+                'status': result.get('status'),
+                'exists': os.path.exists(log_path)
+            })
+
+    return jsonify({
+        'batch_id': batch_id,
+        'logs': logs
+    })
+
+
+@app.route('/api/batch/<batch_id>/logs/<log_file>', methods=['GET'])
+def api_batch_log_content(batch_id, log_file):
+    """Get the content of a specific log file from a batch job."""
+    batch_job = get_batch_job_status(batch_id)
+
+    if not batch_job:
+        return jsonify({'error': 'Batch job not found'}), 404
+
+    # Verify the log file belongs to this batch job
+    valid_log = False
+    for result in batch_job.get('results', []):
+        if result.get('log_file') == log_file:
+            valid_log = True
+            break
+
+    if not valid_log:
+        return jsonify({'error': 'Log file not found for this batch job'}), 404
+
+    log_path = os.path.join(LOGS_DIR, log_file)
+    if not os.path.exists(log_path):
+        return jsonify({'error': 'Log file does not exist'}), 404
+
+    with open(log_path, 'r') as f:
+        content = f.read()
+
+    return jsonify({
+        'batch_id': batch_id,
+        'log_file': log_file,
+        'content': content
+    })
+
+
+@app.route('/api/batch/active', methods=['GET'])
+def api_batch_active():
+    """Get all currently active (running) batch jobs."""
+    with batch_lock:
+        active = {
+            batch_id: {k: v for k, v in job.items()}
+            for batch_id, job in active_batch_jobs.items()
+            if job.get('status') in ['pending', 'running']
+        }
+    return jsonify(active)
+
+
+@app.route('/api/batch/<batch_id>/export', methods=['GET'])
+def api_batch_export(batch_id):
+    """
+    Export a batch job configuration for reuse or version control.
+
+    Returns the batch job configuration without execution-specific data.
+    """
+    batch_job = get_batch_job_status(batch_id)
+
+    if not batch_job:
+        return jsonify({'error': 'Batch job not found'}), 404
+
+    # Export only the configuration, not execution state
+    export_data = {
+        'name': batch_job.get('name'),
+        'playbooks': batch_job.get('playbooks', []),
+        'targets': batch_job.get('targets', []),
+        'exported_from': batch_id,
+        'exported_at': datetime.now().isoformat()
+    }
+
+    return jsonify(export_data)
 
 
 # =============================================================================
@@ -922,6 +1756,213 @@ def api_inventory_search():
     query = request.get_json() or {}
     results = storage_backend.search_inventory(query)
     return jsonify(results)
+
+
+# =============================================================================
+# SSH Key Management API
+# =============================================================================
+
+SSH_KEYS_DIR = '/app/ssh-keys'
+
+@app.route('/api/ssh-keys')
+def api_ssh_keys_list():
+    """
+    List available SSH keys from the ssh-keys directory.
+
+    Returns:
+        JSON with list of key names and paths.
+    """
+    keys = []
+
+    # Check multiple locations for SSH keys
+    key_dirs = [
+        SSH_KEYS_DIR,      # Uploaded keys
+        '/app/.ssh',       # Mounted system keys
+    ]
+
+    for key_dir in key_dirs:
+        if os.path.isdir(key_dir):
+            for filename in os.listdir(key_dir):
+                filepath = os.path.join(key_dir, filename)
+                # Skip public keys and non-files
+                if os.path.isfile(filepath) and not filename.endswith('.pub'):
+                    keys.append({
+                        'name': filename,
+                        'path': filepath,
+                        'source': 'uploaded' if key_dir == SSH_KEYS_DIR else 'system'
+                    })
+
+    return jsonify({'keys': keys})
+
+
+@app.route('/api/ssh-keys', methods=['POST'])
+def api_ssh_keys_upload():
+    """
+    Upload a new SSH private key.
+
+    Expected JSON body:
+    {
+        "name": "my-key",
+        "content": "-----BEGIN RSA PRIVATE KEY-----\n..."
+    }
+
+    Returns:
+        JSON with the saved key path.
+    """
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+
+    name = data.get('name', '').strip()
+    content = data.get('content', '')
+
+    if not name:
+        return jsonify({'error': 'Key name is required'}), 400
+    if not content:
+        return jsonify({'error': 'Key content is required'}), 400
+
+    # Sanitize name - only allow alphanumeric, dash, underscore
+    import re
+    if not re.match(r'^[a-zA-Z0-9_-]+$', name):
+        return jsonify({'error': 'Key name can only contain letters, numbers, dashes, and underscores'}), 400
+
+    # Create directory if it doesn't exist
+    os.makedirs(SSH_KEYS_DIR, exist_ok=True)
+
+    key_path = os.path.join(SSH_KEYS_DIR, name)
+
+    # Check if key already exists
+    if os.path.exists(key_path):
+        return jsonify({'error': f'Key "{name}" already exists'}), 409
+
+    try:
+        # Write key file with secure permissions
+        with open(key_path, 'w') as f:
+            f.write(content)
+        os.chmod(key_path, 0o600)
+
+        return jsonify({
+            'success': True,
+            'name': name,
+            'path': key_path
+        })
+    except Exception as e:
+        return jsonify({'error': f'Failed to save key: {str(e)}'}), 500
+
+
+@app.route('/api/inventory/test-connection', methods=['POST'])
+def api_inventory_test_connection():
+    """
+    Test SSH connection to a host.
+
+    Expected JSON body:
+    {
+        "hostname": "192.168.1.50",
+        "variables": {
+            "ansible_user": "deploy",
+            "ansible_ssh_private_key_file": "/app/ssh-keys/my-key"
+        }
+    }
+
+    Returns:
+        JSON with success status and message.
+    """
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+
+    hostname = data.get('hostname', '').strip()
+    variables = data.get('variables', {})
+
+    if not hostname:
+        return jsonify({'error': 'Hostname is required'}), 400
+
+    # Create temporary inventory file for the test
+    import tempfile
+    import subprocess
+
+    try:
+        # Build inventory content
+        host_vars = []
+        for key, value in variables.items():
+            if isinstance(value, str):
+                host_vars.append(f'{key}="{value}"')
+            else:
+                host_vars.append(f'{key}={value}')
+
+        vars_str = ' '.join(host_vars)
+        inventory_content = f"[test]\n{hostname} {vars_str}\n"
+
+        # Write temporary inventory
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.ini', delete=False) as f:
+            f.write(inventory_content)
+            inventory_path = f.name
+
+        try:
+            # Run ansible ping module
+            result = subprocess.run(
+                [
+                    'ansible', hostname,
+                    '-i', inventory_path,
+                    '-m', 'ping',
+                    '--timeout', '10'
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+
+            if result.returncode == 0:
+                return jsonify({
+                    'success': True,
+                    'message': 'Connection successful'
+                })
+            else:
+                # Extract error message, combining stdout and stderr
+                error_msg = (result.stderr or '') + (result.stdout or '')
+
+                # Filter out deprecation warnings and other noise
+                lines = [l for l in error_msg.split('\n')
+                         if l.strip() and not l.startswith('[DEPRECATION WARNING]')
+                         and not l.startswith('[WARNING]')
+                         and 'is a more generic version' not in l
+                         and 'M(ansible.builtin' not in l]
+                error_msg = '\n'.join(lines[:5])  # Limit to first 5 meaningful lines
+
+                # Clean up the error message
+                if 'UNREACHABLE' in error_msg or not error_msg.strip():
+                    error_msg = 'Host unreachable - check hostname and network'
+                elif 'Permission denied' in error_msg:
+                    error_msg = 'Permission denied - check credentials'
+                elif 'No route to host' in error_msg:
+                    error_msg = 'No route to host - check network configuration'
+                elif 'Connection refused' in error_msg:
+                    error_msg = 'Connection refused - SSH service may not be running'
+                elif 'Connection timed out' in error_msg or 'timed out' in error_msg.lower():
+                    error_msg = 'Connection timed out - host may be unreachable'
+                else:
+                    # Truncate long errors
+                    error_msg = error_msg[:200] if len(error_msg) > 200 else error_msg
+
+                return jsonify({
+                    'success': False,
+                    'error': error_msg.strip() or 'Connection failed'
+                })
+
+        finally:
+            # Clean up temp file
+            os.unlink(inventory_path)
+
+    except subprocess.TimeoutExpired:
+        return jsonify({
+            'success': False,
+            'error': 'Connection timed out after 30 seconds'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Test failed: {str(e)}'
+        })
 
 
 # =============================================================================
@@ -1292,12 +2333,28 @@ def new_schedule():
     # Pre-select playbook if provided in query param
     selected_playbook = request.args.get('playbook', '')
 
+    # Check for batch mode from URL params (from "Schedule Batch" button)
+    batch_mode = request.args.get('batch') == 'true'
+    batch_playbooks = request.args.get('playbooks', '')
+    batch_targets = request.args.get('targets', '')
+    batch_name = request.args.get('name', '')
+
+    # Convert to lists for template
+    batch_playbooks_list = [p.strip() for p in batch_playbooks.split(',') if p.strip()] if batch_playbooks else []
+    batch_targets_list = [t.strip() for t in batch_targets.split(',') if t.strip()] if batch_targets else []
+
     return render_template('schedule_form.html',
                           playbooks=playbooks,
                           targets=targets,
                           selected_playbook=selected_playbook,
                           edit_mode=False,
-                          schedule=None)
+                          schedule=None,
+                          batch_mode=batch_mode,
+                          batch_playbooks=batch_playbooks,
+                          batch_targets=batch_targets,
+                          batch_name=batch_name,
+                          batch_playbooks_list=batch_playbooks_list,
+                          batch_targets_list=batch_targets_list)
 
 
 @app.route('/schedules/create', methods=['POST'])
@@ -1306,28 +2363,64 @@ def create_schedule():
     if not schedule_manager:
         return "Scheduler not initialized", 500
 
-    playbook = request.form.get('playbook')
-    target = request.form.get('target', 'host_machine')
+    # Check if this is a batch schedule
+    is_batch = request.form.get('is_batch') == 'true'
+
     name = request.form.get('name', '').strip()
     description = request.form.get('description', '').strip()
-
-    # Validate required fields
-    if not playbook or playbook not in get_playbooks():
-        return "Invalid playbook", 400
-    if not name:
-        name = f"{playbook} - {target}"
 
     # Build recurrence config from form data
     recurrence_config = build_recurrence_config(request.form)
 
-    # Create the schedule
-    schedule_id = schedule_manager.create_schedule(
-        playbook=playbook,
-        target=target,
-        name=name,
-        recurrence_config=recurrence_config,
-        description=description
-    )
+    if is_batch:
+        # Batch schedule - multiple playbooks and targets
+        playbooks_str = request.form.get('playbooks', '')
+        targets_str = request.form.get('targets', '')
+
+        playbooks = [p.strip() for p in playbooks_str.split(',') if p.strip()]
+        targets = [t.strip() for t in targets_str.split(',') if t.strip()]
+
+        # Validate
+        available_playbooks = get_playbooks()
+        invalid = [p for p in playbooks if p not in available_playbooks]
+        if invalid:
+            return f"Invalid playbooks: {', '.join(invalid)}", 400
+
+        if not playbooks:
+            return "No playbooks specified", 400
+        if not targets:
+            return "No targets specified", 400
+
+        if not name:
+            name = f"Batch: {len(playbooks)} playbooks - {len(targets)} targets"
+
+        # Create batch schedule
+        schedule_id = schedule_manager.create_batch_schedule(
+            playbooks=playbooks,
+            targets=targets,
+            name=name,
+            recurrence_config=recurrence_config,
+            description=description
+        )
+    else:
+        # Single playbook schedule (original behavior)
+        playbook = request.form.get('playbook')
+        target = request.form.get('target', 'host_machine')
+
+        # Validate required fields
+        if not playbook or playbook not in get_playbooks():
+            return "Invalid playbook", 400
+        if not name:
+            name = f"{playbook} - {target}"
+
+        # Create the schedule
+        schedule_id = schedule_manager.create_schedule(
+            playbook=playbook,
+            target=target,
+            name=name,
+            recurrence_config=recurrence_config,
+            description=description
+        )
 
     return redirect(url_for('schedules_page'))
 
@@ -1519,6 +2612,46 @@ def handle_leave_schedules():
     leave_room('schedules')
 
 
+@socketio.on('join_batch_jobs')
+def handle_join_batch_jobs():
+    """Join the batch_jobs room for real-time batch job updates"""
+    join_room('batch_jobs')
+
+
+@socketio.on('leave_batch_jobs')
+def handle_leave_batch_jobs():
+    """Leave the batch_jobs room"""
+    leave_room('batch_jobs')
+
+
+@socketio.on('join_batch')
+def handle_join_batch(data):
+    """Join a specific batch job's room to receive log updates"""
+    batch_id = data.get('batch_id')
+    if batch_id:
+        join_room(f'batch:{batch_id}')
+        # Send current status for catch-up
+        batch_job = get_batch_job_status(batch_id)
+        if batch_job:
+            emit('batch_catchup', {
+                'batch_id': batch_id,
+                'status': batch_job.get('status'),
+                'completed': batch_job.get('completed', 0),
+                'failed': batch_job.get('failed', 0),
+                'total': batch_job.get('total', 0),
+                'current_playbook': batch_job.get('current_playbook'),
+                'results': batch_job.get('results', [])
+            })
+
+
+@socketio.on('leave_batch')
+def handle_leave_batch(data):
+    """Leave a specific batch job's room"""
+    batch_id = data.get('batch_id')
+    if batch_id:
+        leave_room(f'batch:{batch_id}')
+
+
 if __name__ == '__main__':
     # Initialize storage backend
     storage_backend = get_storage_backend()
@@ -1537,7 +2670,8 @@ if __name__ == '__main__':
         runs_lock=runs_lock,
         storage=storage_backend,
         is_managed_host_fn=is_managed_host,
-        generate_managed_inventory_fn=generate_managed_inventory
+        generate_managed_inventory_fn=generate_managed_inventory,
+        create_batch_job_fn=create_batch_job
     )
     schedule_manager.start()
     print("Schedule manager initialized and started")

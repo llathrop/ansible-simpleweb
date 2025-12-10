@@ -4,6 +4,7 @@ A lightweight, Docker-based web interface for managing and executing Ansible pla
 
 ## Features
 
+### Core Features
 - 🚀 **One-Click Execution** - Run any playbook with a single button click
 - 🎯 **Multi-Host Support** - Target individual hosts or groups via dropdown selection
 - 📊 **Real-Time Status** - Live status updates (Ready/Running/Completed/Failed)
@@ -15,6 +16,24 @@ A lightweight, Docker-based web interface for managing and executing Ansible pla
 - 🔒 **Localhost First** - Secure by default, ready for authentication later
 - 💾 **Flexible Storage** - Choose between flat file (JSON) or MongoDB for data persistence
 - 📦 **Inventory Management** - API for managing host inventory with full CRUD operations
+
+### Batch Job Execution (NEW)
+- 📦 **Batch Jobs** - Select multiple playbooks and hosts, run them sequentially as a named batch
+- 🔄 **Playbook Ordering** - Drag-and-drop or up/down buttons to reorder playbook execution
+- 👁️ **Live Batch Monitoring** - Watch batch progress with automatic log switching between playbooks
+- 📤 **Export Configurations** - Export batch job configs as JSON for version control
+- ⏰ **Batch Scheduling** - Schedule batch jobs with full recurrence options
+
+### Schedule Management
+- ⏱️ **Playbook Scheduling** - Schedule single playbooks or batch jobs with cron-like recurrence
+- 📈 **Success Rate Tracking** - Track success/failure rates per schedule (e.g., "8/10 succeeded")
+- 📋 **Execution History** - View detailed history of scheduled runs
+
+### Host Configuration Wizard (NEW)
+- 🧙 **Multi-Step Wizard** - Guided 4-step process for adding/editing hosts
+- 🔑 **SSH Key Management** - Upload and manage SSH private keys securely
+- 🔐 **Multiple Auth Methods** - Support for SSH keys, passwords, or SSH agent
+- 🔍 **Connection Testing** - Test SSH connectivity before saving host configuration
 
 ## Quick Start
 
@@ -96,23 +115,32 @@ ansible-simpleweb/
 ├── inventory/          # Configure target hosts here
 │   └── hosts          # Main inventory file (Ansible INI format)
 ├── logs/              # Playbook execution logs (auto-generated)
+├── ssh-keys/          # Uploaded SSH private keys (writable)
+├── .ssh/              # System SSH keys (read-only mount)
 ├── config/            # Configuration files
 │   ├── themes/        # Theme JSON files (customizable)
 │   ├── schedules.json # Schedule definitions (flatfile backend)
 │   ├── schedule_history.json # Execution history (flatfile backend)
-│   └── inventory.json # Managed inventory (flatfile backend)
+│   ├── inventory.json # Managed inventory (flatfile backend)
+│   └── batch_jobs.json # Batch job records (flatfile backend)
 ├── web/               # Flask web application
-│   ├── app.py         # Main Flask application
-│   ├── scheduler.py   # APScheduler integration
+│   ├── app.py         # Main Flask application (~2000 lines)
+│   ├── scheduler.py   # APScheduler integration (batch + single schedules)
 │   ├── storage/       # Storage backend abstraction
 │   │   ├── __init__.py    # Factory function
-│   │   ├── base.py        # Abstract interface
+│   │   ├── base.py        # Abstract interface (inventory, schedules, batch jobs, CMDB)
 │   │   ├── flatfile.py    # JSON file storage
 │   │   └── mongodb.py     # MongoDB storage
 │   ├── migrate_storage.py # Migration script between backends
 │   ├── templates/
+│   │   ├── index.html         # Batch execution page (main)
+│   │   ├── playbooks.html     # Individual playbook cards
+│   │   ├── schedules.html     # Schedule management
+│   │   ├── schedule_form.html # Create/edit schedules (batch mode support)
+│   │   ├── inventory.html     # CMDB with host wizard
+│   │   └── batch_live_log.html # Live batch job monitoring
 │   └── static/
-└── docker-compose.yml # Includes MongoDB container
+└── docker-compose.yml # Includes MongoDB container + ssh-keys volume
 ```
 
 ## Documentation
@@ -141,6 +169,9 @@ This project includes 5 example playbooks:
 ✅ **Step 4:** Multi-host target selection
 ✅ **Step 5:** Theming system with dark mode and accessibility themes
 ✅ **Step 6:** Pluggable storage backend (flat file / MongoDB)
+✅ **Step 7:** Batch job execution with live monitoring
+✅ **Step 8:** Schedule management with batch support and success tracking
+✅ **Step 9:** Host configuration wizard with SSH key management
 
 **Status:** Production-ready for local use
 
@@ -203,29 +234,29 @@ docker-compose exec -T ansible-web ansible-playbook playbooks/your-playbook.yml 
 - [ ] Log search/filter functionality in web interface
 
 **User Experience**
-- [ ] Playbook scheduling (cron-like interface)
+- [x] ~~Playbook scheduling (cron-like interface)~~ Full schedule management with recurrence options
 - [ ] Email notifications on playbook completion
 - [ ] Slack/Teams/Discord webhook integrations
-- [ ] Real-time log streaming (WebSocket)
+- [x] ~~Real-time log streaming (WebSocket)~~ Live batch job monitoring with auto-switching
 - [x] ~~Dark mode toggle~~ Theming system with multiple themes (dark, low-contrast, colorblind)
 - [ ] Mobile app or PWA support
 
 **Advanced Features**
 - [ ] Playbook templates library
 - [ ] Variable substitution in playbooks via UI
-- [ ] Playbook chaining (run multiple in sequence)
+- [x] ~~Playbook chaining (run multiple in sequence)~~ Batch jobs with ordered playbook execution
 - [ ] Conditional execution based on previous results
-- [ ] Inventory management UI (add/edit hosts via web)
-- [ ] SSH key management interface
+- [x] ~~Inventory management UI (add/edit hosts via web)~~ Full CMDB with multi-step wizard
+- [x] ~~SSH key management interface~~ Upload/select SSH keys in host wizard
 - [ ] Ansible Vault integration
 - [ ] Multi-user playbook execution queue
 
 **Monitoring & Reporting**
-- [ ] Execution history dashboard
-- [ ] Success/failure rate statistics
+- [x] ~~Execution history dashboard~~ Schedule history with per-schedule tracking
+- [x] ~~Success/failure rate statistics~~ Success rate per schedule (e.g., "8/10 succeeded")
 - [ ] Host health monitoring
 - [ ] Performance metrics (execution time trends)
-- [ ] Export reports (PDF, CSV)
+- [x] ~~Export reports (PDF, CSV)~~ Export batch job configs as JSON
 
 **Documentation**
 - [ ] Video walkthrough/tutorial

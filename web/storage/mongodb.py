@@ -56,6 +56,7 @@ class MongoDBStorage(StorageBackend):
         self.history_collection = self.db['history']
         self.inventory_collection = self.db['inventory']
         self.host_facts_collection = self.db['host_facts']
+        self.batch_jobs_collection = self.db['batch_jobs']
 
         # Ensure indexes
         self._ensure_indexes()
@@ -80,6 +81,11 @@ class MongoDBStorage(StorageBackend):
             self.host_facts_collection.create_index('host', unique=True)
             self.host_facts_collection.create_index('groups')
             self.host_facts_collection.create_index([('last_updated', DESCENDING)])
+
+            # Batch jobs - indexes for queries
+            self.batch_jobs_collection.create_index('id', unique=True)
+            self.batch_jobs_collection.create_index('status')
+            self.batch_jobs_collection.create_index([('created', DESCENDING)])
         except Exception as e:
             print(f"Warning: Could not create indexes: {e}")
 
@@ -539,6 +545,109 @@ class MongoDBStorage(StorageBackend):
         except Exception as e:
             print(f"Error importing host facts to MongoDB: {e}")
             return False
+
+    # =========================================================================
+    # Batch Job Operations
+    # =========================================================================
+
+    def get_all_batch_jobs(self) -> List[Dict]:
+        """Get all batch jobs, sorted by created date (newest first)."""
+        try:
+            batch_jobs = []
+            cursor = self.batch_jobs_collection.find().sort('created', DESCENDING)
+            for doc in cursor:
+                doc.pop('_id', None)
+                batch_jobs.append(doc)
+            return batch_jobs
+        except Exception as e:
+            print(f"Error loading batch jobs from MongoDB: {e}")
+            return []
+
+    def get_batch_job(self, batch_id: str) -> Optional[Dict]:
+        """Get a single batch job by ID."""
+        try:
+            doc = self.batch_jobs_collection.find_one({'id': batch_id})
+            if doc:
+                doc.pop('_id', None)
+                return doc
+            return None
+        except Exception as e:
+            print(f"Error getting batch job from MongoDB: {e}")
+            return None
+
+    def save_batch_job(self, batch_id: str, batch_job: Dict) -> bool:
+        """Save or update a batch job."""
+        try:
+            # Ensure id is in the document
+            batch_job['id'] = batch_id
+            self.batch_jobs_collection.replace_one(
+                {'id': batch_id},
+                batch_job,
+                upsert=True
+            )
+            return True
+        except Exception as e:
+            print(f"Error saving batch job to MongoDB: {e}")
+            return False
+
+    def delete_batch_job(self, batch_id: str) -> bool:
+        """Delete a batch job."""
+        try:
+            result = self.batch_jobs_collection.delete_one({'id': batch_id})
+            return result.deleted_count > 0
+        except Exception as e:
+            print(f"Error deleting batch job from MongoDB: {e}")
+            return False
+
+    def get_batch_jobs_by_status(self, status: str) -> List[Dict]:
+        """Get batch jobs filtered by status."""
+        try:
+            batch_jobs = []
+            cursor = self.batch_jobs_collection.find({'status': status}).sort('created', DESCENDING)
+            for doc in cursor:
+                doc.pop('_id', None)
+                batch_jobs.append(doc)
+            return batch_jobs
+        except Exception as e:
+            print(f"Error getting batch jobs by status from MongoDB: {e}")
+            return []
+
+    def cleanup_batch_jobs(self, max_age_days: int = 30, keep_count: int = 100) -> int:
+        """Clean up old batch jobs."""
+        try:
+            from datetime import timedelta
+
+            # Count total jobs
+            total = self.batch_jobs_collection.count_documents({})
+            if total <= keep_count:
+                return 0
+
+            # Calculate cutoff date
+            cutoff = datetime.now() - timedelta(days=max_age_days)
+            cutoff_str = cutoff.isoformat()
+
+            # Get IDs of jobs to potentially delete (excluding running jobs)
+            # First, get the newest keep_count job IDs to preserve
+            cursor = self.batch_jobs_collection.find(
+                {},
+                {'id': 1}
+            ).sort('created', DESCENDING).limit(keep_count)
+            keep_ids = {doc['id'] for doc in cursor}
+
+            # Delete jobs that are:
+            # 1. Not in the keep_ids set
+            # 2. Older than cutoff
+            # 3. Not running
+            result = self.batch_jobs_collection.delete_many({
+                'id': {'$nin': list(keep_ids)},
+                'created': {'$lt': cutoff_str},
+                'status': {'$ne': 'running'}
+            })
+
+            return result.deleted_count
+        except Exception as e:
+            print(f"Error cleaning up batch jobs in MongoDB: {e}")
+            return 0
 
     # =========================================================================
     # Utility Operations

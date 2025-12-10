@@ -41,7 +41,8 @@ class ScheduleManager:
 
     def __init__(self, socketio, run_playbook_fn: Callable, active_runs: Dict,
                  runs_lock: threading.Lock, storage=None,
-                 is_managed_host_fn: Callable = None, generate_managed_inventory_fn: Callable = None):
+                 is_managed_host_fn: Callable = None, generate_managed_inventory_fn: Callable = None,
+                 create_batch_job_fn: Callable = None):
         """
         Initialize the schedule manager.
 
@@ -53,6 +54,7 @@ class ScheduleManager:
             storage: Storage backend instance (from storage module)
             is_managed_host_fn: Optional function to check if host is in managed inventory
             generate_managed_inventory_fn: Optional function to generate temp inventory for managed hosts
+            create_batch_job_fn: Optional function to create and execute batch jobs
         """
         self.socketio = socketio
         self.run_playbook_fn = run_playbook_fn
@@ -61,6 +63,7 @@ class ScheduleManager:
         self.storage = storage
         self.is_managed_host = is_managed_host_fn
         self.generate_managed_inventory = generate_managed_inventory_fn
+        self.create_batch_job_fn = create_batch_job_fn
 
         # Schedule storage (in-memory cache, backed by storage backend)
         self.schedules: Dict[str, Dict] = {}
@@ -268,6 +271,7 @@ class ScheduleManager:
         Execute playbook for a scheduled job.
 
         This is called by APScheduler in a worker thread.
+        Supports both single playbook and batch executions.
         """
         # Get schedule info
         with self.schedules_lock:
@@ -277,6 +281,14 @@ class ScheduleManager:
                 return
             schedule = schedule.copy()  # Work with a copy
 
+        # Check if this is a batch schedule
+        is_batch = schedule.get('is_batch', False)
+
+        if is_batch:
+            self._execute_batch_schedule(schedule_id, schedule)
+            return
+
+        # Single playbook execution (original behavior)
         playbook = schedule['playbook']
         target = schedule['target']
 
@@ -352,6 +364,12 @@ class ScheduleManager:
                 self.schedules[schedule_id]['run_count'] = self.schedules[schedule_id].get('run_count', 0) + 1
                 self.schedules[schedule_id]['current_run_id'] = None
 
+                # Track success/failure counts
+                if status == 'completed':
+                    self.schedules[schedule_id]['success_count'] = self.schedules[schedule_id].get('success_count', 0) + 1
+                else:
+                    self.schedules[schedule_id]['failed_count'] = self.schedules[schedule_id].get('failed_count', 0) + 1
+
                 # For one-time schedules, disable after execution
                 if schedule['recurrence']['type'] == 'once':
                     self.schedules[schedule_id]['enabled'] = False
@@ -375,6 +393,128 @@ class ScheduleManager:
             'run_id': run_id,
             'status': status,
             'log_file': log_file
+        }, room='schedules')
+
+    def _execute_batch_schedule(self, schedule_id: str, schedule: Dict):
+        """
+        Execute a batch job for a scheduled batch.
+
+        Args:
+            schedule_id: Schedule identifier
+            schedule: Schedule configuration dict
+        """
+        playbooks = schedule.get('playbooks', [])
+        targets = schedule.get('targets', [])
+        name = schedule.get('name', f'Scheduled Batch {schedule_id[:8]}')
+
+        if not playbooks or not targets:
+            print(f"Batch schedule {schedule_id} has no playbooks or targets")
+            return
+
+        started = datetime.now()
+
+        # Update schedule status
+        with self.schedules_lock:
+            if schedule_id in self.schedules:
+                self.schedules[schedule_id]['last_run'] = started.isoformat()
+                self.schedules[schedule_id]['last_status'] = 'running'
+                self._save_schedule(schedule_id)
+
+        # Emit schedule started event
+        self.socketio.emit('schedule_started', {
+            'schedule_id': schedule_id,
+            'is_batch': True,
+            'playbooks': playbooks,
+            'targets': targets,
+            'name': name
+        }, room='schedules')
+
+        status = 'failed'
+        batch_id = None
+
+        try:
+            if self.create_batch_job_fn:
+                # Create and execute batch job
+                batch_id, error = self.create_batch_job_fn(
+                    playbooks=playbooks,
+                    targets=targets,
+                    name=f"{name} (Scheduled)"
+                )
+
+                if error:
+                    print(f"Error creating batch job for schedule {schedule_id}: {error}")
+                    status = 'failed'
+                else:
+                    # Wait for batch job to complete by polling
+                    # The batch job runs in its own thread, so we need to wait
+                    import time
+                    max_wait = 3600  # Max 1 hour wait
+                    waited = 0
+                    poll_interval = 5
+
+                    while waited < max_wait:
+                        time.sleep(poll_interval)
+                        waited += poll_interval
+
+                        # Check batch job status from storage
+                        if self.storage:
+                            batch_job = self.storage.get_batch_job(batch_id)
+                            if batch_job:
+                                batch_status = batch_job.get('status')
+                                if batch_status in ['completed', 'failed', 'partial']:
+                                    status = batch_status
+                                    break
+
+                    if waited >= max_wait:
+                        status = 'timeout'
+            else:
+                print(f"No batch job function configured for schedule {schedule_id}")
+                status = 'failed'
+
+        except Exception as e:
+            status = 'failed'
+            print(f"Scheduled batch execution error: {e}")
+
+        finished = datetime.now()
+
+        # Update schedule
+        with self.schedules_lock:
+            if schedule_id in self.schedules:
+                self.schedules[schedule_id]['last_status'] = status
+                self.schedules[schedule_id]['run_count'] = self.schedules[schedule_id].get('run_count', 0) + 1
+                self.schedules[schedule_id]['last_batch_id'] = batch_id
+
+                # Track success/failure counts (completed and partial count as success)
+                if status in ['completed', 'partial']:
+                    self.schedules[schedule_id]['success_count'] = self.schedules[schedule_id].get('success_count', 0) + 1
+                else:
+                    self.schedules[schedule_id]['failed_count'] = self.schedules[schedule_id].get('failed_count', 0) + 1
+
+                # For one-time schedules, disable after execution
+                if schedule['recurrence']['type'] == 'once':
+                    self.schedules[schedule_id]['enabled'] = False
+
+                self._save_schedule(schedule_id)
+
+        # Update next_run time
+        self._update_next_run(schedule_id)
+
+        # Record in history (use batch_id as run_id reference)
+        self._record_execution(
+            schedule_id,
+            batch_id or 'batch-error',
+            f"batch-{batch_id[:8] if batch_id else 'error'}",
+            status,
+            started,
+            finished
+        )
+
+        # Emit completion event
+        self.socketio.emit('schedule_completed', {
+            'schedule_id': schedule_id,
+            'batch_id': batch_id,
+            'is_batch': True,
+            'status': status
         }, room='schedules')
 
     # =========================================================================
@@ -411,6 +551,8 @@ class ScheduleManager:
             'last_status': None,
             'next_run': None,
             'run_count': 0,
+            'success_count': 0,
+            'failed_count': 0,
             'current_run_id': None
         }
 
@@ -425,6 +567,60 @@ class ScheduleManager:
         self.socketio.emit('schedule_created', {
             'schedule_id': schedule_id,
             'schedule': self._format_schedule_for_display(schedule)
+        }, room='schedules')
+
+        return schedule_id
+
+    def create_batch_schedule(self, playbooks: List[str], targets: List[str], name: str,
+                              recurrence_config: Dict, description: str = '') -> str:
+        """
+        Create a new batch schedule (multiple playbooks, multiple targets).
+
+        Args:
+            playbooks: List of playbook names (without .yml) in execution order
+            targets: List of target hosts/groups
+            name: Human-readable schedule name
+            recurrence_config: Dict with recurrence settings
+            description: Optional description
+
+        Returns:
+            schedule_id: UUID of created schedule
+        """
+        schedule_id = str(uuid.uuid4())
+
+        schedule = {
+            'id': schedule_id,
+            'is_batch': True,
+            'playbooks': playbooks,
+            'targets': targets,
+            'playbook': playbooks[0] if playbooks else None,  # For display compatibility
+            'target': f"{len(targets)} targets",  # For display compatibility
+            'name': name,
+            'description': description,
+            'recurrence': recurrence_config,
+            'enabled': True,
+            'created': datetime.now().isoformat(),
+            'last_run': None,
+            'last_status': None,
+            'next_run': None,
+            'run_count': 0,
+            'success_count': 0,
+            'failed_count': 0,
+            'last_batch_id': None
+        }
+
+        with self.schedules_lock:
+            self.schedules[schedule_id] = schedule
+            self._save_schedule(schedule_id)
+
+        # Register with APScheduler
+        self._register_job(schedule_id, schedule)
+
+        # Emit event
+        self.socketio.emit('schedule_created', {
+            'schedule_id': schedule_id,
+            'schedule': self._format_schedule_for_display(schedule),
+            'is_batch': True
         }, room='schedules')
 
         return schedule_id
@@ -640,6 +836,25 @@ class ScheduleManager:
             schedule['status'] = 'paused'
         else:
             schedule['status'] = 'scheduled'
+
+        # Calculate success rate
+        run_count = schedule.get('run_count', 0)
+        success_count = schedule.get('success_count', 0)
+        failed_count = schedule.get('failed_count', 0)
+
+        if run_count > 0:
+            schedule['success_rate'] = round((success_count / run_count) * 100)
+            schedule['success_display'] = f"{success_count}/{run_count}"
+        else:
+            schedule['success_rate'] = None
+            schedule['success_display'] = "No runs yet"
+
+        # Last status with counter display
+        last_status = schedule.get('last_status')
+        if last_status and run_count > 0:
+            schedule['status_with_count'] = f"{last_status} ({success_count}/{run_count})"
+        else:
+            schedule['status_with_count'] = last_status or 'Never run'
 
         return schedule
 

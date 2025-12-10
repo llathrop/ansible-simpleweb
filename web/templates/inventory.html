@@ -170,6 +170,229 @@
             background: var(--bg-secondary);
             color: var(--text-primary);
         }
+        /* Wizard Styles */
+        .wizard-modal .modal-content {
+            max-width: 600px;
+        }
+        .wizard-steps {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 25px;
+            position: relative;
+        }
+        .wizard-steps::before {
+            content: '';
+            position: absolute;
+            top: 15px;
+            left: 40px;
+            right: 40px;
+            height: 2px;
+            background: var(--border-primary);
+        }
+        .wizard-step {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+            z-index: 1;
+        }
+        .wizard-step-number {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: var(--bg-tertiary);
+            border: 2px solid var(--border-primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: var(--text-muted);
+        }
+        .wizard-step.active .wizard-step-number {
+            background: var(--btn-primary-bg);
+            border-color: var(--btn-primary-bg);
+            color: var(--btn-primary-text);
+        }
+        .wizard-step.completed .wizard-step-number {
+            background: var(--status-completed-bg);
+            border-color: var(--status-completed-bg);
+            color: var(--status-completed-text);
+        }
+        .wizard-step-label {
+            font-size: 0.75em;
+            color: var(--text-muted);
+            text-align: center;
+        }
+        .wizard-step.active .wizard-step-label,
+        .wizard-step.completed .wizard-step-label {
+            color: var(--text-primary);
+        }
+        .wizard-content {
+            min-height: 250px;
+        }
+        .wizard-page {
+            display: none;
+        }
+        .wizard-page.active {
+            display: block;
+        }
+        .wizard-nav {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 1px solid var(--border-primary);
+        }
+        .wizard-nav-left, .wizard-nav-right {
+            display: flex;
+            gap: 10px;
+        }
+        /* Auth method selection */
+        .auth-method-options {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        .auth-method-option {
+            flex: 1;
+            padding: 15px;
+            border: 2px solid var(--border-primary);
+            border-radius: 8px;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.2s;
+        }
+        .auth-method-option:hover {
+            border-color: var(--btn-primary-bg);
+        }
+        .auth-method-option.selected {
+            border-color: var(--btn-primary-bg);
+            background: rgba(var(--btn-primary-bg-rgb, 66,133,244), 0.1);
+        }
+        .auth-method-option .auth-icon {
+            font-size: 1.5em;
+            margin-bottom: 5px;
+        }
+        .auth-method-option .auth-label {
+            font-weight: bold;
+        }
+        .auth-method-option .auth-desc {
+            font-size: 0.8em;
+            color: var(--text-muted);
+            margin-top: 3px;
+        }
+        .auth-fields {
+            display: none;
+        }
+        .auth-fields.active {
+            display: block;
+        }
+        /* SSH Key Section */
+        .ssh-key-section {
+            margin-top: 15px;
+        }
+        .ssh-key-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .ssh-key-tab {
+            padding: 8px 16px;
+            border: 1px solid var(--border-primary);
+            border-radius: 4px;
+            background: var(--bg-tertiary);
+            cursor: pointer;
+        }
+        .ssh-key-tab.active {
+            background: var(--btn-primary-bg);
+            color: var(--btn-primary-text);
+            border-color: var(--btn-primary-bg);
+        }
+        .ssh-key-upload {
+            border: 2px dashed var(--border-primary);
+            padding: 20px;
+            text-align: center;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        .ssh-key-upload:hover {
+            border-color: var(--btn-primary-bg);
+        }
+        .ssh-key-upload.dragover {
+            background: rgba(var(--btn-primary-bg-rgb, 66,133,244), 0.1);
+            border-color: var(--btn-primary-bg);
+        }
+        .ssh-key-list {
+            max-height: 150px;
+            overflow-y: auto;
+            border: 1px solid var(--border-primary);
+            border-radius: 4px;
+        }
+        .ssh-key-item {
+            padding: 10px;
+            border-bottom: 1px solid var(--border-primary);
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .ssh-key-item:last-child {
+            border-bottom: none;
+        }
+        .ssh-key-item:hover {
+            background: var(--bg-tertiary);
+        }
+        .ssh-key-item.selected {
+            background: rgba(var(--btn-primary-bg-rgb, 66,133,244), 0.1);
+        }
+        /* Review section */
+        .review-section {
+            background: var(--bg-tertiary);
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+        .review-row {
+            display: flex;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border-primary);
+        }
+        .review-row:last-child {
+            border-bottom: none;
+        }
+        .review-label {
+            width: 140px;
+            font-weight: bold;
+            color: var(--text-muted);
+        }
+        .review-value {
+            flex: 1;
+            color: var(--text-primary);
+        }
+        /* Connection test */
+        .connection-test {
+            margin-top: 15px;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .connection-test.testing {
+            background: var(--status-running-bg);
+            color: var(--status-running-text);
+        }
+        .connection-test.success {
+            background: var(--status-completed-bg);
+            color: var(--status-completed-text);
+        }
+        .connection-test.failed {
+            background: var(--status-failed-bg);
+            color: var(--status-failed-text);
+        }
+        .connection-test .test-icon {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
     </style>
 </head>
 <body>
@@ -178,8 +401,10 @@
         <p class="subtitle">Manage hosts and servers in the database</p>
 
         <div class="nav-links">
-            <a href="/">Home</a>
+            <a href="/">Batch Execution</a>
+            <a href="/playbooks">Playbooks</a>
             <a href="/schedules">Schedules</a>
+            <strong><a href="/inventory">CMDB</a></strong>
             <a href="/storage">Storage Info</a>
             <a href="/logs">All Logs</a>
         </div>
@@ -258,43 +483,184 @@
         </div>
     </div>
 
-    <!-- Add/Edit Modal -->
-    <div class="modal" id="itemModal">
+    <!-- Host Configuration Wizard Modal -->
+    <div class="modal wizard-modal" id="itemModal">
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="modalTitle">Add Host</h2>
                 <button class="modal-close" onclick="closeModal()">&times;</button>
             </div>
+
+            <!-- Wizard Step Indicators -->
+            <div class="wizard-steps">
+                <div class="wizard-step active" data-step="1">
+                    <div class="wizard-step-number">1</div>
+                    <div class="wizard-step-label">Basic Info</div>
+                </div>
+                <div class="wizard-step" data-step="2">
+                    <div class="wizard-step-number">2</div>
+                    <div class="wizard-step-label">Authentication</div>
+                </div>
+                <div class="wizard-step" data-step="3">
+                    <div class="wizard-step-number">3</div>
+                    <div class="wizard-step-label">SSH Key</div>
+                </div>
+                <div class="wizard-step" data-step="4">
+                    <div class="wizard-step-number">4</div>
+                    <div class="wizard-step-label">Review</div>
+                </div>
+            </div>
+
             <form id="itemForm" onsubmit="saveItem(event)">
                 <input type="hidden" id="itemId">
-                <div class="form-group">
-                    <label for="hostname">Hostname / IP *</label>
-                    <input type="text" id="hostname" required placeholder="server.example.com or 192.168.1.100">
+                <div class="wizard-content">
+                    <!-- Step 1: Basic Info -->
+                    <div class="wizard-page active" data-page="1">
+                        <h3>Basic Information</h3>
+                        <div class="form-group">
+                            <label for="hostname">Hostname / IP *</label>
+                            <input type="text" id="hostname" required placeholder="server.example.com or 192.168.1.100">
+                        </div>
+                        <div class="form-group">
+                            <label for="displayName">Display Name</label>
+                            <input type="text" id="displayName" placeholder="Friendly name (optional)">
+                        </div>
+                        <div class="form-group">
+                            <label for="group">Group</label>
+                            <input type="text" id="group" placeholder="webservers, databases, etc." list="groupList">
+                            <datalist id="groupList">
+                                {% for g in groups %}
+                                <option value="{{ g }}">
+                                {% endfor %}
+                            </datalist>
+                        </div>
+                        <div class="form-group">
+                            <label for="description">Description</label>
+                            <input type="text" id="description" placeholder="Optional description">
+                        </div>
+                    </div>
+
+                    <!-- Step 2: Authentication -->
+                    <div class="wizard-page" data-page="2">
+                        <h3>Authentication Settings</h3>
+                        <div class="form-group">
+                            <label for="ansibleUser">SSH Username</label>
+                            <input type="text" id="ansibleUser" placeholder="root, deploy, ansible, etc.">
+                        </div>
+                        <div class="form-group">
+                            <label for="ansiblePort">SSH Port</label>
+                            <input type="number" id="ansiblePort" placeholder="22" value="22">
+                        </div>
+                        <div class="form-group">
+                            <label>Authentication Method</label>
+                            <div class="auth-method-options">
+                                <div class="auth-method-option" data-method="key" onclick="selectAuthMethod('key')">
+                                    <div class="auth-icon">🔑</div>
+                                    <div class="auth-label">SSH Key</div>
+                                    <div class="auth-desc">Recommended</div>
+                                </div>
+                                <div class="auth-method-option" data-method="password" onclick="selectAuthMethod('password')">
+                                    <div class="auth-icon">🔒</div>
+                                    <div class="auth-label">Password</div>
+                                    <div class="auth-desc">Less secure</div>
+                                </div>
+                                <div class="auth-method-option" data-method="agent" onclick="selectAuthMethod('agent')">
+                                    <div class="auth-icon">🔗</div>
+                                    <div class="auth-label">SSH Agent</div>
+                                    <div class="auth-desc">Use system agent</div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Password field (hidden by default) -->
+                        <div class="auth-fields" id="passwordFields">
+                            <div class="form-group">
+                                <label for="ansiblePassword">SSH Password</label>
+                                <input type="password" id="ansiblePassword" placeholder="Enter password">
+                                <small style="color: var(--text-muted);">Note: Password will be stored. SSH keys are more secure.</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Step 3: SSH Key -->
+                    <div class="wizard-page" data-page="3">
+                        <h3>SSH Key Configuration</h3>
+                        <div id="sshKeySection">
+                            <div class="ssh-key-tabs">
+                                <div class="ssh-key-tab active" onclick="switchKeyTab('existing')">Use Existing Key</div>
+                                <div class="ssh-key-tab" onclick="switchKeyTab('upload')">Upload New Key</div>
+                            </div>
+
+                            <!-- Existing Keys List -->
+                            <div id="existingKeysTab">
+                                <p style="margin-bottom: 10px; color: var(--text-muted);">Select an existing SSH key:</p>
+                                <div class="ssh-key-list" id="sshKeyList">
+                                    <div class="ssh-key-item" style="color: var(--text-muted); justify-content: center;">
+                                        Loading keys...
+                                    </div>
+                                </div>
+                                <input type="hidden" id="selectedKeyPath">
+                            </div>
+
+                            <!-- Upload New Key -->
+                            <div id="uploadKeyTab" style="display: none;">
+                                <div class="form-group">
+                                    <label for="keyName">Key Name *</label>
+                                    <input type="text" id="keyName" placeholder="my-server-key">
+                                    <small style="color: var(--text-muted);">Will be saved as /app/ssh-keys/[name]</small>
+                                </div>
+                                <div class="ssh-key-upload" id="keyDropZone" onclick="document.getElementById('keyFileInput').click()">
+                                    <div>📁 Click to browse or drag & drop your private key file</div>
+                                    <div style="font-size: 0.85em; color: var(--text-muted); margin-top: 5px;">Supports: id_rsa, id_ed25519, etc.</div>
+                                </div>
+                                <input type="file" id="keyFileInput" style="display: none;" onchange="handleKeyFile(event)">
+                                <div id="keyFileStatus" style="margin-top: 10px; display: none;">
+                                    <span style="color: var(--status-completed-text);">✓</span>
+                                    <span id="keyFileName"></span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Skip message for non-key auth -->
+                        <div id="skipKeyMessage" style="display: none; text-align: center; padding: 40px;">
+                            <div style="font-size: 2em; margin-bottom: 10px;">ℹ️</div>
+                            <p>SSH key configuration is not needed for your selected authentication method.</p>
+                            <p style="color: var(--text-muted);">Click Next to continue.</p>
+                        </div>
+                    </div>
+
+                    <!-- Step 4: Review & Test -->
+                    <div class="wizard-page" data-page="4">
+                        <h3>Review Configuration</h3>
+                        <div class="review-section" id="reviewSection">
+                            <!-- Populated by JavaScript -->
+                        </div>
+
+                        <div class="form-group">
+                            <label for="extraVariables">Additional Variables (JSON, optional)</label>
+                            <textarea id="extraVariables" placeholder='{"ansible_become": true}'></textarea>
+                        </div>
+
+                        <div class="connection-test" id="connectionTest" style="display: none;">
+                            <div class="test-icon" id="testIcon">🔄</div>
+                            <div id="testMessage">Testing connection...</div>
+                        </div>
+
+                        <button type="button" class="btn btn-secondary" onclick="testConnection()" style="width: 100%; margin-top: 10px;">
+                            🔍 Test Connection
+                        </button>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label for="displayName">Display Name</label>
-                    <input type="text" id="displayName" placeholder="Friendly name (optional)">
-                </div>
-                <div class="form-group">
-                    <label for="group">Group</label>
-                    <input type="text" id="group" placeholder="webservers, databases, etc." list="groupList">
-                    <datalist id="groupList">
-                        {% for g in groups %}
-                        <option value="{{ g }}">
-                        {% endfor %}
-                    </datalist>
-                </div>
-                <div class="form-group">
-                    <label for="description">Description</label>
-                    <input type="text" id="description" placeholder="Optional description">
-                </div>
-                <div class="form-group">
-                    <label for="variables">Variables (JSON)</label>
-                    <textarea id="variables" placeholder='{"ansible_user": "deploy", "ansible_port": 22}'></textarea>
-                </div>
-                <div style="display: flex; gap: 10px; justify-content: flex-end;">
-                    <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Save</button>
+
+                <!-- Wizard Navigation -->
+                <div class="wizard-nav">
+                    <div class="wizard-nav-left">
+                        <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                    </div>
+                    <div class="wizard-nav-right">
+                        <button type="button" class="btn btn-secondary" id="prevBtn" onclick="wizardPrev()" style="display: none;">Back</button>
+                        <button type="button" class="btn btn-primary" id="nextBtn" onclick="wizardNext()">Next</button>
+                        <button type="submit" class="btn btn-primary" id="saveBtn" style="display: none;">Save Host</button>
+                    </div>
                 </div>
             </form>
         </div>
@@ -304,14 +670,128 @@
         // Store inventory data for editing
         const inventoryData = {{ inventory_json|safe }};
 
+        // Wizard state
+        let currentStep = 1;
+        const totalSteps = 4;
+        let wizardState = {
+            authMethod: null,
+            selectedKeyPath: null,
+            uploadedKeyContent: null,
+            uploadedKeyName: null,
+            sshKeys: []
+        };
+
+        // =========================================================================
+        // Wizard Navigation
+        // =========================================================================
+
+        function wizardNext() {
+            if (currentStep === 1) {
+                // Validate step 1
+                if (!document.getElementById('hostname').value.trim()) {
+                    alert('Hostname is required');
+                    return;
+                }
+            }
+            if (currentStep < totalSteps) {
+                goToStep(currentStep + 1);
+            }
+        }
+
+        function wizardPrev() {
+            if (currentStep > 1) {
+                goToStep(currentStep - 1);
+            }
+        }
+
+        function goToStep(step) {
+            // Update step indicators
+            document.querySelectorAll('.wizard-step').forEach(s => {
+                const stepNum = parseInt(s.dataset.step);
+                s.classList.remove('active', 'completed');
+                if (stepNum < step) s.classList.add('completed');
+                if (stepNum === step) s.classList.add('active');
+            });
+
+            // Update pages
+            document.querySelectorAll('.wizard-page').forEach(p => {
+                p.classList.remove('active');
+                if (parseInt(p.dataset.page) === step) p.classList.add('active');
+            });
+
+            currentStep = step;
+
+            // Update nav buttons
+            document.getElementById('prevBtn').style.display = step > 1 ? 'inline-block' : 'none';
+            document.getElementById('nextBtn').style.display = step < totalSteps ? 'inline-block' : 'none';
+            document.getElementById('saveBtn').style.display = step === totalSteps ? 'inline-block' : 'none';
+
+            // Step-specific actions
+            if (step === 3) {
+                updateKeyStepVisibility();
+                if (wizardState.authMethod === 'key') {
+                    loadSshKeys();
+                }
+            }
+            if (step === 4) {
+                updateReviewSection();
+            }
+        }
+
+        function resetWizard() {
+            currentStep = 1;
+            wizardState = {
+                authMethod: null,
+                selectedKeyPath: null,
+                uploadedKeyContent: null,
+                uploadedKeyName: null,
+                sshKeys: []
+            };
+
+            // Reset step indicators
+            document.querySelectorAll('.wizard-step').forEach((s, i) => {
+                s.classList.remove('active', 'completed');
+                if (i === 0) s.classList.add('active');
+            });
+
+            // Reset pages
+            document.querySelectorAll('.wizard-page').forEach((p, i) => {
+                p.classList.remove('active');
+                if (i === 0) p.classList.add('active');
+            });
+
+            // Reset nav
+            document.getElementById('prevBtn').style.display = 'none';
+            document.getElementById('nextBtn').style.display = 'inline-block';
+            document.getElementById('saveBtn').style.display = 'none';
+
+            // Reset auth method selection
+            document.querySelectorAll('.auth-method-option').forEach(o => o.classList.remove('selected'));
+            document.getElementById('passwordFields').classList.remove('active');
+
+            // Reset connection test
+            document.getElementById('connectionTest').style.display = 'none';
+        }
+
+        // =========================================================================
+        // Modal Show/Hide
+        // =========================================================================
+
         function showAddModal() {
+            resetWizard();
             document.getElementById('modalTitle').textContent = 'Add Host';
             document.getElementById('itemId').value = '';
             document.getElementById('hostname').value = '';
             document.getElementById('displayName').value = '';
             document.getElementById('group').value = '';
             document.getElementById('description').value = '';
-            document.getElementById('variables').value = '';
+            document.getElementById('ansibleUser').value = '';
+            document.getElementById('ansiblePort').value = '22';
+            document.getElementById('ansiblePassword').value = '';
+            document.getElementById('extraVariables').value = '';
+            document.getElementById('keyName').value = '';
+            document.getElementById('keyFileStatus').style.display = 'none';
+            document.getElementById('selectedKeyPath').value = '';
             document.getElementById('itemModal').classList.add('active');
         }
 
@@ -319,13 +799,40 @@
             const item = inventoryData.find(i => i.id === itemId);
             if (!item) return;
 
+            resetWizard();
             document.getElementById('modalTitle').textContent = 'Edit Host';
             document.getElementById('itemId').value = item.id;
             document.getElementById('hostname').value = item.hostname || '';
             document.getElementById('displayName').value = item.display_name || '';
             document.getElementById('group').value = item.group || '';
             document.getElementById('description').value = item.description || '';
-            document.getElementById('variables').value = item.variables ? JSON.stringify(item.variables, null, 2) : '';
+
+            // Parse variables for auth settings
+            const vars = item.variables || {};
+            document.getElementById('ansibleUser').value = vars.ansible_user || '';
+            document.getElementById('ansiblePort').value = vars.ansible_port || '22';
+
+            // Determine auth method from variables
+            if (vars.ansible_ssh_private_key_file) {
+                selectAuthMethod('key');
+                wizardState.selectedKeyPath = vars.ansible_ssh_private_key_file;
+                document.getElementById('selectedKeyPath').value = vars.ansible_ssh_private_key_file;
+            } else if (vars.ansible_ssh_pass) {
+                selectAuthMethod('password');
+                document.getElementById('ansiblePassword').value = vars.ansible_ssh_pass;
+            } else {
+                selectAuthMethod('agent');
+            }
+
+            // Collect non-auth variables for extra variables field
+            const extraVars = {};
+            for (const [k, v] of Object.entries(vars)) {
+                if (!['ansible_user', 'ansible_port', 'ansible_ssh_private_key_file', 'ansible_ssh_pass', 'ansible_ssh_common_args'].includes(k)) {
+                    extraVars[k] = v;
+                }
+            }
+            document.getElementById('extraVariables').value = Object.keys(extraVars).length > 0 ? JSON.stringify(extraVars, null, 2) : '';
+
             document.getElementById('itemModal').classList.add('active');
         }
 
@@ -333,29 +840,297 @@
             document.getElementById('itemModal').classList.remove('active');
         }
 
+        // =========================================================================
+        // Authentication Method
+        // =========================================================================
+
+        function selectAuthMethod(method) {
+            wizardState.authMethod = method;
+
+            // Update UI
+            document.querySelectorAll('.auth-method-option').forEach(o => {
+                o.classList.toggle('selected', o.dataset.method === method);
+            });
+
+            // Show/hide password field
+            document.getElementById('passwordFields').classList.toggle('active', method === 'password');
+        }
+
+        function updateKeyStepVisibility() {
+            const showKey = wizardState.authMethod === 'key';
+            document.getElementById('sshKeySection').style.display = showKey ? 'block' : 'none';
+            document.getElementById('skipKeyMessage').style.display = showKey ? 'none' : 'block';
+        }
+
+        // =========================================================================
+        // SSH Key Management
+        // =========================================================================
+
+        async function loadSshKeys() {
+            try {
+                const response = await fetch('/api/ssh-keys');
+                const data = await response.json();
+                wizardState.sshKeys = data.keys || [];
+                renderKeyList();
+            } catch (e) {
+                console.error('Error loading SSH keys:', e);
+                wizardState.sshKeys = [];
+                renderKeyList();
+            }
+        }
+
+        function renderKeyList() {
+            const list = document.getElementById('sshKeyList');
+            if (wizardState.sshKeys.length === 0) {
+                list.innerHTML = '<div class="ssh-key-item" style="color: var(--text-muted); justify-content: center;">No SSH keys found. Upload a new key.</div>';
+                return;
+            }
+
+            list.innerHTML = wizardState.sshKeys.map(key => `
+                <div class="ssh-key-item ${wizardState.selectedKeyPath === key.path ? 'selected' : ''}"
+                     onclick="selectKey('${key.path}')">
+                    <span>🔑 ${key.name}</span>
+                    <small style="color: var(--text-muted);">${key.path}</small>
+                </div>
+            `).join('');
+        }
+
+        function selectKey(path) {
+            wizardState.selectedKeyPath = path;
+            document.getElementById('selectedKeyPath').value = path;
+            renderKeyList();
+        }
+
+        function switchKeyTab(tab) {
+            document.querySelectorAll('.ssh-key-tab').forEach(t => t.classList.remove('active'));
+            document.querySelector(`.ssh-key-tab:${tab === 'existing' ? 'first-child' : 'last-child'}`).classList.add('active');
+
+            document.getElementById('existingKeysTab').style.display = tab === 'existing' ? 'block' : 'none';
+            document.getElementById('uploadKeyTab').style.display = tab === 'upload' ? 'block' : 'none';
+        }
+
+        function handleKeyFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                wizardState.uploadedKeyContent = e.target.result;
+                document.getElementById('keyFileStatus').style.display = 'block';
+                document.getElementById('keyFileName').textContent = file.name;
+
+                // Auto-fill key name if empty
+                if (!document.getElementById('keyName').value) {
+                    document.getElementById('keyName').value = file.name.replace(/\.[^/.]+$/, '');
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        // Drag and drop support
+        document.addEventListener('DOMContentLoaded', function() {
+            const dropZone = document.getElementById('keyDropZone');
+            if (dropZone) {
+                dropZone.addEventListener('dragover', function(e) {
+                    e.preventDefault();
+                    dropZone.classList.add('dragover');
+                });
+                dropZone.addEventListener('dragleave', function() {
+                    dropZone.classList.remove('dragover');
+                });
+                dropZone.addEventListener('drop', function(e) {
+                    e.preventDefault();
+                    dropZone.classList.remove('dragover');
+                    const file = e.dataTransfer.files[0];
+                    if (file) {
+                        document.getElementById('keyFileInput').files = e.dataTransfer.files;
+                        handleKeyFile({ target: { files: [file] } });
+                    }
+                });
+            }
+        });
+
+        // =========================================================================
+        // Review Section
+        // =========================================================================
+
+        function updateReviewSection() {
+            const hostname = document.getElementById('hostname').value;
+            const displayName = document.getElementById('displayName').value;
+            const group = document.getElementById('group').value || 'ungrouped';
+            const description = document.getElementById('description').value;
+            const ansibleUser = document.getElementById('ansibleUser').value;
+            const ansiblePort = document.getElementById('ansiblePort').value;
+
+            let authDisplay = 'SSH Agent (default)';
+            if (wizardState.authMethod === 'key') {
+                authDisplay = `SSH Key: ${wizardState.selectedKeyPath || 'Not selected'}`;
+            } else if (wizardState.authMethod === 'password') {
+                authDisplay = 'Password authentication';
+            }
+
+            const html = `
+                <div class="review-row">
+                    <div class="review-label">Hostname</div>
+                    <div class="review-value">${hostname}</div>
+                </div>
+                ${displayName ? `
+                <div class="review-row">
+                    <div class="review-label">Display Name</div>
+                    <div class="review-value">${displayName}</div>
+                </div>
+                ` : ''}
+                <div class="review-row">
+                    <div class="review-label">Group</div>
+                    <div class="review-value">${group}</div>
+                </div>
+                ${description ? `
+                <div class="review-row">
+                    <div class="review-label">Description</div>
+                    <div class="review-value">${description}</div>
+                </div>
+                ` : ''}
+                <div class="review-row">
+                    <div class="review-label">SSH User</div>
+                    <div class="review-value">${ansibleUser || '(default)'}</div>
+                </div>
+                <div class="review-row">
+                    <div class="review-label">SSH Port</div>
+                    <div class="review-value">${ansiblePort}</div>
+                </div>
+                <div class="review-row">
+                    <div class="review-label">Authentication</div>
+                    <div class="review-value">${authDisplay}</div>
+                </div>
+            `;
+
+            document.getElementById('reviewSection').innerHTML = html;
+        }
+
+        // =========================================================================
+        // Connection Test
+        // =========================================================================
+
+        async function testConnection() {
+            const testDiv = document.getElementById('connectionTest');
+            const testIcon = document.getElementById('testIcon');
+            const testMessage = document.getElementById('testMessage');
+
+            testDiv.style.display = 'block';
+            testDiv.className = 'connection-test testing';
+            testIcon.textContent = '🔄';
+            testMessage.textContent = 'Testing connection...';
+
+            // Build variables for test
+            const variables = buildVariables();
+            const hostname = document.getElementById('hostname').value;
+
+            try {
+                const response = await fetch('/api/inventory/test-connection', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ hostname, variables })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    testDiv.className = 'connection-test success';
+                    testIcon.textContent = '✓';
+                    testMessage.textContent = 'Connection successful!';
+                } else {
+                    testDiv.className = 'connection-test failed';
+                    testIcon.textContent = '✗';
+                    testMessage.textContent = result.error || 'Connection failed';
+                }
+            } catch (e) {
+                testDiv.className = 'connection-test failed';
+                testIcon.textContent = '✗';
+                testMessage.textContent = 'Error: ' + e.message;
+            }
+        }
+
+        // =========================================================================
+        // Save Host
+        // =========================================================================
+
+        function buildVariables() {
+            const variables = {};
+
+            const ansibleUser = document.getElementById('ansibleUser').value.trim();
+            const ansiblePort = document.getElementById('ansiblePort').value.trim();
+
+            if (ansibleUser) variables.ansible_user = ansibleUser;
+            if (ansiblePort && ansiblePort !== '22') variables.ansible_port = parseInt(ansiblePort);
+
+            // Auth method specific
+            if (wizardState.authMethod === 'key' && wizardState.selectedKeyPath) {
+                variables.ansible_ssh_private_key_file = wizardState.selectedKeyPath;
+                variables.ansible_ssh_common_args = '-o StrictHostKeyChecking=no';
+            } else if (wizardState.authMethod === 'password') {
+                const password = document.getElementById('ansiblePassword').value;
+                if (password) variables.ansible_ssh_pass = password;
+            }
+
+            // Extra variables
+            const extraVarsText = document.getElementById('extraVariables').value.trim();
+            if (extraVarsText) {
+                try {
+                    const extraVars = JSON.parse(extraVarsText);
+                    Object.assign(variables, extraVars);
+                } catch (e) {
+                    // Invalid JSON, ignore
+                }
+            }
+
+            return variables;
+        }
+
         async function saveItem(event) {
             event.preventDefault();
 
             const itemId = document.getElementById('itemId').value;
+
+            // Upload key if needed
+            if (wizardState.authMethod === 'key' && wizardState.uploadedKeyContent) {
+                const keyName = document.getElementById('keyName').value.trim();
+                if (!keyName) {
+                    alert('Please enter a name for the SSH key');
+                    goToStep(3);
+                    return;
+                }
+
+                try {
+                    const uploadResponse = await fetch('/api/ssh-keys', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            name: keyName,
+                            content: wizardState.uploadedKeyContent
+                        })
+                    });
+
+                    if (!uploadResponse.ok) {
+                        const err = await uploadResponse.json();
+                        alert('Error uploading SSH key: ' + (err.error || 'Unknown error'));
+                        return;
+                    }
+
+                    const uploadResult = await uploadResponse.json();
+                    wizardState.selectedKeyPath = uploadResult.path;
+                } catch (e) {
+                    alert('Error uploading SSH key: ' + e.message);
+                    return;
+                }
+            }
+
             const data = {
                 hostname: document.getElementById('hostname').value,
                 display_name: document.getElementById('displayName').value,
                 group: document.getElementById('group').value || 'ungrouped',
-                description: document.getElementById('description').value
+                description: document.getElementById('description').value,
+                variables: buildVariables()
             };
-
-            // Parse variables JSON
-            const varsText = document.getElementById('variables').value.trim();
-            if (varsText) {
-                try {
-                    data.variables = JSON.parse(varsText);
-                } catch (e) {
-                    alert('Invalid JSON in variables field');
-                    return;
-                }
-            } else {
-                data.variables = {};
-            }
 
             const url = itemId ? `/api/inventory/${itemId}` : '/api/inventory';
             const method = itemId ? 'PUT' : 'POST';
@@ -377,6 +1152,10 @@
                 alert('Error saving item: ' + e.message);
             }
         }
+
+        // =========================================================================
+        // Delete & Filter
+        // =========================================================================
 
         async function deleteItem(itemId, hostname) {
             if (!confirm(`Delete "${hostname}"?`)) return;

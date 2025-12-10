@@ -41,12 +41,14 @@ class FlatFileStorage(StorageBackend):
         self.history_file = os.path.join(config_dir, 'schedule_history.json')
         self.inventory_file = os.path.join(config_dir, 'inventory.json')
         self.host_facts_file = os.path.join(config_dir, 'host_facts.json')
+        self.batch_jobs_file = os.path.join(config_dir, 'batch_jobs.json')
 
         # Thread safety locks
         self._schedules_lock = threading.RLock()
         self._history_lock = threading.RLock()
         self._inventory_lock = threading.RLock()
         self._host_facts_lock = threading.RLock()
+        self._batch_jobs_lock = threading.RLock()
 
         # Ensure config directory exists
         os.makedirs(config_dir, exist_ok=True)
@@ -505,6 +507,153 @@ class FlatFileStorage(StorageBackend):
             # Directly set the host data (overwrites if exists)
             data['hosts'][host] = host_data
             return self._write_host_facts_data(data)
+
+    # =========================================================================
+    # Batch Job Operations
+    # =========================================================================
+
+    def _load_batch_jobs_data(self) -> Dict:
+        """Load all batch jobs data from file."""
+        if not os.path.exists(self.batch_jobs_file):
+            return {'version': '1.0', 'batch_jobs': []}
+        try:
+            with open(self.batch_jobs_file, 'r') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError) as e:
+            print(f"Error loading batch jobs: {e}")
+            return {'version': '1.0', 'batch_jobs': []}
+
+    def _write_batch_jobs_data(self, data: Dict) -> bool:
+        """Write all batch jobs data to file."""
+        try:
+            with open(self.batch_jobs_file, 'w') as f:
+                json.dump(data, f, indent=2, default=str)
+            return True
+        except IOError as e:
+            print(f"Error writing batch jobs: {e}")
+            return False
+
+    def get_all_batch_jobs(self) -> List[Dict]:
+        """Get all batch jobs, sorted by created date (newest first)."""
+        with self._batch_jobs_lock:
+            data = self._load_batch_jobs_data()
+            batch_jobs = data.get('batch_jobs', [])
+            # Sort by created date (newest first)
+            batch_jobs.sort(key=lambda x: x.get('created', ''), reverse=True)
+            return batch_jobs
+
+    def get_batch_job(self, batch_id: str) -> Optional[Dict]:
+        """Get a single batch job by ID."""
+        with self._batch_jobs_lock:
+            data = self._load_batch_jobs_data()
+            for job in data.get('batch_jobs', []):
+                if job.get('id') == batch_id:
+                    return job
+            return None
+
+    def save_batch_job(self, batch_id: str, batch_job: Dict) -> bool:
+        """Save or update a batch job."""
+        with self._batch_jobs_lock:
+            try:
+                data = self._load_batch_jobs_data()
+                batch_jobs = data.get('batch_jobs', [])
+
+                # Ensure id is in the batch job
+                batch_job['id'] = batch_id
+
+                # Find and update existing or append new
+                found = False
+                for i, existing in enumerate(batch_jobs):
+                    if existing.get('id') == batch_id:
+                        batch_jobs[i] = batch_job
+                        found = True
+                        break
+
+                if not found:
+                    batch_jobs.append(batch_job)
+
+                data['batch_jobs'] = batch_jobs
+                return self._write_batch_jobs_data(data)
+            except Exception as e:
+                print(f"Error saving batch job: {e}")
+                return False
+
+    def delete_batch_job(self, batch_id: str) -> bool:
+        """Delete a batch job."""
+        with self._batch_jobs_lock:
+            try:
+                data = self._load_batch_jobs_data()
+                batch_jobs = data.get('batch_jobs', [])
+                original_len = len(batch_jobs)
+                batch_jobs = [job for job in batch_jobs if job.get('id') != batch_id]
+
+                if len(batch_jobs) < original_len:
+                    data['batch_jobs'] = batch_jobs
+                    return self._write_batch_jobs_data(data)
+                return False
+            except Exception as e:
+                print(f"Error deleting batch job: {e}")
+                return False
+
+    def get_batch_jobs_by_status(self, status: str) -> List[Dict]:
+        """Get batch jobs filtered by status."""
+        with self._batch_jobs_lock:
+            data = self._load_batch_jobs_data()
+            batch_jobs = data.get('batch_jobs', [])
+            filtered = [job for job in batch_jobs if job.get('status') == status]
+            # Sort by created date (newest first)
+            filtered.sort(key=lambda x: x.get('created', ''), reverse=True)
+            return filtered
+
+    def cleanup_batch_jobs(self, max_age_days: int = 30, keep_count: int = 100) -> int:
+        """Clean up old batch jobs."""
+        with self._batch_jobs_lock:
+            try:
+                data = self._load_batch_jobs_data()
+                batch_jobs = data.get('batch_jobs', [])
+
+                if len(batch_jobs) <= keep_count:
+                    return 0
+
+                # Sort by created date (newest first)
+                batch_jobs.sort(key=lambda x: x.get('created', ''), reverse=True)
+
+                # Calculate cutoff date
+                from datetime import timedelta
+                cutoff = datetime.now() - timedelta(days=max_age_days)
+                cutoff_str = cutoff.isoformat()
+
+                # Keep jobs that are either:
+                # 1. Within the keep_count (newest jobs)
+                # 2. Newer than cutoff date
+                # 3. Still running (never delete running jobs)
+                jobs_to_keep = []
+                removed_count = 0
+
+                for i, job in enumerate(batch_jobs):
+                    created = job.get('created', '')
+                    status = job.get('status', '')
+
+                    # Always keep running jobs
+                    if status == 'running':
+                        jobs_to_keep.append(job)
+                    # Keep if within keep_count
+                    elif i < keep_count:
+                        jobs_to_keep.append(job)
+                    # Keep if newer than cutoff
+                    elif created >= cutoff_str:
+                        jobs_to_keep.append(job)
+                    else:
+                        removed_count += 1
+
+                if removed_count > 0:
+                    data['batch_jobs'] = jobs_to_keep
+                    self._write_batch_jobs_data(data)
+
+                return removed_count
+            except Exception as e:
+                print(f"Error cleaning up batch jobs: {e}")
+                return 0
 
     # =========================================================================
     # Utility Operations

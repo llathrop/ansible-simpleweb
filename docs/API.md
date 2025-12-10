@@ -885,6 +885,350 @@ Host: localhost:3001
 
 ---
 
+## Batch Job API
+
+API for managing batch job execution - run multiple playbooks against multiple targets sequentially.
+
+### GET /api/batch
+
+Get all batch jobs.
+
+**Request:**
+```http
+GET /api/batch HTTP/1.1
+Host: localhost:3001
+```
+
+**Response:**
+```json
+{
+  "batch_jobs": [
+    {
+      "id": "abc123-def456",
+      "name": "Server Maintenance",
+      "playbooks": ["system-health", "service-status"],
+      "targets": ["192.168.1.50", "webservers"],
+      "status": "completed",
+      "total": 2,
+      "completed": 2,
+      "failed": 0,
+      "created": "2025-12-10T12:00:00.000000",
+      "finished": "2025-12-10T12:05:00.000000"
+    }
+  ],
+  "count": 1
+}
+```
+
+---
+
+### GET /api/batch/active
+
+Get currently running batch jobs.
+
+**Response:**
+```json
+{
+  "abc123-def456": {
+    "name": "Server Maintenance",
+    "status": "running",
+    "current_playbook": "system-health",
+    "completed": 0,
+    "total": 2
+  }
+}
+```
+
+---
+
+### POST /api/batch
+
+Create and start a new batch job.
+
+**Request:**
+```http
+POST /api/batch HTTP/1.1
+Host: localhost:3001
+Content-Type: application/json
+
+{
+  "playbooks": ["system-health", "service-status"],
+  "targets": ["192.168.1.50", "webservers"],
+  "name": "Server Maintenance"
+}
+```
+
+**Response (201 Created):**
+```json
+{
+  "batch_id": "abc123-def456",
+  "message": "Batch job created and started",
+  "status": "pending"
+}
+```
+
+---
+
+### GET /api/batch/{batch_id}
+
+Get details of a specific batch job.
+
+**Response:**
+```json
+{
+  "id": "abc123-def456",
+  "name": "Server Maintenance",
+  "playbooks": ["system-health", "service-status"],
+  "targets": ["192.168.1.50"],
+  "status": "running",
+  "current_playbook": "system-health",
+  "current_run_id": "run-xyz",
+  "total": 2,
+  "completed": 0,
+  "failed": 0,
+  "results": [],
+  "hosts_included": ["192.168.1.50"],
+  "created": "2025-12-10T12:00:00.000000",
+  "started": "2025-12-10T12:00:01.000000",
+  "finished": null
+}
+```
+
+---
+
+### GET /api/batch/{batch_id}/logs
+
+Get log files for all playbooks in a batch job.
+
+**Response:**
+```json
+{
+  "batch_id": "abc123-def456",
+  "logs": [
+    {
+      "playbook": "system-health",
+      "log_file": "system-health-20251210-120001.log",
+      "status": "completed",
+      "exists": true
+    },
+    {
+      "playbook": "service-status",
+      "log_file": "service-status-20251210-120130.log",
+      "status": "running",
+      "exists": true
+    }
+  ]
+}
+```
+
+---
+
+### GET /api/batch/{batch_id}/export
+
+Export batch job configuration for reuse.
+
+**Response:**
+```json
+{
+  "name": "Server Maintenance",
+  "playbooks": ["system-health", "service-status"],
+  "targets": ["192.168.1.50"],
+  "exported_from": "abc123-def456",
+  "exported_at": "2025-12-10T12:10:00.000000"
+}
+```
+
+---
+
+### DELETE /api/batch/{batch_id}
+
+Delete a batch job record (only if not running).
+
+**Response:**
+```json
+{
+  "success": true,
+  "deleted": "abc123-def456"
+}
+```
+
+---
+
+## SSH Key Management API
+
+Manage SSH private keys for host authentication.
+
+### GET /api/ssh-keys
+
+List available SSH keys.
+
+**Response:**
+```json
+{
+  "keys": [
+    {
+      "name": "svc-ansible-key",
+      "path": "/app/.ssh/svc-ansible-key",
+      "source": "system"
+    },
+    {
+      "name": "my-server-key",
+      "path": "/app/ssh-keys/my-server-key",
+      "source": "uploaded"
+    }
+  ]
+}
+```
+
+---
+
+### POST /api/ssh-keys
+
+Upload a new SSH private key.
+
+**Request:**
+```http
+POST /api/ssh-keys HTTP/1.1
+Host: localhost:3001
+Content-Type: application/json
+
+{
+  "name": "my-server-key",
+  "content": "-----BEGIN RSA PRIVATE KEY-----\n..."
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "name": "my-server-key",
+  "path": "/app/ssh-keys/my-server-key"
+}
+```
+
+**Notes:**
+- Key name can only contain letters, numbers, dashes, and underscores
+- Keys are stored with 0600 permissions
+- Keys are stored in `/app/ssh-keys/` (mounted volume)
+
+---
+
+### POST /api/inventory/test-connection
+
+Test SSH connection to a host before saving.
+
+**Request:**
+```http
+POST /api/inventory/test-connection HTTP/1.1
+Host: localhost:3001
+Content-Type: application/json
+
+{
+  "hostname": "192.168.1.50",
+  "variables": {
+    "ansible_user": "deploy",
+    "ansible_ssh_private_key_file": "/app/ssh-keys/my-key"
+  }
+}
+```
+
+**Response (Success):**
+```json
+{
+  "success": true,
+  "message": "Connection successful"
+}
+```
+
+**Response (Failure):**
+```json
+{
+  "success": false,
+  "error": "Permission denied - check credentials"
+}
+```
+
+---
+
+## Schedule API
+
+Manage scheduled playbook and batch job execution.
+
+### GET /api/schedules
+
+Get all schedules.
+
+**Response:**
+```json
+{
+  "schedules": [
+    {
+      "id": "schedule-123",
+      "name": "Daily Health Check",
+      "is_batch": false,
+      "playbook": "system-health",
+      "target": "all",
+      "recurrence_display": "Daily at 02:00",
+      "next_run_display": "2025-12-11 02:00",
+      "enabled": true,
+      "run_count": 10,
+      "success_count": 8,
+      "failed_count": 2,
+      "success_rate": 80,
+      "success_display": "8/10"
+    },
+    {
+      "id": "schedule-456",
+      "name": "Weekly Maintenance",
+      "is_batch": true,
+      "playbooks": ["system-health", "service-status"],
+      "targets": ["192.168.1.50", "webservers"],
+      "recurrence_display": "Weekly on Sunday at 03:00",
+      "enabled": true
+    }
+  ]
+}
+```
+
+---
+
+### POST /api/schedules
+
+Create a new schedule.
+
+**Single Playbook Schedule:**
+```json
+{
+  "name": "Daily Health Check",
+  "playbook": "system-health",
+  "target": "all",
+  "recurrence": {
+    "type": "daily",
+    "hour": 2,
+    "minute": 0
+  }
+}
+```
+
+**Batch Schedule:**
+```json
+{
+  "name": "Weekly Maintenance",
+  "is_batch": true,
+  "playbooks": ["system-health", "service-status"],
+  "targets": ["192.168.1.50", "webservers"],
+  "recurrence": {
+    "type": "weekly",
+    "day_of_week": 6,
+    "hour": 3,
+    "minute": 0
+  }
+}
+```
+
+---
+
 ## Future Enhancements
 
 Planned API improvements:

@@ -21,10 +21,12 @@ services:
       - ./library:/app/library
       # Mount callback plugins for CMDB collection
       - ./callback_plugins:/app/callback_plugins
-      # Mount SSH keys for svc-ansible
+      # Mount SSH keys for svc-ansible (read-only system keys)
       - ./.ssh:/app/.ssh:ro
       # Mount user SSH keys if they exist
       - ~/.ssh:/root/.ssh:ro
+      # Mount directory for uploaded SSH keys (writable)
+      - ./ssh-keys:/app/ssh-keys
     environment:
       - FLASK_ENV=development
       - FLASK_APP=web/app.py

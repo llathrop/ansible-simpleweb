@@ -352,6 +352,115 @@ class StorageBackend(ABC):
         pass
 
     # =========================================================================
+    # Batch Job Operations
+    # =========================================================================
+
+    @abstractmethod
+    def get_all_batch_jobs(self) -> List[Dict]:
+        """
+        Get all batch jobs.
+
+        Returns:
+            List of batch job dicts, sorted by created date (newest first)
+        """
+        pass
+
+    @abstractmethod
+    def get_batch_job(self, batch_id: str) -> Optional[Dict]:
+        """
+        Get a single batch job by ID.
+
+        Args:
+            batch_id: UUID of the batch job
+
+        Returns:
+            Batch job dict or None if not found
+        """
+        pass
+
+    @abstractmethod
+    def save_batch_job(self, batch_id: str, batch_job: Dict) -> bool:
+        """
+        Save or update a batch job.
+
+        Args:
+            batch_id: UUID of the batch job
+            batch_job: Batch job data dict with structure:
+                {
+                    "id": "uuid",
+                    "name": "optional display name",
+                    "playbooks": ["playbook1.yml", "playbook2.yml"],
+                    "targets": ["host1", "group1"],
+                    "status": "pending|running|completed|failed|partial",
+                    "total": int,
+                    "completed": int,
+                    "failed": int,
+                    "current_playbook": "playbook.yml" or None,
+                    "current_run_id": "run_id" or None,
+                    "results": [
+                        {
+                            "playbook": "playbook.yml",
+                            "target": "host1",
+                            "status": "completed|failed|running",
+                            "run_id": "...",
+                            "log_file": "...",
+                            "started": "ISO timestamp",
+                            "finished": "ISO timestamp"
+                        }
+                    ],
+                    "created": "ISO timestamp",
+                    "started": "ISO timestamp" or None,
+                    "finished": "ISO timestamp" or None
+                }
+
+        Returns:
+            True if successful
+        """
+        pass
+
+    @abstractmethod
+    def delete_batch_job(self, batch_id: str) -> bool:
+        """
+        Delete a batch job.
+
+        Args:
+            batch_id: UUID of the batch job
+
+        Returns:
+            True if deleted, False if not found
+        """
+        pass
+
+    @abstractmethod
+    def get_batch_jobs_by_status(self, status: str) -> List[Dict]:
+        """
+        Get batch jobs filtered by status.
+
+        Args:
+            status: Status to filter by (pending, running, completed, failed, partial)
+
+        Returns:
+            List of matching batch job dicts
+        """
+        pass
+
+    @abstractmethod
+    def cleanup_batch_jobs(self, max_age_days: int = 30, keep_count: int = 100) -> int:
+        """
+        Clean up old batch jobs.
+
+        Keeps at minimum keep_count jobs, and removes jobs older than max_age_days.
+
+        Args:
+            max_age_days: Maximum age in days for batch jobs
+            keep_count: Minimum number of batch jobs to keep regardless of age
+
+        Returns:
+            Number of batch jobs removed
+        """
+        pass
+
+    # =========================================================================
     # Utility Operations
     # =========================================================================
 

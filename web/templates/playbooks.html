@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Playbooks | Ansible Web Interface</title>
+    <link rel="stylesheet" href="/static/css/base.css">
+    <script>
+        // Immediately apply cached theme to prevent flash of unstyled content
+        (function() {
+            try {
+                var cached = localStorage.getItem('ansible-web-theme-vars');
+                if (cached) {
+                    var vars = JSON.parse(cached);
+                    var root = document.documentElement;
+                    for (var key in vars) {
+                        if (vars[key]) root.style.setProperty(key, vars[key]);
+                    }
+                }
+            } catch (e) {}
+        })();
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.0/socket.io.min.js"></script>
+    <script src="/static/js/theme.js"></script>
+    <style>
+        /* Page-specific styles */
+        body {
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Individual Playbooks</h1>
+        <p class="subtitle">Run single playbooks against specific targets</p>
+
+        <div class="nav-links">
+            <a href="/">Batch Execution</a>
+            <a href="/playbooks" style="font-weight: bold;">Playbooks</a>
+            <a href="/schedules">Schedules</a>
+            <a href="/cmdb">CMDB</a>
+            <a href="/inventory">Inventory</a>
+            <a href="/storage">Storage</a>
+            <a href="/logs">All Logs</a>
+            <span class="connection-indicator">
+                <span class="connection-dot" id="connectionDot"></span>
+                <span id="connectionText">Connecting...</span>
+            </span>
+        </div>
+
+        <div class="refresh-note" id="statusNote">
+            &#8505;&#65039; Real-time updates via WebSocket. Click "Watch Live" to see playbook output as it runs.
+        </div>
+
+        {% if playbooks %}
+        <div class="playbook-grid">
+            {% for playbook in playbooks %}
+            <div class="playbook-card" data-playbook="{{ playbook.name }}">
+                <div class="playbook-header">
+                    <div class="playbook-name">{{ playbook.display_name }}</div>
+                    <span class="status-badge status-{{ playbook.status }}" data-status>{{ playbook.status }}</span>
+                </div>
+
+                <div class="playbook-info">
+                    <strong>Last Run:</strong> {{ playbook.last_run }}<br>
+                    {% if playbook.latest_log %}
+                    <strong>Latest Log:</strong> {{ playbook.latest_log }}
+                    {% endif %}
+                </div>
+
+                <div class="playbook-actions">
+                    <form action="/run/{{ playbook.name }}" method="get" class="run-form">
+                        <div class="target-label">Target Host/Group:</div>
+                        <select name="target" class="target-select">
+                            {% for target in targets %}
+                            <option value="{{ target.value }}">{{ target.label }}</option>
+                            {% endfor %}
+                        </select>
+
+                        <div style="display: flex; gap: 10px;">
+                            <button type="submit" class="btn btn-primary" style="flex: 1;">
+                                Run Playbook
+                            </button>
+
+                            <a href="/schedules/new?playbook={{ playbook.name }}" class="btn btn-secondary" title="Schedule automated runs">Schedule</a>
+
+                            {% if playbook.latest_log %}
+                            <a href="/logs/{{ playbook.latest_log }}" class="btn btn-secondary">View Log</a>
+                            {% else %}
+                            <button class="btn btn-secondary" disabled>No Logs</button>
+                            {% endif %}
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Active runs section -->
+                <div class="active-runs" data-active-runs style="{% if not playbook.active_runs %}display: none;{% endif %}">
+                    <div class="active-runs-title">Active Runs:</div>
+                    <div class="active-runs-list">
+                        {% for run in playbook.active_runs %}
+                        <div class="active-run-item {{ run.status }}" data-run-id="{{ run.run_id }}">
+                            <span class="active-run-target">{{ run.target }}</span>
+                            <a href="/live/{{ run.run_id }}" class="btn btn-watch">Watch Live</a>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p style="color: var(--text-muted); text-align: center; padding: 40px;">No playbooks found in /app/playbooks</p>
+        {% endif %}
+
+        <div class="footer">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <p>Ansible Simple Web Interface | Localhost Only</p>
+                <div class="theme-selector">
+                    <label for="themeSelect">Theme:</label>
+                    <select id="themeSelect" class="theme-select"></select>
+                </div>
+            </div>
+            <p style="margin-top: 5px; font-size: 12px;">Generated with Claude Code</p>
+        </div>
+    </div>
+
+    <script>
+        const connectionDot = document.getElementById('connectionDot');
+        const connectionText = document.getElementById('connectionText');
+
+        // Connect to WebSocket
+        const socket = io();
+
+        socket.on('connect', function() {
+            connectionDot.classList.add('connected');
+            connectionText.textContent = 'Live';
+        });
+
+        socket.on('disconnect', function() {
+            connectionDot.classList.remove('connected');
+            connectionText.textContent = 'Disconnected';
+        });
+
+        // Handle status updates from WebSocket
+        socket.on('status_update', function(data) {
+            updatePlaybookStatus(data.playbook, data.status, data.run_id, data.target);
+        });
+
+        function updatePlaybookStatus(playbookName, status, runId, target) {
+            const card = document.querySelector(`[data-playbook="${playbookName}"]`);
+            if (!card) return;
+
+            const badge = card.querySelector('[data-status]');
+            const activeRunsSection = card.querySelector('[data-active-runs]');
+            const activeRunsList = card.querySelector('.active-runs-list');
+
+            // Update badge
+            if (badge) {
+                badge.textContent = status;
+                badge.className = 'status-badge status-' + status;
+            }
+
+            // Handle active runs
+            if ((status === 'running' || status === 'starting') && runId) {
+                // Show active runs section
+                activeRunsSection.style.display = 'block';
+
+                // Check if this run already exists
+                let runItem = activeRunsList.querySelector(`[data-run-id="${runId}"]`);
+                if (!runItem) {
+                    // Add new run item
+                    runItem = document.createElement('div');
+                    runItem.className = 'active-run-item running';
+                    runItem.dataset.runId = runId;
+                    runItem.innerHTML = `
+                        <span class="active-run-target">${target || 'unknown'}</span>
+                        <a href="/live/${runId}" class="btn btn-watch">Watch Live</a>
+                    `;
+                    activeRunsList.appendChild(runItem);
+                }
+            } else if ((status === 'completed' || status === 'failed') && runId) {
+                // Update existing run item
+                const runItem = activeRunsList.querySelector(`[data-run-id="${runId}"]`);
+                if (runItem) {
+                    runItem.className = 'active-run-item ' + status;
+                    // Change button text
+                    const btn = runItem.querySelector('.btn-watch');
+                    if (btn) {
+                        btn.textContent = 'View Log';
+                        btn.classList.remove('btn-watch');
+                        btn.classList.add('btn-secondary');
+                    }
+                    // Remove after a delay
+                    setTimeout(() => {
+                        runItem.remove();
+                        // Hide section if no more active runs
+                        if (activeRunsList.children.length === 0) {
+                            activeRunsSection.style.display = 'none';
+                        }
+                        // Update badge to ready if no other running
+                        fetch('/api/status')
+                            .then(r => r.json())
+                            .then(statusData => {
+                                const playbookStatus = statusData[playbookName];
+                                if (playbookStatus && playbookStatus.status) {
+                                    badge.textContent = playbookStatus.status;
+                                    badge.className = 'status-badge status-' + playbookStatus.status;
+                                }
+                            });
+                    }, 5000);
+                }
+            }
+        }
+
+        // Fallback: Poll for status every 10 seconds (in case WebSocket misses something)
+        setInterval(function() {
+            fetch('/api/runs')
+                .then(response => response.json())
+                .then(runs => {
+                    // Update active runs display
+                    Object.keys(runs).forEach(runId => {
+                        const run = runs[runId];
+                        updatePlaybookStatus(run.playbook, run.status, runId, run.target);
+                    });
+                });
+        }, 10000);
+    </script>
+</body>
+</html>
