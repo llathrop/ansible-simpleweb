@@ -7,6 +7,7 @@ import subprocess
 import threading
 import time
 import uuid
+import tempfile
 from datetime import datetime
 
 # Import scheduler components (initialized after app creation)
@@ -42,57 +43,184 @@ schedule_manager = None
 storage_backend = None
 
 def get_inventory_targets():
-    """Parse inventory file and get available hosts and groups"""
+    """
+    Parse inventory sources and get available hosts and groups.
+
+    Merges hosts from:
+    1. Ansible inventory file (inventory/hosts) - INI format
+    2. Managed inventory from storage backend - JSON/MongoDB
+
+    Returns combined list for target dropdown.
+    """
     targets = []
+    seen_hosts = set()  # Track hosts to avoid duplicates
+    seen_groups = set()
 
-    if not os.path.exists(INVENTORY_FILE):
-        return ['host_machine']  # Default fallback
+    # --- Source 1: Ansible INI inventory file ---
+    if os.path.exists(INVENTORY_FILE):
+        try:
+            with open(INVENTORY_FILE, 'r') as f:
+                current_group = None
+                for line in f:
+                    line = line.strip()
 
+                    # Skip empty lines and comments
+                    if not line or line.startswith('#'):
+                        continue
+
+                    # Group header [groupname]
+                    if line.startswith('[') and line.endswith(']'):
+                        group_name = line[1:-1]
+                        # Skip :children groups for now, just track regular groups
+                        if ':children' not in group_name and group_name not in seen_groups:
+                            current_group = group_name
+                            seen_groups.add(group_name)
+                            targets.append({
+                                'value': group_name,
+                                'label': f'{group_name} (group)',
+                                'type': 'group'
+                            })
+                    # Individual host line
+                    elif current_group and not line.startswith('['):
+                        # Extract hostname (first part before space)
+                        hostname = line.split()[0]
+                        if hostname and not hostname.startswith('#') and hostname not in seen_hosts:
+                            seen_hosts.add(hostname)
+                            targets.append({
+                                'value': hostname,
+                                'label': f'{hostname}',
+                                'type': 'host'
+                            })
+        except Exception as e:
+            print(f"Error parsing INI inventory: {e}")
+
+    # --- Source 2: Managed inventory from storage backend ---
     try:
-        with open(INVENTORY_FILE, 'r') as f:
-            current_group = None
-            for line in f:
-                line = line.strip()
+        if storage_backend:
+            managed_inventory = storage_backend.get_all_inventory()
+            for item in managed_inventory:
+                hostname = item.get('hostname')
+                group = item.get('group', 'managed')
+                display_name = item.get('display_name', hostname)
 
-                # Skip empty lines and comments
-                if not line or line.startswith('#'):
-                    continue
+                # Add group if new
+                if group and group not in seen_groups:
+                    seen_groups.add(group)
+                    targets.append({
+                        'value': group,
+                        'label': f'{group} (managed group)',
+                        'type': 'group'
+                    })
 
-                # Group header [groupname]
-                if line.startswith('[') and line.endswith(']'):
-                    group_name = line[1:-1]
-                    # Skip :children groups for now, just track regular groups
-                    if ':children' not in group_name:
-                        current_group = group_name
-                        targets.append({
-                            'value': group_name,
-                            'label': f'{group_name} (group)',
-                            'type': 'group'
-                        })
-                # Individual host line
-                elif current_group and not line.startswith('['):
-                    # Extract hostname (first part before space)
-                    hostname = line.split()[0]
-                    if hostname and not hostname.startswith('#'):
-                        targets.append({
-                            'value': hostname,
-                            'label': f'{hostname}',
-                            'type': 'host'
-                        })
-
-        # Add special targets
-        if targets:
-            targets.insert(0, {
-                'value': 'all',
-                'label': 'all (all hosts)',
-                'type': 'special'
-            })
-
+                # Add host if new
+                if hostname and hostname not in seen_hosts:
+                    seen_hosts.add(hostname)
+                    label = f'{hostname}' if hostname == display_name else f'{hostname} ({display_name})'
+                    targets.append({
+                        'value': hostname,
+                        'label': f'{label} [managed]',
+                        'type': 'managed_host',
+                        'item_id': item.get('id'),
+                        'variables': item.get('variables', {})
+                    })
     except Exception as e:
-        print(f"Error parsing inventory: {e}")
+        print(f"Error loading managed inventory: {e}")
+
+    # Add special targets
+    if targets:
+        targets.insert(0, {
+            'value': 'all',
+            'label': 'all (all hosts)',
+            'type': 'special'
+        })
+
+    # Fallback if no targets found
+    if not targets:
         return [{'value': 'host_machine', 'label': 'host_machine (group)', 'type': 'group'}]
 
     return targets if targets else [{'value': 'host_machine', 'label': 'host_machine (group)', 'type': 'group'}]
+
+
+def generate_managed_inventory(hostname):
+    """
+    Generate a temporary Ansible inventory file for a managed host.
+
+    Looks up the host in the managed inventory storage and creates
+    a temporary INI-format inventory file with all its variables.
+
+    Args:
+        hostname: The hostname/IP to look up
+
+    Returns:
+        Path to temporary inventory file, or None if host not found
+    """
+    if not storage_backend:
+        return None
+
+    # Find the managed host by hostname
+    managed_inventory = storage_backend.get_all_inventory()
+    host_item = None
+    for item in managed_inventory:
+        if item.get('hostname') == hostname:
+            host_item = item
+            break
+
+    if not host_item:
+        return None
+
+    # Build inventory content
+    group = host_item.get('group', 'managed')
+    variables = host_item.get('variables', {})
+
+    # Format: hostname var1=val1 var2=val2
+    var_parts = []
+    for key, value in variables.items():
+        # Quote string values, leave others as-is
+        if isinstance(value, str) and ' ' in value:
+            var_parts.append(f'{key}="{value}"')
+        else:
+            var_parts.append(f'{key}={value}')
+
+    host_line = hostname
+    if var_parts:
+        host_line += ' ' + ' '.join(var_parts)
+
+    inventory_content = f"""# Temporary inventory for managed host
+# Generated by ansible-simpleweb
+
+[{group}]
+{host_line}
+"""
+
+    # Write to temporary file (won't be deleted automatically - caller must clean up)
+    fd, temp_path = tempfile.mkstemp(prefix='managed_inv_', suffix='.ini', dir='/tmp')
+    try:
+        os.write(fd, inventory_content.encode('utf-8'))
+    finally:
+        os.close(fd)
+
+    return temp_path
+
+
+def is_managed_host(hostname):
+    """
+    Check if a hostname is in the managed inventory.
+
+    Args:
+        hostname: The hostname/IP to check
+
+    Returns:
+        True if the host is managed, False otherwise
+    """
+    if not storage_backend:
+        return False
+
+    managed_inventory = storage_backend.get_all_inventory()
+    for item in managed_inventory:
+        if item.get('hostname') == hostname:
+            return True
+    return False
+
 
 def get_playbooks():
     """Get list of available playbooks"""
@@ -173,8 +301,17 @@ def generate_log_filename(playbook_name, target, run_id):
     short_id = run_id[:8]
     return f"{playbook_name}-{safe_target}-{timestamp}-{short_id}.log"
 
-def run_playbook_streaming(run_id, playbook_name, target, log_file):
-    """Run playbook with real-time streaming to WebSocket and log file"""
+def run_playbook_streaming(run_id, playbook_name, target, log_file, inventory_path=None):
+    """
+    Run playbook with real-time streaming to WebSocket and log file.
+
+    Args:
+        run_id: Unique run identifier
+        playbook_name: Name of the playbook to run
+        target: Target host/group to limit playbook execution
+        log_file: Filename for the log file
+        inventory_path: Optional path to custom inventory file (for managed hosts)
+    """
     log_path = os.path.join(LOGS_DIR, log_file)
 
     try:
@@ -198,8 +335,11 @@ def run_playbook_streaming(run_id, playbook_name, target, log_file):
             'status': 'running'
         }, room='status')
 
-        # Start the playbook process in stream mode
-        cmd = ['bash', RUN_SCRIPT, '--stream', playbook_name, '-l', target]
+        # Build command with optional custom inventory
+        cmd = ['bash', RUN_SCRIPT, '--stream', playbook_name]
+        if inventory_path:
+            cmd.extend(['-i', inventory_path])
+        cmd.extend(['-l', target])
         process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
@@ -293,6 +433,14 @@ def run_playbook_streaming(run_id, playbook_name, target, log_file):
             'status': 'failed'
         }, room='status')
 
+    finally:
+        # Clean up temporary inventory file if one was created
+        if inventory_path and os.path.exists(inventory_path):
+            try:
+                os.remove(inventory_path)
+            except Exception:
+                pass  # Ignore cleanup errors
+
 @app.route('/')
 def index():
     """Main page - list all playbooks"""
@@ -336,6 +484,13 @@ def run_playbook(playbook_name):
     run_id = str(uuid.uuid4())
     log_file = generate_log_filename(playbook_name, target, run_id)
 
+    # Check if target is a managed host and generate temp inventory if needed
+    inventory_path = None
+    if is_managed_host(target):
+        inventory_path = generate_managed_inventory(target)
+        if not inventory_path:
+            return jsonify({'error': f'Failed to generate inventory for managed host: {target}'}), 500
+
     # Register the run
     with runs_lock:
         active_runs[run_id] = {
@@ -343,13 +498,14 @@ def run_playbook(playbook_name):
             'target': target,
             'status': 'starting',
             'started': datetime.now().isoformat(),
-            'log_file': log_file
+            'log_file': log_file,
+            'managed_host': inventory_path is not None
         }
 
     # Start playbook in background thread with streaming
     thread = threading.Thread(
         target=run_playbook_streaming,
-        args=(run_id, playbook_name, target, log_file)
+        args=(run_id, playbook_name, target, log_file, inventory_path)
     )
     thread.daemon = True
     thread.start()
@@ -1373,13 +1529,15 @@ if __name__ == '__main__':
     else:
         print(f"WARNING: Storage backend health check failed!")
 
-    # Initialize the schedule manager with storage backend
+    # Initialize the schedule manager with storage backend and managed inventory functions
     schedule_manager = ScheduleManager(
         socketio=socketio,
         run_playbook_fn=run_playbook_streaming,
         active_runs=active_runs,
         runs_lock=runs_lock,
-        storage=storage_backend
+        storage=storage_backend,
+        is_managed_host_fn=is_managed_host,
+        generate_managed_inventory_fn=generate_managed_inventory
     )
     schedule_manager.start()
     print("Schedule manager initialized and started")

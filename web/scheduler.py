@@ -40,7 +40,8 @@ class ScheduleManager:
     """
 
     def __init__(self, socketio, run_playbook_fn: Callable, active_runs: Dict,
-                 runs_lock: threading.Lock, storage=None):
+                 runs_lock: threading.Lock, storage=None,
+                 is_managed_host_fn: Callable = None, generate_managed_inventory_fn: Callable = None):
         """
         Initialize the schedule manager.
 
@@ -50,12 +51,16 @@ class ScheduleManager:
             active_runs: Shared dict tracking active playbook runs
             runs_lock: Lock for thread-safe access to active_runs
             storage: Storage backend instance (from storage module)
+            is_managed_host_fn: Optional function to check if host is in managed inventory
+            generate_managed_inventory_fn: Optional function to generate temp inventory for managed hosts
         """
         self.socketio = socketio
         self.run_playbook_fn = run_playbook_fn
         self.active_runs = active_runs
         self.runs_lock = runs_lock
         self.storage = storage
+        self.is_managed_host = is_managed_host_fn
+        self.generate_managed_inventory = generate_managed_inventory_fn
 
         # Schedule storage (in-memory cache, backed by storage backend)
         self.schedules: Dict[str, Dict] = {}
@@ -315,10 +320,16 @@ class ScheduleManager:
         }, room='status')
 
         status = 'failed'
+        inventory_path = None
         try:
+            # Check if target is a managed host and generate temp inventory if needed
+            if self.is_managed_host and self.generate_managed_inventory:
+                if self.is_managed_host(target):
+                    inventory_path = self.generate_managed_inventory(target)
+
             # Call existing run_playbook_streaming function
             # This runs synchronously in the executor thread
-            self.run_playbook_fn(run_id, playbook, target, log_file)
+            self.run_playbook_fn(run_id, playbook, target, log_file, inventory_path)
 
             # Check the final status from active_runs
             with self.runs_lock:
