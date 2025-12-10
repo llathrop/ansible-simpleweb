@@ -3,20 +3,18 @@ Ansible Web Interface - Schedule Manager
 
 Handles playbook scheduling with APScheduler backend.
 Provides create, read, update, delete operations for schedules,
-with JSON file persistence and execution history tracking.
+with configurable storage backend (flat file or MongoDB).
 
 Architecture:
-- APScheduler with SQLite job store for reliable scheduling
-- JSON files for schedule metadata and execution history
+- APScheduler with memory job store for reliable scheduling
+- Pluggable storage backend for schedule metadata and execution history
 - Integrates with existing run_playbook_streaming() function
 - WebSocket events for real-time UI updates
 """
 
-import json
-import os
 import threading
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Dict, List, Optional, Callable, Any
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -25,10 +23,6 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.executors.pool import ThreadPoolExecutor
-
-# File paths (inside container)
-SCHEDULES_FILE = '/app/config/schedules.json'
-HISTORY_FILE = '/app/config/schedule_history.json'
 
 # Maximum history entries to keep
 MAX_HISTORY_ENTRIES = 1000
@@ -45,7 +39,8 @@ class ScheduleManager:
     - Real-time WebSocket notifications
     """
 
-    def __init__(self, socketio, run_playbook_fn: Callable, active_runs: Dict, runs_lock: threading.Lock):
+    def __init__(self, socketio, run_playbook_fn: Callable, active_runs: Dict,
+                 runs_lock: threading.Lock, storage=None):
         """
         Initialize the schedule manager.
 
@@ -54,13 +49,15 @@ class ScheduleManager:
             run_playbook_fn: Function to execute playbooks (run_playbook_streaming)
             active_runs: Shared dict tracking active playbook runs
             runs_lock: Lock for thread-safe access to active_runs
+            storage: Storage backend instance (from storage module)
         """
         self.socketio = socketio
         self.run_playbook_fn = run_playbook_fn
         self.active_runs = active_runs
         self.runs_lock = runs_lock
+        self.storage = storage
 
-        # Schedule storage
+        # Schedule storage (in-memory cache, backed by storage backend)
         self.schedules: Dict[str, Dict] = {}
         self.schedules_lock = threading.RLock()  # RLock allows reentrant locking
 
@@ -69,7 +66,7 @@ class ScheduleManager:
         self.running_jobs_lock = threading.Lock()
 
         # Initialize APScheduler with memory job store
-        # (Schedules are persisted in JSON, we just need in-memory job tracking)
+        # (Schedules are persisted via storage backend, we just need in-memory job tracking)
         jobstores = {
             'default': MemoryJobStore()
         }
@@ -89,7 +86,7 @@ class ScheduleManager:
             timezone='UTC'
         )
 
-        # Load existing schedules from file
+        # Load existing schedules from storage
         self._load_schedules()
 
     def start(self):
@@ -114,34 +111,42 @@ class ScheduleManager:
     # =========================================================================
 
     def _load_schedules(self):
-        """Load schedules from JSON file."""
-        if os.path.exists(SCHEDULES_FILE):
+        """Load schedules from storage backend."""
+        if self.storage:
             try:
-                with open(SCHEDULES_FILE, 'r') as f:
-                    data = json.load(f)
-                    self.schedules = data.get('schedules', {})
-                    print(f"Loaded {len(self.schedules)} schedules from file")
-            except (json.JSONDecodeError, IOError) as e:
+                self.schedules = self.storage.get_all_schedules()
+                backend_type = self.storage.get_backend_type()
+                print(f"Loaded {len(self.schedules)} schedules from {backend_type}")
+            except Exception as e:
                 print(f"Error loading schedules: {e}")
                 self.schedules = {}
         else:
+            print("Warning: No storage backend configured, schedules will not persist")
             self.schedules = {}
-            self._save_schedules()
 
     def _save_schedules(self):
-        """Persist schedules to JSON file."""
-        with self.schedules_lock:
-            data = {
-                'version': '1.0',
-                'schedules': self.schedules
-            }
-            os.makedirs(os.path.dirname(SCHEDULES_FILE), exist_ok=True)
-            with open(SCHEDULES_FILE, 'w') as f:
-                json.dump(data, f, indent=2, default=str)
+        """Persist schedules to storage backend."""
+        if self.storage:
+            with self.schedules_lock:
+                try:
+                    self.storage.save_all_schedules(self.schedules)
+                except Exception as e:
+                    print(f"Error saving schedules: {e}")
+
+    def _save_schedule(self, schedule_id: str):
+        """Save a single schedule to storage backend."""
+        if self.storage:
+            with self.schedules_lock:
+                schedule = self.schedules.get(schedule_id)
+                if schedule:
+                    try:
+                        self.storage.save_schedule(schedule_id, schedule)
+                    except Exception as e:
+                        print(f"Error saving schedule {schedule_id}: {e}")
 
     def _record_execution(self, schedule_id: str, run_id: str, log_file: str,
                           status: str, started: datetime, finished: datetime = None):
-        """Record execution in history file."""
+        """Record execution in history."""
         duration = None
         if finished and started:
             duration = (finished - started).total_seconds()
@@ -156,24 +161,13 @@ class ScheduleManager:
             'status': status
         }
 
-        try:
-            if os.path.exists(HISTORY_FILE):
-                with open(HISTORY_FILE, 'r') as f:
-                    data = json.load(f)
-            else:
-                data = {'version': '1.0', 'history': []}
-
-            # Insert at beginning (newest first)
-            data['history'].insert(0, history_entry)
-
-            # Trim to max entries
-            data['history'] = data['history'][:MAX_HISTORY_ENTRIES]
-
-            os.makedirs(os.path.dirname(HISTORY_FILE), exist_ok=True)
-            with open(HISTORY_FILE, 'w') as f:
-                json.dump(data, f, indent=2)
-        except Exception as e:
-            print(f"Error recording history: {e}")
+        if self.storage:
+            try:
+                self.storage.add_history_entry(history_entry)
+                # Cleanup old entries
+                self.storage.cleanup_history(MAX_HISTORY_ENTRIES)
+            except Exception as e:
+                print(f"Error recording history: {e}")
 
     # =========================================================================
     # APScheduler Integration
@@ -262,7 +256,7 @@ class ScheduleManager:
             with self.schedules_lock:
                 if schedule_id in self.schedules:
                     self.schedules[schedule_id]['next_run'] = job.next_run_time.isoformat()
-                    self._save_schedules()
+                    self._save_schedule(schedule_id)
 
     def _execute_scheduled_playbook(self, schedule_id: str):
         """
@@ -299,7 +293,7 @@ class ScheduleManager:
                 self.schedules[schedule_id]['last_run'] = started.isoformat()
                 self.schedules[schedule_id]['last_status'] = 'running'
                 self.schedules[schedule_id]['current_run_id'] = run_id
-                self._save_schedules()
+                self._save_schedule(schedule_id)
 
         # Emit schedule started event
         self.socketio.emit('schedule_started', {
@@ -351,7 +345,7 @@ class ScheduleManager:
                 if schedule['recurrence']['type'] == 'once':
                     self.schedules[schedule_id]['enabled'] = False
 
-                self._save_schedules()
+                self._save_schedule(schedule_id)
 
         # Update next_run time
         self._update_next_run(schedule_id)
@@ -411,7 +405,7 @@ class ScheduleManager:
 
         with self.schedules_lock:
             self.schedules[schedule_id] = schedule
-            self._save_schedules()
+            self._save_schedule(schedule_id)
 
         # Register with APScheduler
         self._register_job(schedule_id, schedule)
@@ -465,7 +459,7 @@ class ScheduleManager:
                 if field in updates:
                     schedule[field] = updates[field]
 
-            self._save_schedules()
+            self._save_schedule(schedule_id)
 
         # Re-register job if recurrence changed
         if 'recurrence' in updates:
@@ -490,7 +484,8 @@ class ScheduleManager:
         with self.schedules_lock:
             if schedule_id in self.schedules:
                 del self.schedules[schedule_id]
-                self._save_schedules()
+                if self.storage:
+                    self.storage.delete_schedule(schedule_id)
 
         # Emit event
         self.socketio.emit('schedule_deleted', {
@@ -509,7 +504,7 @@ class ScheduleManager:
         with self.schedules_lock:
             if schedule_id in self.schedules:
                 self.schedules[schedule_id]['enabled'] = False
-                self._save_schedules()
+                self._save_schedule(schedule_id)
 
         self.socketio.emit('schedule_status', {
             'schedule_id': schedule_id,
@@ -525,7 +520,7 @@ class ScheduleManager:
                 return False
             schedule = self.schedules[schedule_id]
             schedule['enabled'] = True
-            self._save_schedules()
+            self._save_schedule(schedule_id)
 
         # Re-register job
         self._register_job(schedule_id, schedule)
@@ -574,17 +569,11 @@ class ScheduleManager:
         Returns:
             List of history entries (newest first)
         """
+        if not self.storage:
+            return []
+
         try:
-            if not os.path.exists(HISTORY_FILE):
-                return []
-
-            with open(HISTORY_FILE, 'r') as f:
-                data = json.load(f)
-                history = data.get('history', [])
-
-            # Filter by schedule if specified
-            if schedule_id:
-                history = [h for h in history if h.get('schedule_id') == schedule_id]
+            history = self.storage.get_history(schedule_id=schedule_id, limit=limit)
 
             # Format for display
             for entry in history:
@@ -601,7 +590,7 @@ class ScheduleManager:
                     except:
                         entry['started_display'] = entry['started']
 
-            return history[:limit]
+            return history
 
         except Exception as e:
             print(f"Error reading history: {e}")

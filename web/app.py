@@ -12,6 +12,9 @@ from datetime import datetime
 # Import scheduler components (initialized after app creation)
 from scheduler import ScheduleManager, build_recurrence_config
 
+# Import storage backend
+from storage import get_storage_backend
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'ansible-simpleweb-dev-key')
 
@@ -34,6 +37,9 @@ runs_lock = threading.Lock()
 
 # Schedule manager (initialized in main block)
 schedule_manager = None
+
+# Storage backend (initialized in main block)
+storage_backend = None
 
 def get_inventory_targets():
     """Parse inventory file and get available hosts and groups"""
@@ -565,6 +571,204 @@ def api_theme(theme_name):
 
 
 # =============================================================================
+# Storage API Endpoints
+# Information about the active storage backend
+# =============================================================================
+
+@app.route('/api/storage')
+def api_storage():
+    """
+    Get information about the active storage backend.
+
+    Returns:
+        JSON with backend type, health status, and configuration.
+    """
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+
+    return jsonify({
+        'backend_type': storage_backend.get_backend_type(),
+        'healthy': storage_backend.health_check(),
+        'config': {
+            'STORAGE_BACKEND': os.environ.get('STORAGE_BACKEND', 'flatfile'),
+            'MONGODB_HOST': os.environ.get('MONGODB_HOST', 'mongodb') if storage_backend.get_backend_type() == 'mongodb' else None,
+            'MONGODB_DATABASE': os.environ.get('MONGODB_DATABASE', 'ansible_simpleweb') if storage_backend.get_backend_type() == 'mongodb' else None
+        }
+    })
+
+
+# =============================================================================
+# Inventory API Endpoints
+# CRUD operations for managed inventory items (hosts/servers)
+# Stored via the pluggable storage backend (flatfile or MongoDB)
+# =============================================================================
+
+@app.route('/api/inventory')
+def api_inventory_list():
+    """
+    Get all inventory items.
+
+    Returns:
+        JSON array of inventory items with their metadata.
+    """
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+
+    inventory = storage_backend.get_all_inventory()
+    return jsonify(inventory)
+
+
+@app.route('/api/inventory/<item_id>')
+def api_inventory_get(item_id):
+    """
+    Get a single inventory item by ID.
+
+    Args:
+        item_id: UUID of the inventory item
+
+    Returns:
+        JSON inventory item or 404 if not found.
+    """
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+
+    item = storage_backend.get_inventory_item(item_id)
+    if not item:
+        return jsonify({'error': 'Inventory item not found'}), 404
+
+    return jsonify(item)
+
+
+@app.route('/api/inventory', methods=['POST'])
+def api_inventory_create():
+    """
+    Create a new inventory item.
+
+    Expected JSON body:
+    {
+        "hostname": "server.example.com",
+        "display_name": "Web Server 1",
+        "group": "webservers",
+        "description": "Primary web server",
+        "variables": {"ansible_user": "deploy", "ansible_port": 22}
+    }
+
+    Returns:
+        JSON with created item including generated ID.
+    """
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+
+    # Validate required fields
+    if not data.get('hostname'):
+        return jsonify({'error': 'hostname is required'}), 400
+
+    # Generate ID and timestamps
+    item_id = str(uuid.uuid4())
+    now = datetime.now().isoformat()
+
+    item = {
+        'id': item_id,
+        'hostname': data.get('hostname'),
+        'display_name': data.get('display_name', data.get('hostname')),
+        'group': data.get('group', 'ungrouped'),
+        'description': data.get('description', ''),
+        'variables': data.get('variables', {}),
+        'created': now,
+        'updated': now
+    }
+
+    if storage_backend.save_inventory_item(item_id, item):
+        return jsonify(item), 201
+    else:
+        return jsonify({'error': 'Failed to save inventory item'}), 500
+
+
+@app.route('/api/inventory/<item_id>', methods=['PUT'])
+def api_inventory_update(item_id):
+    """
+    Update an existing inventory item.
+
+    Args:
+        item_id: UUID of the inventory item
+
+    Expected JSON body with fields to update.
+
+    Returns:
+        JSON with updated item.
+    """
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+
+    existing = storage_backend.get_inventory_item(item_id)
+    if not existing:
+        return jsonify({'error': 'Inventory item not found'}), 404
+
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+
+    # Update allowed fields
+    allowed_fields = ['hostname', 'display_name', 'group', 'description', 'variables']
+    for field in allowed_fields:
+        if field in data:
+            existing[field] = data[field]
+
+    existing['updated'] = datetime.now().isoformat()
+
+    if storage_backend.save_inventory_item(item_id, existing):
+        return jsonify(existing)
+    else:
+        return jsonify({'error': 'Failed to update inventory item'}), 500
+
+
+@app.route('/api/inventory/<item_id>', methods=['DELETE'])
+def api_inventory_delete(item_id):
+    """
+    Delete an inventory item.
+
+    Args:
+        item_id: UUID of the inventory item
+
+    Returns:
+        JSON with success status.
+    """
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+
+    if storage_backend.delete_inventory_item(item_id):
+        return jsonify({'success': True, 'deleted': item_id})
+    else:
+        return jsonify({'error': 'Inventory item not found'}), 404
+
+
+@app.route('/api/inventory/search', methods=['POST'])
+def api_inventory_search():
+    """
+    Search inventory items by criteria.
+
+    Expected JSON body with search criteria:
+    {
+        "hostname": "web*",      // Supports wildcards
+        "group": "webservers"
+    }
+
+    Returns:
+        JSON array of matching inventory items.
+    """
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+
+    query = request.get_json() or {}
+    results = storage_backend.search_inventory(query)
+    return jsonify(results)
+
+
+# =============================================================================
 # Schedule Routes
 # Playbook scheduling with APScheduler backend
 # =============================================================================
@@ -822,12 +1026,22 @@ def handle_leave_schedules():
 
 
 if __name__ == '__main__':
-    # Initialize the schedule manager
+    # Initialize storage backend
+    storage_backend = get_storage_backend()
+    backend_type = storage_backend.get_backend_type()
+    print(f"Storage backend initialized: {backend_type}")
+    if storage_backend.health_check():
+        print(f"Storage backend health check: OK")
+    else:
+        print(f"WARNING: Storage backend health check failed!")
+
+    # Initialize the schedule manager with storage backend
     schedule_manager = ScheduleManager(
         socketio=socketio,
         run_playbook_fn=run_playbook_streaming,
         active_runs=active_runs,
-        runs_lock=runs_lock
+        runs_lock=runs_lock,
+        storage=storage_backend
     )
     schedule_manager.start()
     print("Schedule manager initialized and started")

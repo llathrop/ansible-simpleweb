@@ -13,6 +13,8 @@ A lightweight, Docker-based web interface for managing and executing Ansible pla
 - 🔌 **REST API** - JSON endpoints for external integrations
 - 🐳 **Fully Containerized** - Rocky Linux 9 with Ansible 8.7.0 pre-configured
 - 🔒 **Localhost First** - Secure by default, ready for authentication later
+- 💾 **Flexible Storage** - Choose between flat file (JSON) or MongoDB for data persistence
+- 📦 **Inventory Management** - API for managing host inventory with full CRUD operations
 
 ## Quick Start
 
@@ -92,21 +94,25 @@ Refresh the page - new hosts appear in the dropdown automatically.
 ansible-simpleweb/
 ├── playbooks/          # Add your Ansible playbooks here
 ├── inventory/          # Configure target hosts here
-│   └── hosts          # Main inventory file
+│   └── hosts          # Main inventory file (Ansible INI format)
 ├── logs/              # Playbook execution logs (auto-generated)
 ├── config/            # Configuration files
-│   └── themes/        # Theme JSON files (customizable)
-│       ├── default.json
-│       ├── dark.json
-│       ├── low-contrast.json
-│       └── colorblind.json
+│   ├── themes/        # Theme JSON files (customizable)
+│   ├── schedules.json # Schedule definitions (flatfile backend)
+│   ├── schedule_history.json # Execution history (flatfile backend)
+│   └── inventory.json # Managed inventory (flatfile backend)
 ├── web/               # Flask web application
-│   ├── app.py
+│   ├── app.py         # Main Flask application
+│   ├── scheduler.py   # APScheduler integration
+│   ├── storage/       # Storage backend abstraction
+│   │   ├── __init__.py    # Factory function
+│   │   ├── base.py        # Abstract interface
+│   │   ├── flatfile.py    # JSON file storage
+│   │   └── mongodb.py     # MongoDB storage
+│   ├── migrate_storage.py # Migration script between backends
 │   ├── templates/
 │   └── static/
-│       ├── css/base.css   # Shared stylesheet with CSS variables
-│       └── js/theme.js    # Theme loading and switching
-└── docker-compose.yml
+└── docker-compose.yml # Includes MongoDB container
 ```
 
 ## Documentation
@@ -134,6 +140,7 @@ This project includes 5 example playbooks:
 ✅ **Step 3:** Full web interface with real-time updates
 ✅ **Step 4:** Multi-host target selection
 ✅ **Step 5:** Theming system with dark mode and accessibility themes
+✅ **Step 6:** Pluggable storage backend (flat file / MongoDB)
 
 **Status:** Production-ready for local use
 

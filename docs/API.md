@@ -454,13 +454,217 @@ For production use, implement rate limiting:
 - Status checks: 100 per minute
 - Playbook listing: 100 per minute
 
+---
+
+### GET /api/storage
+
+Get information about the active storage backend.
+
+**Request:**
+```http
+GET /api/storage HTTP/1.1
+Host: localhost:3001
+```
+
+**Response:**
+```json
+{
+  "backend_type": "flatfile",
+  "healthy": true,
+  "config": {
+    "STORAGE_BACKEND": "flatfile",
+    "MONGODB_HOST": null,
+    "MONGODB_DATABASE": null
+  }
+}
+```
+
+---
+
+## Inventory API
+
+CRUD operations for managed inventory items (hosts/servers).
+
+### GET /api/inventory
+
+Get all inventory items.
+
+**Request:**
+```http
+GET /api/inventory HTTP/1.1
+Host: localhost:3001
+```
+
+**Response:**
+```json
+[
+  {
+    "id": "b459dfe1-65a5-4666-be7e-8d0dba7deff5",
+    "hostname": "web-server-01.example.com",
+    "display_name": "Web Server 1",
+    "group": "webservers",
+    "description": "Primary web server",
+    "variables": {"ansible_user": "deploy"},
+    "created": "2025-12-10T03:07:51.395020",
+    "updated": "2025-12-10T03:08:10.833655"
+  }
+]
+```
+
+---
+
+### GET /api/inventory/{item_id}
+
+Get a single inventory item by ID.
+
+**Request:**
+```http
+GET /api/inventory/b459dfe1-65a5-4666-be7e-8d0dba7deff5 HTTP/1.1
+Host: localhost:3001
+```
+
+**Response:**
+```json
+{
+  "id": "b459dfe1-65a5-4666-be7e-8d0dba7deff5",
+  "hostname": "web-server-01.example.com",
+  "display_name": "Web Server 1",
+  "group": "webservers",
+  "description": "Primary web server",
+  "variables": {"ansible_user": "deploy"},
+  "created": "2025-12-10T03:07:51.395020",
+  "updated": "2025-12-10T03:08:10.833655"
+}
+```
+
+---
+
+### POST /api/inventory
+
+Create a new inventory item.
+
+**Request:**
+```http
+POST /api/inventory HTTP/1.1
+Host: localhost:3001
+Content-Type: application/json
+
+{
+  "hostname": "server.example.com",
+  "display_name": "Web Server 1",
+  "group": "webservers",
+  "description": "Primary web server",
+  "variables": {"ansible_user": "deploy", "ansible_port": 22}
+}
+```
+
+**Required fields:** `hostname`
+
+**Response (201 Created):**
+```json
+{
+  "id": "generated-uuid",
+  "hostname": "server.example.com",
+  "display_name": "Web Server 1",
+  "group": "webservers",
+  "description": "Primary web server",
+  "variables": {"ansible_user": "deploy", "ansible_port": 22},
+  "created": "2025-12-10T03:07:51.395020",
+  "updated": "2025-12-10T03:07:51.395020"
+}
+```
+
+---
+
+### PUT /api/inventory/{item_id}
+
+Update an existing inventory item.
+
+**Request:**
+```http
+PUT /api/inventory/b459dfe1-65a5-4666-be7e-8d0dba7deff5 HTTP/1.1
+Host: localhost:3001
+Content-Type: application/json
+
+{
+  "description": "Updated description",
+  "variables": {"ansible_user": "admin"}
+}
+```
+
+**Response:**
+```json
+{
+  "id": "b459dfe1-65a5-4666-be7e-8d0dba7deff5",
+  "hostname": "web-server-01.example.com",
+  "display_name": "Web Server 1",
+  "group": "webservers",
+  "description": "Updated description",
+  "variables": {"ansible_user": "admin"},
+  "created": "2025-12-10T03:07:51.395020",
+  "updated": "2025-12-10T03:15:00.000000"
+}
+```
+
+---
+
+### DELETE /api/inventory/{item_id}
+
+Delete an inventory item.
+
+**Request:**
+```http
+DELETE /api/inventory/b459dfe1-65a5-4666-be7e-8d0dba7deff5 HTTP/1.1
+Host: localhost:3001
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "deleted": "b459dfe1-65a5-4666-be7e-8d0dba7deff5"
+}
+```
+
+---
+
+### POST /api/inventory/search
+
+Search inventory items by criteria. Supports wildcard matching.
+
+**Request:**
+```http
+POST /api/inventory/search HTTP/1.1
+Host: localhost:3001
+Content-Type: application/json
+
+{
+  "hostname": "web*",
+  "group": "webservers"
+}
+```
+
+**Response:**
+```json
+[
+  {
+    "id": "b459dfe1-65a5-4666-be7e-8d0dba7deff5",
+    "hostname": "web-server-01.example.com",
+    "display_name": "Web Server 1",
+    "group": "webservers",
+    ...
+  }
+]
+```
+
+---
+
 ## Future Enhancements
 
 Planned API improvements:
 
 - **POST /api/run** - JSON body for complex execution parameters
 - **GET /api/logs/{name}/latest** - Get latest log as JSON
-- **GET /api/inventory** - List available targets
 - **WebSocket /api/stream** - Real-time execution updates
 - **Authentication** - API key or JWT tokens
 - **Rate limiting** - Prevent abuse

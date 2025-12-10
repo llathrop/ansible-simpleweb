@@ -24,4 +24,29 @@ services:
     environment:
       - FLASK_ENV=development
       - FLASK_APP=web/app.py
+      # Storage backend: 'flatfile' or 'mongodb'
+      - STORAGE_BACKEND=flatfile
+      # MongoDB connection (used when STORAGE_BACKEND=mongodb)
+      - MONGODB_HOST=mongodb
+      - MONGODB_PORT=27017
+      - MONGODB_DATABASE=ansible_simpleweb
+    depends_on:
+      - mongodb
     restart: unless-stopped
+
+  mongodb:
+    image: mongo:7
+    container_name: ansible-simpleweb-mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      # Persistent data storage
+      - mongodb_data:/data/db
+    environment:
+      # No auth for local development - add MONGO_INITDB_ROOT_USERNAME/PASSWORD for production
+      - MONGO_INITDB_DATABASE=ansible_simpleweb
+    restart: unless-stopped
+
+volumes:
+  mongodb_data:
+    driver: local

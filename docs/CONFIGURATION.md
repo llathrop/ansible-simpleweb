@@ -1,9 +1,10 @@
 # Configuration Guide
 
-Complete guide to configuring inventory, SSH access, and system settings.
+Complete guide to configuring inventory, SSH access, storage backends, and system settings.
 
 ## Table of Contents
 
+- [Storage Backend Configuration](#storage-backend-configuration)
 - [Inventory Configuration](#inventory-configuration)
 - [SSH Setup](#ssh-setup)
 - [Service Account Setup](#service-account-setup)
@@ -11,6 +12,114 @@ Complete guide to configuring inventory, SSH access, and system settings.
 - [Host Groups](#host-groups)
 - [Advanced Configuration](#advanced-configuration)
 - [Custom Themes](#custom-themes)
+
+## Storage Backend Configuration
+
+The application supports two storage backends for persisting schedules, execution history, and managed inventory:
+
+### Available Backends
+
+| Backend | Description | Best For |
+|---------|-------------|----------|
+| `flatfile` | JSON files in `config/` directory | Simple setups, easy backup, git-friendly |
+| `mongodb` | MongoDB database | Scalability, complex queries, multi-instance |
+
+### Configuration
+
+Set the storage backend via environment variable in `docker-compose.yml`:
+
+```yaml
+environment:
+  # Storage backend: 'flatfile' or 'mongodb'
+  - STORAGE_BACKEND=flatfile
+
+  # MongoDB connection (only used when STORAGE_BACKEND=mongodb)
+  - MONGODB_HOST=mongodb
+  - MONGODB_PORT=27017
+  - MONGODB_DATABASE=ansible_simpleweb
+```
+
+### Flat File Storage (Default)
+
+Data is stored in JSON files:
+
+| File | Contents |
+|------|----------|
+| `config/schedules.json` | Schedule definitions |
+| `config/schedule_history.json` | Execution history |
+| `config/inventory.json` | Managed inventory items |
+
+**Advantages:**
+- No additional services required
+- Easy to backup (just copy files)
+- Human-readable, git-friendly
+- Works offline
+
+### MongoDB Storage
+
+Data is stored in MongoDB collections:
+
+| Collection | Contents |
+|------------|----------|
+| `schedules` | Schedule definitions |
+| `history` | Execution history |
+| `inventory` | Managed inventory items |
+
+**Advantages:**
+- Better performance at scale
+- Built-in indexing for fast queries
+- Supports multiple app instances
+- Rich query capabilities
+
+### Switching Backends
+
+Use the migration script to move data between backends:
+
+```bash
+# Preview migration (dry run)
+docker exec ansible-simpleweb python3 /app/web/migrate_storage.py \
+  --from flatfile --to mongodb --dry-run
+
+# Perform migration
+docker exec ansible-simpleweb python3 /app/web/migrate_storage.py \
+  --from flatfile --to mongodb
+
+# Migrate back to flat files
+docker exec ansible-simpleweb python3 /app/web/migrate_storage.py \
+  --from mongodb --to flatfile
+
+# Force overwrite existing data
+docker exec ansible-simpleweb python3 /app/web/migrate_storage.py \
+  --from flatfile --to mongodb --force
+```
+
+### Checking Current Backend
+
+Query the storage API endpoint:
+
+```bash
+curl http://localhost:3001/api/storage
+```
+
+Response:
+```json
+{
+  "backend_type": "flatfile",
+  "healthy": true,
+  "config": {
+    "STORAGE_BACKEND": "flatfile",
+    "MONGODB_HOST": null,
+    "MONGODB_DATABASE": null
+  }
+}
+```
+
+### Note on Log Files
+
+Playbook execution logs (`.log` files) are **always stored as flat files** in the `logs/` directory, regardless of the storage backend. This is because:
+- Logs are streamed in real-time via WebSocket
+- Log files can be large and benefit from filesystem handling
+- Logs are accessed directly via the web interface
 
 ## Inventory Configuration
 
