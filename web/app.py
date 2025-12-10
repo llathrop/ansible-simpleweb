@@ -2,11 +2,15 @@ from flask import Flask, render_template, jsonify, request, send_file, redirect,
 from flask_socketio import SocketIO, emit, join_room, leave_room
 import os
 import glob
+import json
 import subprocess
 import threading
 import time
 import uuid
 from datetime import datetime
+
+# Import scheduler components (initialized after app creation)
+from scheduler import ScheduleManager, build_recurrence_config
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'ansible-simpleweb-dev-key')
@@ -19,6 +23,7 @@ PLAYBOOKS_DIR = '/app/playbooks'
 LOGS_DIR = '/app/logs'
 RUN_SCRIPT = '/app/run-playbook.sh'
 INVENTORY_FILE = '/app/inventory/hosts'
+THEMES_DIR = '/app/config/themes'
 
 # Track running playbooks by run_id
 # Structure: {run_id: {playbook, target, status, started, log_file, ...}}
@@ -26,6 +31,9 @@ active_runs = {}
 
 # Lock for thread-safe access to active_runs
 runs_lock = threading.Lock()
+
+# Schedule manager (initialized in main block)
+schedule_manager = None
 
 def get_inventory_targets():
     """Parse inventory file and get available hosts and groups"""
@@ -477,6 +485,287 @@ def api_run_log(run_id):
     })
 
 
+# =============================================================================
+# Theme API Endpoints
+# Serves theme configuration from config/themes/*.json files
+# Used by web/static/js/theme.js to load and apply themes
+# =============================================================================
+
+@app.route('/api/themes')
+def api_themes():
+    """
+    Get list of available themes.
+
+    Returns JSON array of theme metadata:
+    [
+        {"id": "default", "name": "Default", "description": "Light theme..."},
+        {"id": "dark", "name": "Dark", "description": "Dark theme..."},
+        ...
+    ]
+
+    Themes are discovered by scanning config/themes/*.json files.
+    The 'default' theme is always sorted first.
+    """
+    themes = []
+    if os.path.exists(THEMES_DIR):
+        for file in sorted(glob.glob(f'{THEMES_DIR}/*.json')):
+            theme_id = os.path.basename(file).replace('.json', '')
+            try:
+                with open(file, 'r') as f:
+                    theme_data = json.load(f)
+                    themes.append({
+                        'id': theme_id,
+                        'name': theme_data.get('name', theme_id.title()),
+                        'description': theme_data.get('description', '')
+                    })
+            except (json.JSONDecodeError, IOError) as e:
+                # Skip invalid theme files
+                print(f"Error loading theme {theme_id}: {e}")
+                continue
+
+    # Ensure default theme is first if it exists
+    themes.sort(key=lambda t: (t['id'] != 'default', t['name']))
+
+    return jsonify(themes)
+
+
+@app.route('/api/themes/<theme_name>')
+def api_theme(theme_name):
+    """
+    Get a specific theme's full configuration.
+
+    Args:
+        theme_name: Theme identifier (e.g., 'dark', 'colorblind')
+
+    Returns:
+        Full theme JSON including all color definitions.
+        Used by theme.js to apply CSS variables.
+
+    Security:
+        - Sanitizes theme_name to prevent path traversal attacks
+        - Only serves files from THEMES_DIR with .json extension
+    """
+    # Sanitize theme name to prevent path traversal (e.g., '../../../etc/passwd')
+    if '/' in theme_name or '\\' in theme_name or '..' in theme_name:
+        return jsonify({'error': 'Invalid theme name'}), 400
+
+    theme_path = os.path.join(THEMES_DIR, f'{theme_name}.json')
+
+    if not os.path.exists(theme_path):
+        return jsonify({'error': 'Theme not found'}), 404
+
+    try:
+        with open(theme_path, 'r') as f:
+            theme_data = json.load(f)
+        return jsonify(theme_data)
+    except json.JSONDecodeError as e:
+        return jsonify({'error': f'Invalid theme file: {str(e)}'}), 500
+    except IOError as e:
+        return jsonify({'error': f'Error reading theme: {str(e)}'}), 500
+
+
+# =============================================================================
+# Schedule Routes
+# Playbook scheduling with APScheduler backend
+# =============================================================================
+
+@app.route('/schedules')
+def schedules_page():
+    """Main schedule management page - list all schedules"""
+    if not schedule_manager:
+        return "Scheduler not initialized", 500
+
+    schedules = schedule_manager.get_all_schedules()
+    playbooks = get_playbooks()
+    targets = get_inventory_targets()
+
+    return render_template('schedules.html',
+                          schedules=schedules,
+                          playbooks=playbooks,
+                          targets=targets)
+
+
+@app.route('/schedules/new')
+def new_schedule():
+    """Form to create a new schedule"""
+    playbooks = get_playbooks()
+    targets = get_inventory_targets()
+
+    # Pre-select playbook if provided in query param
+    selected_playbook = request.args.get('playbook', '')
+
+    return render_template('schedule_form.html',
+                          playbooks=playbooks,
+                          targets=targets,
+                          selected_playbook=selected_playbook,
+                          edit_mode=False,
+                          schedule=None)
+
+
+@app.route('/schedules/create', methods=['POST'])
+def create_schedule():
+    """Create a new schedule from form submission"""
+    if not schedule_manager:
+        return "Scheduler not initialized", 500
+
+    playbook = request.form.get('playbook')
+    target = request.form.get('target', 'host_machine')
+    name = request.form.get('name', '').strip()
+    description = request.form.get('description', '').strip()
+
+    # Validate required fields
+    if not playbook or playbook not in get_playbooks():
+        return "Invalid playbook", 400
+    if not name:
+        name = f"{playbook} - {target}"
+
+    # Build recurrence config from form data
+    recurrence_config = build_recurrence_config(request.form)
+
+    # Create the schedule
+    schedule_id = schedule_manager.create_schedule(
+        playbook=playbook,
+        target=target,
+        name=name,
+        recurrence_config=recurrence_config,
+        description=description
+    )
+
+    return redirect(url_for('schedules_page'))
+
+
+@app.route('/schedules/<schedule_id>/edit')
+def edit_schedule(schedule_id):
+    """Form to edit an existing schedule"""
+    if not schedule_manager:
+        return "Scheduler not initialized", 500
+
+    schedule = schedule_manager.get_schedule(schedule_id)
+    if not schedule:
+        return "Schedule not found", 404
+
+    playbooks = get_playbooks()
+    targets = get_inventory_targets()
+
+    return render_template('schedule_form.html',
+                          playbooks=playbooks,
+                          targets=targets,
+                          selected_playbook=schedule['playbook'],
+                          edit_mode=True,
+                          schedule=schedule)
+
+
+@app.route('/schedules/<schedule_id>/update', methods=['POST'])
+def update_schedule(schedule_id):
+    """Update an existing schedule"""
+    if not schedule_manager:
+        return "Scheduler not initialized", 500
+
+    name = request.form.get('name', '').strip()
+    description = request.form.get('description', '').strip()
+    target = request.form.get('target', 'host_machine')
+    recurrence_config = build_recurrence_config(request.form)
+
+    updates = {
+        'name': name,
+        'description': description,
+        'target': target,
+        'recurrence': recurrence_config
+    }
+
+    schedule_manager.update_schedule(schedule_id, updates)
+    return redirect(url_for('schedules_page'))
+
+
+@app.route('/schedules/<schedule_id>/history')
+def schedule_history(schedule_id):
+    """View execution history for a schedule"""
+    if not schedule_manager:
+        return "Scheduler not initialized", 500
+
+    schedule = schedule_manager.get_schedule(schedule_id)
+    if not schedule:
+        return "Schedule not found", 404
+
+    history = schedule_manager.get_schedule_history(schedule_id, limit=100)
+
+    return render_template('schedule_history.html',
+                          schedule=schedule,
+                          history=history)
+
+
+# Schedule API endpoints
+@app.route('/api/schedules')
+def api_schedules():
+    """Get all schedules as JSON"""
+    if not schedule_manager:
+        return jsonify({'error': 'Scheduler not initialized'}), 500
+    return jsonify(schedule_manager.get_all_schedules())
+
+
+@app.route('/api/schedules/<schedule_id>')
+def api_schedule_detail(schedule_id):
+    """Get a single schedule"""
+    if not schedule_manager:
+        return jsonify({'error': 'Scheduler not initialized'}), 500
+
+    schedule = schedule_manager.get_schedule(schedule_id)
+    if not schedule:
+        return jsonify({'error': 'Schedule not found'}), 404
+    return jsonify(schedule)
+
+
+@app.route('/api/schedules/<schedule_id>/pause', methods=['POST'])
+def api_pause_schedule(schedule_id):
+    """Pause a schedule"""
+    if not schedule_manager:
+        return jsonify({'error': 'Scheduler not initialized'}), 500
+
+    success = schedule_manager.pause_schedule(schedule_id)
+    return jsonify({'success': success})
+
+
+@app.route('/api/schedules/<schedule_id>/resume', methods=['POST'])
+def api_resume_schedule(schedule_id):
+    """Resume a paused schedule"""
+    if not schedule_manager:
+        return jsonify({'error': 'Scheduler not initialized'}), 500
+
+    success = schedule_manager.resume_schedule(schedule_id)
+    return jsonify({'success': success})
+
+
+@app.route('/api/schedules/<schedule_id>/delete', methods=['POST'])
+def api_delete_schedule(schedule_id):
+    """Delete a schedule"""
+    if not schedule_manager:
+        return jsonify({'error': 'Scheduler not initialized'}), 500
+
+    success = schedule_manager.delete_schedule(schedule_id)
+    return jsonify({'success': success})
+
+
+@app.route('/api/schedules/<schedule_id>/stop', methods=['POST'])
+def api_stop_schedule(schedule_id):
+    """Stop a currently running scheduled job"""
+    if not schedule_manager:
+        return jsonify({'error': 'Scheduler not initialized'}), 500
+
+    success = schedule_manager.stop_running_job(schedule_id)
+    return jsonify({'success': success})
+
+
+@app.route('/api/schedules/<schedule_id>/history')
+def api_schedule_history(schedule_id):
+    """Get execution history for a schedule"""
+    if not schedule_manager:
+        return jsonify({'error': 'Scheduler not initialized'}), 500
+
+    limit = request.args.get('limit', 50, type=int)
+    history = schedule_manager.get_schedule_history(schedule_id, limit=limit)
+    return jsonify(history)
+
+
 # WebSocket event handlers
 @socketio.on('connect')
 def handle_connect():
@@ -520,6 +809,28 @@ def handle_leave_run(data):
         leave_room(f'run:{run_id}')
 
 
+@socketio.on('join_schedules')
+def handle_join_schedules():
+    """Join the schedules room for real-time schedule updates"""
+    join_room('schedules')
+
+
+@socketio.on('leave_schedules')
+def handle_leave_schedules():
+    """Leave the schedules room"""
+    leave_room('schedules')
+
+
 if __name__ == '__main__':
+    # Initialize the schedule manager
+    schedule_manager = ScheduleManager(
+        socketio=socketio,
+        run_playbook_fn=run_playbook_streaming,
+        active_runs=active_runs,
+        runs_lock=runs_lock
+    )
+    schedule_manager.start()
+    print("Schedule manager initialized and started")
+
     # Use socketio.run instead of app.run for WebSocket support
     socketio.run(app, host='0.0.0.0', port=3001, debug=True)

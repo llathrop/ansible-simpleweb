@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scheduled Playbooks - Ansible Web Interface</title>
+    <link rel="stylesheet" href="/static/css/base.css">
+    <script>
+        // Immediately apply cached theme to prevent flash of unstyled content
+        (function() {
+            try {
+                var cached = localStorage.getItem('ansible-web-theme-vars');
+                if (cached) {
+                    var vars = JSON.parse(cached);
+                    var root = document.documentElement;
+                    for (var key in vars) {
+                        if (vars[key]) root.style.setProperty(key, vars[key]);
+                    }
+                }
+            } catch (e) {}
+        })();
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.0/socket.io.min.js"></script>
+    <script src="/static/js/theme.js"></script>
+    <style>
+        /* Page-specific styles */
+        body {
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container container-wide">
+        <h1>Scheduled Playbooks</h1>
+        <p class="subtitle">Manage automated playbook execution</p>
+
+        <div class="nav-links">
+            <a href="/">Home</a>
+            <a href="/schedules">Schedules</a>
+            <a href="/logs">All Logs</a>
+            <a href="/api/playbooks">API</a>
+        </div>
+
+        <div class="action-bar">
+            <a href="/schedules/new" class="btn btn-primary">+ New Schedule</a>
+        </div>
+
+        {% if schedules %}
+        <!-- Active Schedules -->
+        {% set active_schedules = schedules|selectattr('enabled')|list %}
+        {% if active_schedules %}
+        <h2>Active Schedules</h2>
+        <table class="schedule-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Playbook</th>
+                    <th>Target</th>
+                    <th>Recurrence</th>
+                    <th>Next Run</th>
+                    <th>Last Run</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for schedule in active_schedules %}
+                <tr data-schedule-id="{{ schedule.id }}">
+                    <td>
+                        <strong>{{ schedule.name }}</strong>
+                        {% if schedule.description %}
+                        <br><small class="text-muted">{{ schedule.description }}</small>
+                        {% endif %}
+                    </td>
+                    <td>{{ schedule.playbook }}</td>
+                    <td>{{ schedule.target }}</td>
+                    <td><span class="recurrence-badge">{{ schedule.recurrence_display }}</span></td>
+                    <td>{{ schedule.next_run_display }}</td>
+                    <td>{{ schedule.last_run_display }}</td>
+                    <td>
+                        <span class="status-badge status-{{ schedule.status }}" data-status>
+                            {{ schedule.status }}
+                        </span>
+                    </td>
+                    <td class="actions">
+                        <a href="/schedules/{{ schedule.id }}/history" class="btn btn-secondary btn-small">History</a>
+                        {% if schedule.is_running %}
+                        <button class="btn btn-danger btn-small" onclick="stopSchedule('{{ schedule.id }}')">Stop</button>
+                        {% endif %}
+                        <button class="btn btn-secondary btn-small" onclick="pauseSchedule('{{ schedule.id }}')">Pause</button>
+                        <a href="/schedules/{{ schedule.id }}/edit" class="btn btn-secondary btn-small">Edit</a>
+                        <button class="btn btn-danger btn-small" onclick="deleteSchedule('{{ schedule.id }}', '{{ schedule.name }}')">Delete</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+
+        <!-- Paused Schedules -->
+        {% set paused_schedules = schedules|rejectattr('enabled')|list %}
+        {% if paused_schedules %}
+        <h2>Paused Schedules</h2>
+        <table class="schedule-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Playbook</th>
+                    <th>Target</th>
+                    <th>Recurrence</th>
+                    <th>Last Run</th>
+                    <th>Run Count</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for schedule in paused_schedules %}
+                <tr data-schedule-id="{{ schedule.id }}" class="paused-row">
+                    <td>
+                        <strong>{{ schedule.name }}</strong>
+                        {% if schedule.description %}
+                        <br><small class="text-muted">{{ schedule.description }}</small>
+                        {% endif %}
+                    </td>
+                    <td>{{ schedule.playbook }}</td>
+                    <td>{{ schedule.target }}</td>
+                    <td><span class="recurrence-badge">{{ schedule.recurrence_display }}</span></td>
+                    <td>{{ schedule.last_run_display }}</td>
+                    <td>{{ schedule.run_count }}</td>
+                    <td class="actions">
+                        <a href="/schedules/{{ schedule.id }}/history" class="btn btn-secondary btn-small">History</a>
+                        <button class="btn btn-primary btn-small" onclick="resumeSchedule('{{ schedule.id }}')">Resume</button>
+                        <a href="/schedules/{{ schedule.id }}/edit" class="btn btn-secondary btn-small">Edit</a>
+                        <button class="btn btn-danger btn-small" onclick="deleteSchedule('{{ schedule.id }}', '{{ schedule.name }}')">Delete</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+
+        {% else %}
+        <div class="empty-state">
+            <p>No schedules configured yet.</p>
+            <p>Click "New Schedule" to create your first automated playbook run.</p>
+        </div>
+        {% endif %}
+
+        <div class="footer">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <p>Ansible Simple Web Interface | Localhost Only</p>
+                <div class="theme-selector">
+                    <label for="themeSelect">Theme:</label>
+                    <select id="themeSelect" class="theme-select"></select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/schedules.js"></script>
+    <script>
+        // Connect to WebSocket for real-time updates
+        const socket = io();
+
+        socket.on('connect', function() {
+            // Join schedules room for updates
+            socket.emit('join_schedules');
+        });
+
+        // Handle schedule status updates
+        socket.on('schedule_started', function(data) {
+            updateScheduleRow(data.schedule_id, 'running');
+        });
+
+        socket.on('schedule_completed', function(data) {
+            updateScheduleRow(data.schedule_id, data.status);
+            // Refresh page after a short delay to update next_run times
+            setTimeout(() => location.reload(), 2000);
+        });
+
+        socket.on('schedule_status', function(data) {
+            updateScheduleRow(data.schedule_id, data.enabled ? 'scheduled' : 'paused');
+        });
+
+        socket.on('schedule_deleted', function(data) {
+            const row = document.querySelector(`[data-schedule-id="${data.schedule_id}"]`);
+            if (row) {
+                row.remove();
+            }
+        });
+
+        function updateScheduleRow(scheduleId, status) {
+            const row = document.querySelector(`[data-schedule-id="${scheduleId}"]`);
+            if (row) {
+                const badge = row.querySelector('[data-status]');
+                if (badge) {
+                    badge.textContent = status;
+                    badge.className = 'status-badge status-' + status;
+                }
+            }
+        }
+    </script>
+</body>
+</html>

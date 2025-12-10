@@ -10,6 +10,7 @@ Complete guide to configuring inventory, SSH access, and system settings.
 - [Adding Hosts](#adding-hosts)
 - [Host Groups](#host-groups)
 - [Advanced Configuration](#advanced-configuration)
+- [Custom Themes](#custom-themes)
 
 ## Inventory Configuration
 
@@ -37,7 +38,7 @@ server.example.com ansible_user=deploy
 
 [host_machine]
 # Your actual host machine
-192.168.1.50 ansible_user=svc-ansible ansible_ssh_private_key_file=/app/.ssh/svc-ansible-key
+192.168.1.100 ansible_user=svc-ansible ansible_ssh_private_key_file=/app/.ssh/svc-ansible-key
 
 [remote_servers]
 # Add additional remote hosts here
@@ -527,6 +528,140 @@ server ansible_user=user ansible_become_pass=password
 ```
 
 Or configure passwordless sudo on target (preferred).
+
+## Custom Themes
+
+The web interface supports custom themes defined as JSON files.
+
+### Theme File Location
+
+`config/themes/` - Place custom theme JSON files here
+
+### Creating a Custom Theme
+
+1. **Copy an existing theme as a starting point:**
+
+```bash
+cp config/themes/default.json config/themes/my-theme.json
+```
+
+2. **Edit the theme file:**
+
+```json
+{
+  "name": "My Custom Theme",
+  "description": "A personalized theme for my setup",
+  "version": "1.0",
+  "colors": {
+    "background": {
+      "primary": "#f0f0f0",
+      "secondary": "#ffffff",
+      "tertiary": "#fafafa",
+      "inverse": "#1e1e1e"
+    },
+    "text": {
+      "primary": "#333333",
+      "secondary": "#666666",
+      "muted": "#999999",
+      "inverse": "#d4d4d4",
+      "link": "#0066cc"
+    }
+    // ... additional color categories
+  }
+}
+```
+
+3. **Refresh the web interface** - Your theme appears in the dropdown automatically
+
+### Theme JSON Structure
+
+Themes define colors for these categories:
+
+| Category | Purpose |
+|----------|---------|
+| `background` | Page and component backgrounds |
+| `text` | Text colors (primary, secondary, muted, link) |
+| `border` | Border colors for cards, inputs, dividers |
+| `button` | Button colors (primary, secondary, disabled states) |
+| `status` | Status badge colors (ready, running, completed, failed) |
+| `log` | Log viewer syntax highlighting |
+| `table` | Table styling (header, hover, borders) |
+| `notification` | Alert/notification boxes |
+| `connection` | WebSocket connection indicator |
+| `shadows` | Box shadows for depth effects |
+
+### Example: Corporate Theme
+
+```json
+{
+  "name": "Corporate Blue",
+  "description": "Company brand colors",
+  "version": "1.0",
+  "colors": {
+    "background": {
+      "primary": "#f5f7fa",
+      "secondary": "#ffffff",
+      "tertiary": "#eef2f7",
+      "inverse": "#1a2332"
+    },
+    "text": {
+      "primary": "#1a2332",
+      "secondary": "#4a5568",
+      "muted": "#718096",
+      "inverse": "#e2e8f0",
+      "link": "#2b6cb0"
+    },
+    "button": {
+      "primary": {
+        "background": "#2b6cb0",
+        "text": "#ffffff",
+        "hover": "#2c5282"
+      }
+    },
+    "status": {
+      "ready": { "background": "#c6f6d5", "text": "#22543d" },
+      "running": { "background": "#feebc8", "text": "#744210" },
+      "completed": { "background": "#bee3f8", "text": "#2a4365" },
+      "failed": { "background": "#fed7d7", "text": "#742a2a" }
+    }
+  }
+}
+```
+
+### Accessibility Guidelines
+
+When creating custom themes, consider:
+
+1. **Contrast Ratios** - WCAG 2.1 recommends:
+   - 4.5:1 minimum for normal text
+   - 3:1 minimum for large text
+   - Use tools like [WebAIM Contrast Checker](https://webaim.org/resources/contrastchecker/)
+
+2. **Color Blindness** - Don't rely solely on color:
+   - Use different shapes/icons in addition to color
+   - Test with colorblind simulation tools
+   - The `colorblind.json` theme demonstrates safe color choices
+
+3. **Status Colors** - Ensure status badges are distinguishable:
+   - Ready, Running, Completed, Failed should all be visually distinct
+   - Consider users who may not perceive red/green differences
+
+### Theme API
+
+Themes are served via REST API:
+
+```bash
+# List all available themes
+curl http://localhost:3001/api/themes
+
+# Get specific theme configuration
+curl http://localhost:3001/api/themes/my-theme
+```
+
+### Schema Documentation
+
+For complete theme schema documentation, see:
+`config/themes/THEME_SCHEMA.md`
 
 ## Next Steps
 

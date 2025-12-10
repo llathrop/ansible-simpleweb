@@ -15,6 +15,8 @@ services:
       - ./inventory:/app/inventory
       # Mount web app for development
       - ./web:/app/web
+      # Mount config for themes
+      - ./config:/app/config
       # Mount SSH keys for svc-ansible
       - ./.ssh:/app/.ssh:ro
       # Mount user SSH keys if they exist

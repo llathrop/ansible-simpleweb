@@ -9,6 +9,7 @@ Complete guide to using the Ansible Simple Web Interface.
 - [Viewing Logs](#viewing-logs)
 - [Target Selection](#target-selection)
 - [Status Indicators](#status-indicators)
+- [Theming](#theming)
 - [API Usage](#api-usage)
 
 ## Web Interface Overview
@@ -40,7 +41,7 @@ The page automatically checks for status updates every 3 seconds. When a playboo
    - Choose from:
      - `all` - Run on all configured hosts
      - `groupname (group)` - Run on all hosts in a group
-     - `192.168.1.50` - Run on a specific host
+     - `192.168.1.100` - Run on a specific host
 
 2. **Click "Run Playbook"**
    - Button changes to "Running..." with animated badge
@@ -159,6 +160,55 @@ Status checks occur automatically:
 - Non-intrusive (no page flicker)
 - Full refresh only when status changes
 - Prevents stale information
+
+## Theming
+
+The interface supports multiple visual themes for accessibility and user preference.
+
+### Changing Themes
+
+1. Look for the **Theme** dropdown in the footer of any page
+2. Select from available themes:
+   - **Default** - Light theme (original appearance)
+   - **Dark** - Dark backgrounds, easier on eyes in low-light
+   - **Low Contrast** - Reduced contrast for visual comfort
+   - **Colorblind** - Blue/orange palette for color vision deficiencies
+3. Theme applies immediately across all pages
+4. Your preference is saved in browser localStorage
+
+### Theme Persistence
+
+- Theme selection persists across browser sessions
+- Works across all pages (dashboard, logs, live log viewer)
+- No flash when navigating between pages
+
+### Available Themes
+
+**Default (Light)**
+- White/light gray backgrounds
+- Dark text for maximum readability
+- Blue accent colors
+
+**Dark**
+- Dark gray/black backgrounds
+- Light text
+- Muted status colors
+- Ideal for low-light environments
+
+**Low Contrast**
+- Softer gray backgrounds
+- Reduced text contrast
+- Gentler on eyes for extended use
+- Subtle shadows
+
+**Colorblind**
+- Blue/orange color palette
+- Distinguishable by users with deuteranopia and protanopia
+- Maintains full functionality without relying on red/green
+
+### Custom Themes
+
+You can create custom themes by adding JSON files to `config/themes/`. See [CONFIGURATION.md](CONFIGURATION.md#custom-themes) for details.
 
 ## API Usage
 

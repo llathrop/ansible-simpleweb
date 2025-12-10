@@ -22,7 +22,9 @@
 # HOST MACHINE (Docker host)
 # ==============================================================================
 [host_machine]
-192.168.1.50 ansible_user=svc-ansible ansible_ssh_private_key_file=/app/.ssh/svc-ansible-key
+# Add your host machine here
+# Example:
+# 192.168.1.100 ansible_user=svc-ansible ansible_ssh_private_key_file=/app/.ssh/svc-ansible-key
 
 # ==============================================================================
 # REMOTE SERVERS

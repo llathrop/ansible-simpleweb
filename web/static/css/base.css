@@ -1,0 +1,910 @@
+/*
+ * Ansible Web Interface - Base Stylesheet
+ * Uses CSS Custom Properties for theming support
+ * Theme values are loaded from JSON files via JavaScript
+ */
+
+/* ==========================================================================
+   CSS Custom Properties (Theme Variables)
+   Default values match the "default" (light) theme
+   ========================================================================== */
+
+:root {
+    /* Background Colors */
+    --bg-primary: #f5f5f5;
+    --bg-secondary: #ffffff;
+    --bg-tertiary: #fafafa;
+    --bg-inverse: #1e1e1e;
+
+    /* Text Colors */
+    --text-primary: #333333;
+    --text-secondary: #666666;
+    --text-muted: #999999;
+    --text-inverse: #d4d4d4;
+    --text-link: #1976d2;
+
+    /* Border Colors */
+    --border-primary: #e0e0e0;
+    --border-secondary: #cccccc;
+    --border-focus: #1976d2;
+
+    /* Button - Primary */
+    --btn-primary-bg: #1976d2;
+    --btn-primary-text: #ffffff;
+    --btn-primary-hover: #1565c0;
+
+    /* Button - Secondary */
+    --btn-secondary-bg: #757575;
+    --btn-secondary-text: #ffffff;
+    --btn-secondary-hover: #616161;
+
+    /* Button - Disabled */
+    --btn-disabled-bg: #cccccc;
+    --btn-disabled-text: #999999;
+
+    /* Status - Ready */
+    --status-ready-bg: #e8f5e9;
+    --status-ready-text: #2e7d32;
+
+    /* Status - Running */
+    --status-running-bg: #fff3e0;
+    --status-running-text: #e65100;
+
+    /* Status - Completed */
+    --status-completed-bg: #e3f2fd;
+    --status-completed-text: #1976d2;
+
+    /* Status - Failed */
+    --status-failed-bg: #ffebee;
+    --status-failed-text: #c62828;
+
+    /* Log Viewer */
+    --log-bg: #1e1e1e;
+    --log-text: #d4d4d4;
+    --log-ok: #4ec9b0;
+    --log-changed: #dcdcaa;
+    --log-failed: #f48771;
+    --log-skipped: #808080;
+    --log-task: #569cd6;
+    --log-play: #c586c0;
+    --log-recap: #9cdcfe;
+
+    /* Table */
+    --table-header-bg: #f5f5f5;
+    --table-row-hover: #fafafa;
+    --table-border: #e0e0e0;
+
+    /* Notification */
+    --notify-info-bg: #fff3cd;
+    --notify-info-border: #ffc107;
+    --notify-info-text: #333333;
+
+    /* Connection Indicator */
+    --connection-connected: #4caf50;
+    --connection-disconnected: #f44336;
+    --connection-neutral: #cccccc;
+
+    /* Shadows */
+    --shadow-card: 0 2px 4px rgba(0,0,0,0.1);
+    --shadow-card-hover: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+/* ==========================================================================
+   Base Reset & Typography
+   ========================================================================== */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    line-height: 1.5;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    color: var(--text-primary);
+}
+
+a {
+    color: var(--text-link);
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+/* ==========================================================================
+   Layout Components
+   ========================================================================== */
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    box-shadow: var(--shadow-card);
+    padding: 30px;
+}
+
+.container-wide {
+    max-width: 1400px;
+}
+
+/* ==========================================================================
+   Navigation
+   ========================================================================== */
+
+.nav-links {
+    margin-bottom: 20px;
+}
+
+.nav-links a {
+    color: var(--text-link);
+    text-decoration: none;
+    margin-right: 20px;
+    font-weight: 500;
+}
+
+.nav-links a:hover {
+    text-decoration: underline;
+}
+
+/* ==========================================================================
+   Buttons
+   ========================================================================== */
+
+.btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    text-decoration: none;
+    display: inline-block;
+    transition: all 0.3s;
+}
+
+.btn-primary {
+    background: var(--btn-primary-bg);
+    color: var(--btn-primary-text);
+}
+
+.btn-primary:hover {
+    background: var(--btn-primary-hover);
+    text-decoration: none;
+}
+
+.btn-primary:disabled {
+    background: var(--btn-disabled-bg);
+    color: var(--btn-disabled-text);
+    cursor: not-allowed;
+}
+
+.btn-secondary {
+    background: var(--btn-secondary-bg);
+    color: var(--btn-secondary-text);
+}
+
+.btn-secondary:hover {
+    background: var(--btn-secondary-hover);
+    text-decoration: none;
+}
+
+.btn-secondary:disabled {
+    background: var(--btn-disabled-bg);
+    color: var(--btn-disabled-text);
+    cursor: not-allowed;
+}
+
+.btn-watch {
+    padding: 4px 10px;
+    font-size: 12px;
+    background: var(--status-running-text);
+    color: white;
+}
+
+.btn-watch:hover {
+    opacity: 0.9;
+}
+
+/* ==========================================================================
+   Status Badges
+   ========================================================================== */
+
+.status-badge {
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.status-ready {
+    background: var(--status-ready-bg);
+    color: var(--status-ready-text);
+}
+
+.status-running,
+.status-starting {
+    background: var(--status-running-bg);
+    color: var(--status-running-text);
+    animation: pulse 2s infinite;
+}
+
+.status-completed {
+    background: var(--status-completed-bg);
+    color: var(--status-completed-text);
+}
+
+.status-failed {
+    background: var(--status-failed-bg);
+    color: var(--status-failed-text);
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+/* ==========================================================================
+   Cards (Playbook Cards)
+   ========================================================================== */
+
+.playbook-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    gap: 20px;
+    margin-bottom: 30px;
+}
+
+.playbook-card {
+    border: 1px solid var(--border-primary);
+    border-radius: 6px;
+    padding: 20px;
+    background: var(--bg-tertiary);
+    transition: box-shadow 0.3s;
+}
+
+.playbook-card:hover {
+    box-shadow: var(--shadow-card-hover);
+}
+
+.playbook-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.playbook-name {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.playbook-info {
+    color: var(--text-secondary);
+    font-size: 14px;
+    margin-bottom: 15px;
+}
+
+.playbook-actions {
+    display: flex;
+    gap: 10px;
+}
+
+/* ==========================================================================
+   Forms
+   ========================================================================== */
+
+.run-form {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.target-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 5px;
+    font-weight: 600;
+}
+
+.target-select,
+select {
+    padding: 10px;
+    border: 1px solid var(--border-secondary);
+    border-radius: 4px;
+    font-size: 14px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    cursor: pointer;
+    margin-bottom: 10px;
+    width: 100%;
+}
+
+.target-select:focus,
+select:focus {
+    outline: none;
+    border-color: var(--border-focus);
+}
+
+/* ==========================================================================
+   Active Runs
+   ========================================================================== */
+
+.active-runs {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--border-primary);
+}
+
+.active-runs-title {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+    font-weight: 600;
+}
+
+.active-run-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 10px;
+    background: var(--status-running-bg);
+    border-radius: 4px;
+    margin-bottom: 5px;
+    font-size: 13px;
+}
+
+.active-run-item.completed {
+    background: var(--status-completed-bg);
+}
+
+.active-run-item.failed {
+    background: var(--status-failed-bg);
+}
+
+.active-run-target {
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+/* ==========================================================================
+   Tables
+   ========================================================================== */
+
+.log-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+}
+
+.log-table th {
+    background: var(--table-header-bg);
+    padding: 12px;
+    text-align: left;
+    font-weight: 600;
+    border-bottom: 2px solid var(--table-border);
+    color: var(--text-primary);
+}
+
+.log-table td {
+    padding: 12px;
+    border-bottom: 1px solid var(--table-border);
+    color: var(--text-primary);
+}
+
+.log-table tr:hover {
+    background: var(--table-row-hover);
+}
+
+.log-link {
+    color: var(--text-link);
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.log-link:hover {
+    text-decoration: underline;
+}
+
+.log-size {
+    color: var(--text-secondary);
+    font-size: 14px;
+}
+
+/* ==========================================================================
+   Log Viewer
+   ========================================================================== */
+
+.log-content {
+    background: var(--log-bg);
+    color: var(--log-text);
+    padding: 20px;
+    border-radius: 6px;
+    overflow-x: auto;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+/* Log syntax highlighting */
+.log-line {
+    margin: 0;
+}
+
+.log-line.ok {
+    color: var(--log-ok);
+}
+
+.log-line.changed {
+    color: var(--log-changed);
+}
+
+.log-line.failed,
+.log-line.fatal {
+    color: var(--log-failed);
+}
+
+.log-line.skipping {
+    color: var(--log-skipped);
+}
+
+.log-line.task {
+    color: var(--log-task);
+    font-weight: bold;
+}
+
+.log-line.play {
+    color: var(--log-play);
+    font-weight: bold;
+}
+
+.log-line.recap {
+    color: var(--log-recap);
+    font-weight: bold;
+}
+
+/* ==========================================================================
+   Notifications
+   ========================================================================== */
+
+.refresh-note,
+.notification-info {
+    background: var(--notify-info-bg);
+    border: 1px solid var(--notify-info-border);
+    color: var(--notify-info-text);
+    padding: 10px 15px;
+    border-radius: 4px;
+    margin-bottom: 20px;
+    font-size: 14px;
+}
+
+/* ==========================================================================
+   Connection Indicator
+   ========================================================================== */
+
+.connection-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-left: 10px;
+}
+
+.connection-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--connection-neutral);
+}
+
+.connection-dot.connected {
+    background: var(--connection-connected);
+}
+
+.connection-dot.disconnected {
+    background: var(--connection-disconnected);
+}
+
+.connection-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+}
+
+/* ==========================================================================
+   Footer
+   ========================================================================== */
+
+.footer {
+    text-align: center;
+    padding-top: 20px;
+    border-top: 1px solid var(--border-primary);
+    color: var(--text-muted);
+    font-size: 14px;
+}
+
+.footer-bar {
+    background: var(--bg-tertiary);
+    padding: 10px 20px;
+    border-top: 1px solid var(--border-primary);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+/* ==========================================================================
+   Theme Selector
+   ========================================================================== */
+
+.theme-selector {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.theme-selector label {
+    color: var(--text-muted);
+}
+
+.theme-selector select {
+    padding: 4px 8px;
+    font-size: 12px;
+    border: 1px solid var(--border-primary);
+    border-radius: 4px;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    cursor: pointer;
+    margin-bottom: 0;
+    width: auto;
+}
+
+.theme-selector select:focus {
+    outline: none;
+    border-color: var(--border-focus);
+}
+
+/* ==========================================================================
+   Live Log Page Specific Styles
+   ========================================================================== */
+
+body.live-log-page {
+    background: var(--log-bg);
+    color: var(--log-text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.live-log-page .header {
+    background: var(--bg-tertiary);
+    padding: 15px 20px;
+    border-bottom: 1px solid var(--border-primary);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.live-log-page .header h1 {
+    font-size: 18px;
+    color: var(--text-primary);
+}
+
+.live-log-page .header-info {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.live-log-page .header-info span {
+    margin-right: 15px;
+}
+
+.live-log-page .header-left {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+.live-log-page .header-right {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.live-log-page .log-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.live-log-page .controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.btn-toggle {
+    background: var(--connection-connected);
+    color: white;
+}
+
+.btn-toggle.paused {
+    background: var(--status-running-text);
+}
+
+/* Live log status badges (dark background variant) */
+.live-log-page .status-starting,
+.live-log-page .status-running {
+    background: rgba(255, 165, 0, 0.2);
+    color: #ffa500;
+}
+
+.live-log-page .status-completed {
+    background: rgba(76, 175, 80, 0.2);
+    color: #4caf50;
+}
+
+.live-log-page .status-failed {
+    background: rgba(244, 67, 54, 0.2);
+    color: #f44336;
+}
+
+/* ==========================================================================
+   Page Title & Subtitle
+   ========================================================================== */
+
+h1 {
+    color: var(--text-primary);
+    margin-bottom: 10px;
+}
+
+.subtitle {
+    color: var(--text-secondary);
+    margin-bottom: 30px;
+}
+
+.log-title {
+    color: var(--text-secondary);
+    margin-bottom: 20px;
+    font-size: 14px;
+}
+
+/* ==========================================================================
+   Utility Classes
+   ========================================================================== */
+
+.text-muted {
+    color: var(--text-muted);
+}
+
+.text-center {
+    text-align: center;
+}
+
+.mt-1 { margin-top: 5px; }
+.mt-2 { margin-top: 10px; }
+.mt-3 { margin-top: 20px; }
+.mb-1 { margin-bottom: 5px; }
+.mb-2 { margin-bottom: 10px; }
+.mb-3 { margin-bottom: 20px; }
+
+/* ==========================================================================
+   Schedule-specific Styles
+   ========================================================================== */
+
+/* Schedule table */
+.schedule-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+    margin-bottom: 30px;
+}
+
+.schedule-table th {
+    background: var(--table-header-bg);
+    padding: 12px;
+    text-align: left;
+    font-weight: 600;
+    border-bottom: 2px solid var(--table-border);
+    color: var(--text-primary);
+}
+
+.schedule-table td {
+    padding: 12px;
+    border-bottom: 1px solid var(--table-border);
+    color: var(--text-primary);
+    vertical-align: top;
+}
+
+.schedule-table tr:hover {
+    background: var(--table-row-hover);
+}
+
+.schedule-table .paused-row {
+    opacity: 0.7;
+}
+
+.schedule-table .actions {
+    white-space: nowrap;
+}
+
+/* Schedule status badges */
+.status-scheduled {
+    background: var(--status-ready-bg);
+    color: var(--status-ready-text);
+}
+
+.status-paused {
+    background: var(--notify-info-bg);
+    color: var(--text-secondary);
+}
+
+/* Recurrence badge */
+.recurrence-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+/* Schedule form */
+.schedule-form {
+    max-width: 600px;
+}
+
+.schedule-form .form-group {
+    margin-bottom: 20px;
+}
+
+.schedule-form label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.schedule-form input[type="text"],
+.schedule-form input[type="datetime-local"],
+.schedule-form input[type="time"],
+.schedule-form input[type="number"],
+.schedule-form select {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--border-secondary);
+    border-radius: 4px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: 14px;
+}
+
+.schedule-form input:focus,
+.schedule-form select:focus {
+    outline: none;
+    border-color: var(--border-focus);
+}
+
+.schedule-form small {
+    display: block;
+    margin-top: 5px;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.schedule-form .form-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 30px;
+}
+
+/* Checkbox group for weekly days */
+.checkbox-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 5px;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-weight: normal;
+    cursor: pointer;
+    padding: 5px 10px;
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+    border: 1px solid var(--border-primary);
+}
+
+.checkbox-label:hover {
+    background: var(--table-row-hover);
+}
+
+.checkbox-label input[type="checkbox"] {
+    width: auto;
+    margin: 0;
+}
+
+/* Action bar */
+.action-bar {
+    margin-bottom: 20px;
+}
+
+/* Small buttons */
+.btn-small {
+    padding: 4px 10px;
+    font-size: 12px;
+}
+
+/* Danger button */
+.btn-danger {
+    background: var(--status-failed-text);
+    color: white;
+}
+
+.btn-danger:hover {
+    opacity: 0.9;
+}
+
+/* History table row coloring */
+.history-row {
+    border-left: 3px solid transparent;
+}
+
+.history-row.status-completed {
+    border-left-color: var(--status-completed-text);
+}
+
+.history-row.status-failed {
+    border-left-color: var(--status-failed-text);
+}
+
+/* Empty state */
+.empty-state {
+    text-align: center;
+    padding: 40px;
+    color: var(--text-muted);
+}
+
+.empty-state p {
+    margin: 10px 0;
+}
+
+/* Schedule info header */
+.schedule-info {
+    background: var(--bg-tertiary);
+    padding: 15px;
+    border-radius: 6px;
+    margin-bottom: 20px;
+}
+
+.schedule-info p {
+    margin: 5px 0;
+    color: var(--text-secondary);
+}

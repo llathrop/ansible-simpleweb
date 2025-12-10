@@ -33,3 +33,6 @@ id_rsa*
 
 # Logs (we'll commit logs manually as required)
 # logs/*.log
+
+# Runtime configuration (user-specific)
+config/

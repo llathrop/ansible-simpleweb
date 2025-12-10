@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% if edit_mode %}Edit{% else %}New{% endif %} Schedule - Ansible Web Interface</title>
+    <link rel="stylesheet" href="/static/css/base.css">
+    <script>
+        // Immediately apply cached theme to prevent flash of unstyled content
+        (function() {
+            try {
+                var cached = localStorage.getItem('ansible-web-theme-vars');
+                if (cached) {
+                    var vars = JSON.parse(cached);
+                    var root = document.documentElement;
+                    for (var key in vars) {
+                        if (vars[key]) root.style.setProperty(key, vars[key]);
+                    }
+                }
+            } catch (e) {}
+        })();
+    </script>
+    <script src="/static/js/theme.js"></script>
+    <style>
+        /* Page-specific styles */
+        body {
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>{% if edit_mode %}Edit Schedule{% else %}New Schedule{% endif %}</h1>
+
+        <div class="nav-links">
+            <a href="/schedules">&larr; Back to Schedules</a>
+        </div>
+
+        <form action="{% if edit_mode %}/schedules/{{ schedule.id }}/update{% else %}/schedules/create{% endif %}"
+              method="POST" class="schedule-form">
+
+            <div class="form-group">
+                <label for="name">Schedule Name *</label>
+                <input type="text" id="name" name="name" required
+                       placeholder="e.g., Daily Backup, Weekly Health Check"
+                       value="{{ schedule.name if schedule else '' }}">
+            </div>
+
+            <div class="form-group">
+                <label for="description">Description</label>
+                <input type="text" id="description" name="description"
+                       placeholder="Optional description"
+                       value="{{ schedule.description if schedule else '' }}">
+            </div>
+
+            <div class="form-group">
+                <label for="playbook">Playbook *</label>
+                <select id="playbook" name="playbook" required {% if edit_mode %}disabled{% endif %}>
+                    {% for pb in playbooks %}
+                    <option value="{{ pb }}"
+                            {% if (schedule and schedule.playbook == pb) or (selected_playbook == pb) %}selected{% endif %}>
+                        {{ pb.replace('-', ' ').title() }}
+                    </option>
+                    {% endfor %}
+                </select>
+                {% if edit_mode %}
+                <input type="hidden" name="playbook" value="{{ schedule.playbook }}">
+                <small class="text-muted">Playbook cannot be changed after creation</small>
+                {% endif %}
+            </div>
+
+            <div class="form-group">
+                <label for="target">Target Host/Group *</label>
+                <select id="target" name="target" required>
+                    {% for t in targets %}
+                    <option value="{{ t.value }}"
+                            {% if schedule and schedule.target == t.value %}selected{% endif %}>
+                        {{ t.label }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="recurrence_type">Recurrence *</label>
+                <select id="recurrence_type" name="recurrence_type" required onchange="updateRecurrenceOptions()">
+                    <option value="once" {% if schedule and schedule.recurrence.type == 'once' %}selected{% endif %}>
+                        Once (single run)
+                    </option>
+                    <option value="hourly" {% if schedule and schedule.recurrence.type == 'hourly' %}selected{% endif %}>
+                        Hourly
+                    </option>
+                    <option value="daily" {% if schedule and schedule.recurrence.type == 'daily' %}selected{% endif %}>
+                        Daily
+                    </option>
+                    <option value="weekly" {% if schedule and schedule.recurrence.type == 'weekly' %}selected{% endif %}>
+                        Weekly
+                    </option>
+                    <option value="monthly" {% if schedule and schedule.recurrence.type == 'monthly' %}selected{% endif %}>
+                        Monthly
+                    </option>
+                    <option value="custom" {% if schedule and schedule.recurrence.type == 'custom' %}selected{% endif %}>
+                        Custom interval
+                    </option>
+                </select>
+            </div>
+
+            <!-- Recurrence-specific options -->
+            <div id="recurrence-options">
+                <!-- Once: datetime picker -->
+                <div id="once-options" class="recurrence-option form-group" style="display: none;">
+                    <label for="once_datetime">Run At</label>
+                    <input type="datetime-local" id="once_datetime" name="once_datetime"
+                           value="{{ schedule.recurrence.datetime[:16] if schedule and schedule.recurrence.type == 'once' and schedule.recurrence.datetime else '' }}">
+                </div>
+
+                <!-- Hourly: minute of hour -->
+                <div id="hourly-options" class="recurrence-option form-group" style="display: none;">
+                    <label for="hourly_minute">Minute of Hour</label>
+                    <select id="hourly_minute" name="hourly_minute">
+                        {% for m in range(0, 60, 5) %}
+                        <option value="{{ m }}"
+                                {% if schedule and schedule.recurrence.type == 'hourly' and schedule.recurrence.minute == m %}selected{% endif %}>
+                            :{{ '%02d'|format(m) }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <small class="text-muted">Run at this minute every hour</small>
+                </div>
+
+                <!-- Daily: time picker -->
+                <div id="daily-options" class="recurrence-option form-group" style="display: none;">
+                    <label for="daily_time">Time</label>
+                    <input type="time" id="daily_time" name="daily_time"
+                           value="{{ schedule.recurrence.time if schedule and schedule.recurrence.type == 'daily' else '09:00' }}">
+                </div>
+
+                <!-- Weekly: day checkboxes + time -->
+                <div id="weekly-options" class="recurrence-option" style="display: none;">
+                    <div class="form-group">
+                        <label>Days of Week</label>
+                        <div class="checkbox-group">
+                            {% set day_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] %}
+                            {% for i in range(7) %}
+                            <label class="checkbox-label">
+                                <input type="checkbox" name="weekly_days" value="{{ i }}"
+                                       {% if schedule and schedule.recurrence.type == 'weekly' and i in schedule.recurrence.days %}checked{% endif %}>
+                                {{ day_names[i][:3] }}
+                            </label>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="weekly_time">Time</label>
+                        <input type="time" id="weekly_time" name="weekly_time"
+                               value="{{ schedule.recurrence.time if schedule and schedule.recurrence.type == 'weekly' else '09:00' }}">
+                    </div>
+                </div>
+
+                <!-- Monthly: day of month + time -->
+                <div id="monthly-options" class="recurrence-option" style="display: none;">
+                    <div class="form-group">
+                        <label for="monthly_day">Day of Month</label>
+                        <select id="monthly_day" name="monthly_day">
+                            {% for d in range(1, 29) %}
+                            <option value="{{ d }}"
+                                    {% if schedule and schedule.recurrence.type == 'monthly' and schedule.recurrence.day == d %}selected{% endif %}>
+                                {{ d }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted">Days 29-31 may be skipped in shorter months</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="monthly_time">Time</label>
+                        <input type="time" id="monthly_time" name="monthly_time"
+                               value="{{ schedule.recurrence.time if schedule and schedule.recurrence.type == 'monthly' else '09:00' }}">
+                    </div>
+                </div>
+
+                <!-- Custom: interval in minutes -->
+                <div id="custom-options" class="recurrence-option form-group" style="display: none;">
+                    <label for="custom_minutes">Interval (minutes)</label>
+                    <input type="number" id="custom_minutes" name="custom_minutes" min="1" max="10080"
+                           value="{{ schedule.recurrence.interval_minutes if schedule and schedule.recurrence.type == 'custom' else '60' }}">
+                    <small class="text-muted">Run every X minutes (1-10080, max 1 week)</small>
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">
+                    {% if edit_mode %}Update Schedule{% else %}Create Schedule{% endif %}
+                </button>
+                <a href="/schedules" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+
+        <div class="footer" style="margin-top: 30px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <p>Ansible Simple Web Interface | Localhost Only</p>
+                <div class="theme-selector">
+                    <label for="themeSelect">Theme:</label>
+                    <select id="themeSelect" class="theme-select"></select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function updateRecurrenceOptions() {
+            // Hide all option sections
+            document.querySelectorAll('.recurrence-option').forEach(el => {
+                el.style.display = 'none';
+            });
+
+            // Show the selected option
+            const recurrenceType = document.getElementById('recurrence_type').value;
+            const optionsDiv = document.getElementById(recurrenceType + '-options');
+            if (optionsDiv) {
+                optionsDiv.style.display = 'block';
+            }
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            updateRecurrenceOptions();
+        });
+    </script>
+</body>
+</html>

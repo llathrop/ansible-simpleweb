@@ -9,6 +9,7 @@ A lightweight, Docker-based web interface for managing and executing Ansible pla
 - 📊 **Real-Time Status** - Live status updates (Ready/Running/Completed/Failed)
 - 📝 **Log Management** - Automatic log capture with timestamped filenames
 - 🔍 **Log Viewer** - Browse and view all execution logs in the browser
+- 🎨 **Theming Support** - Multiple themes including dark mode, low contrast, and colorblind-friendly options
 - 🔌 **REST API** - JSON endpoints for external integrations
 - 🐳 **Fully Containerized** - Rocky Linux 9 with Ansible 8.7.0 pre-configured
 - 🔒 **Localhost First** - Secure by default, ready for authentication later
@@ -93,9 +94,18 @@ ansible-simpleweb/
 ├── inventory/          # Configure target hosts here
 │   └── hosts          # Main inventory file
 ├── logs/              # Playbook execution logs (auto-generated)
+├── config/            # Configuration files
+│   └── themes/        # Theme JSON files (customizable)
+│       ├── default.json
+│       ├── dark.json
+│       ├── low-contrast.json
+│       └── colorblind.json
 ├── web/               # Flask web application
 │   ├── app.py
-│   └── templates/
+│   ├── templates/
+│   └── static/
+│       ├── css/base.css   # Shared stylesheet with CSS variables
+│       └── js/theme.js    # Theme loading and switching
 └── docker-compose.yml
 ```
 
@@ -123,6 +133,7 @@ This project includes 5 example playbooks:
 ✅ **Step 2:** 5 working playbooks tested on real hardware
 ✅ **Step 3:** Full web interface with real-time updates
 ✅ **Step 4:** Multi-host target selection
+✅ **Step 5:** Theming system with dark mode and accessibility themes
 
 **Status:** Production-ready for local use
 
@@ -189,7 +200,7 @@ docker-compose exec -T ansible-web ansible-playbook playbooks/your-playbook.yml 
 - [ ] Email notifications on playbook completion
 - [ ] Slack/Teams/Discord webhook integrations
 - [ ] Real-time log streaming (WebSocket)
-- [ ] Dark mode toggle
+- [x] ~~Dark mode toggle~~ Theming system with multiple themes (dark, low-contrast, colorblind)
 - [ ] Mobile app or PWA support
 
 **Advanced Features**

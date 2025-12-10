@@ -4,220 +4,32 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Live Log - {{ playbook }} | Ansible Web Interface</title>
+    <link rel="stylesheet" href="/static/css/base.css">
+    <script>
+        // Immediately apply cached theme to prevent flash of unstyled content
+        (function() {
+            try {
+                var cached = localStorage.getItem('ansible-web-theme-vars');
+                if (cached) {
+                    var vars = JSON.parse(cached);
+                    var root = document.documentElement;
+                    for (var key in vars) {
+                        if (vars[key]) root.style.setProperty(key, vars[key]);
+                    }
+                }
+            } catch (e) {}
+        })();
+    </script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.0/socket.io.min.js"></script>
+    <script src="/static/js/theme.js"></script>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
+        /* Page-specific overrides for live log full-screen view */
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: #1e1e1e;
-            color: #d4d4d4;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .header {
-            background: #2d2d2d;
-            padding: 15px 20px;
-            border-bottom: 1px solid #404040;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 10px;
-        }
-
-        .header-left {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-        }
-
-        .header h1 {
-            font-size: 18px;
-            color: #fff;
-        }
-
-        .header-info {
-            font-size: 14px;
-            color: #888;
-        }
-
-        .header-info span {
-            margin-right: 15px;
-        }
-
-        .status-badge {
-            padding: 4px 12px;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: 600;
-            text-transform: uppercase;
-        }
-
-        .status-starting, .status-running {
-            background: #3d3200;
-            color: #ffa500;
-            animation: pulse 2s infinite;
-        }
-
-        .status-completed {
-            background: #1a3d1a;
-            color: #4caf50;
-        }
-
-        .status-failed {
-            background: #3d1a1a;
-            color: #f44336;
-        }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.6; }
-        }
-
-        .header-right {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-
-        .btn {
-            padding: 8px 16px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 13px;
-            font-weight: 600;
-            text-decoration: none;
-            transition: all 0.3s;
-        }
-
-        .btn-primary {
-            background: #1976d2;
-            color: white;
-        }
-
-        .btn-primary:hover {
-            background: #1565c0;
-        }
-
-        .btn-secondary {
-            background: #404040;
-            color: #d4d4d4;
-        }
-
-        .btn-secondary:hover {
-            background: #505050;
-        }
-
-        .btn-toggle {
-            background: #2e7d32;
-            color: white;
-        }
-
-        .btn-toggle.paused {
-            background: #e65100;
-        }
-
-        .controls {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-size: 13px;
-            color: #888;
-        }
-
-        .log-container {
-            flex: 1;
-            overflow-y: auto;
-            padding: 20px;
-            font-family: 'Courier New', Courier, monospace;
-            font-size: 13px;
-            line-height: 1.6;
-        }
-
-        .log-content {
-            white-space: pre-wrap;
-            word-wrap: break-word;
-        }
-
-        /* Syntax highlighting */
-        .log-line {
-            margin: 0;
-        }
-
-        .log-line.ok {
-            color: #4ec9b0;
-        }
-
-        .log-line.changed {
-            color: #dcdcaa;
-        }
-
-        .log-line.failed, .log-line.fatal {
-            color: #f48771;
-        }
-
-        .log-line.skipping {
-            color: #808080;
-        }
-
-        .log-line.task {
-            color: #569cd6;
-            font-weight: bold;
-        }
-
-        .log-line.play {
-            color: #c586c0;
-            font-weight: bold;
-        }
-
-        .log-line.recap {
-            color: #9cdcfe;
-            font-weight: bold;
-        }
-
-        .connection-status {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 12px;
-        }
-
-        .connection-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: #666;
-        }
-
-        .connection-dot.connected {
-            background: #4caf50;
-        }
-
-        .connection-dot.disconnected {
-            background: #f44336;
-        }
-
-        .footer {
-            background: #2d2d2d;
-            padding: 10px 20px;
-            border-top: 1px solid #404040;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 12px;
-            color: #666;
+            padding: 0;
         }
     </style>
 </head>
-<body>
+<body class="live-log-page">
     <div class="header">
         <div class="header-left">
             <h1>{{ playbook.replace('-', ' ').title() }}</h1>
@@ -236,6 +48,10 @@
                 <button id="scrollToggle" class="btn btn-toggle">Auto-scroll ON</button>
                 <button id="clearBtn" class="btn btn-secondary">Clear</button>
             </div>
+            <div class="theme-selector">
+                <label for="themeSelect">Theme:</label>
+                <select id="themeSelect" class="theme-select"></select>
+            </div>
             <a href="/" class="btn btn-primary">Back to Dashboard</a>
         </div>
     </div>
@@ -244,7 +60,7 @@
         <div class="log-content" id="logContent"></div>
     </div>
 
-    <div class="footer">
+    <div class="footer-bar">
         <span>Run ID: {{ run_id }}</span>
         <span id="lineCount">0 lines</span>
     </div>
