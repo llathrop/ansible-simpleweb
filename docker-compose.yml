@@ -17,6 +17,10 @@ services:
       - ./web:/app/web
       # Mount config for themes
       - ./config:/app/config
+      # Mount custom Ansible modules
+      - ./library:/app/library
+      # Mount callback plugins for CMDB collection
+      - ./callback_plugins:/app/callback_plugins
       # Mount SSH keys for svc-ansible
       - ./.ssh:/app/.ssh:ro
       # Mount user SSH keys if they exist

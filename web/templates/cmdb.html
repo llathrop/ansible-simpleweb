@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CMDB Browser - Ansible Web Interface</title>
+    <link rel="stylesheet" href="/static/css/base.css">
+    <script>
+        (function() {
+            try {
+                var cached = localStorage.getItem('ansible-web-theme-vars');
+                if (cached) {
+                    var vars = JSON.parse(cached);
+                    var root = document.documentElement;
+                    for (var key in vars) {
+                        if (vars[key]) root.style.setProperty(key, vars[key]);
+                    }
+                }
+            } catch (e) {}
+        })();
+    </script>
+    <script src="/static/js/theme.js"></script>
+    <style>
+        body { padding: 20px; }
+        .stats-bar {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+        }
+        .stat-item { text-align: center; }
+        .stat-value { font-size: 1.5em; font-weight: bold; color: var(--text-primary); }
+        .stat-label { font-size: 0.85em; color: var(--text-muted); }
+        .filters {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+        .filters select, .filters input {
+            padding: 10px;
+            border: 1px solid var(--border-primary);
+            border-radius: 4px;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+        }
+        .host-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 20px;
+        }
+        .host-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-primary);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .host-card:hover { box-shadow: var(--shadow-card-hover); }
+        .host-header {
+            padding: 15px;
+            background: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border-primary);
+        }
+        .host-name {
+            font-weight: bold;
+            font-size: 1.2em;
+            color: var(--text-primary);
+            cursor: pointer;
+        }
+        .host-name:hover { color: var(--text-link); }
+        .host-meta {
+            font-size: 0.85em;
+            color: var(--text-muted);
+            margin-top: 5px;
+        }
+        .host-groups {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+            margin-top: 8px;
+        }
+        .group-badge {
+            background: var(--bg-primary);
+            color: var(--text-secondary);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+        }
+        .host-collections {
+            padding: 15px;
+        }
+        .collection-item {
+            padding: 10px;
+            margin-bottom: 10px;
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .collection-item:hover { background: var(--table-row-hover); }
+        .collection-item:last-child { margin-bottom: 0; }
+        .collection-name {
+            font-weight: bold;
+            color: var(--text-primary);
+        }
+        .collection-updated {
+            font-size: 0.85em;
+            color: var(--text-muted);
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: flex-start;
+            padding: 40px 20px;
+            overflow-y: auto;
+        }
+        .modal.active { display: flex; }
+        .modal-content {
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            width: 90%;
+            max-width: 900px;
+            max-height: 85vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 20px;
+            border-bottom: 1px solid var(--border-primary);
+            background: var(--bg-tertiary);
+        }
+        .modal-header h2 { margin: 0; font-size: 1.2em; }
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 1.5em;
+            cursor: pointer;
+            color: var(--text-muted);
+        }
+        .modal-body {
+            padding: 20px;
+            overflow-y: auto;
+            flex: 1;
+        }
+        .data-viewer {
+            background: var(--bg-tertiary);
+            padding: 15px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.9em;
+            white-space: pre-wrap;
+            word-break: break-all;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid var(--border-primary);
+            margin-bottom: 15px;
+        }
+        .tab-btn {
+            padding: 10px 20px;
+            border: none;
+            background: none;
+            cursor: pointer;
+            color: var(--text-secondary);
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+        }
+        .tab-btn:hover { color: var(--text-primary); }
+        .tab-btn.active {
+            color: var(--text-primary);
+            border-bottom-color: var(--btn-primary-bg, #3b82f6);
+        }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .history-item {
+            padding: 10px;
+            margin-bottom: 10px;
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+        }
+        .history-item:last-child { margin-bottom: 0; }
+        .history-timestamp { font-weight: bold; }
+        .diff-section { margin-top: 10px; }
+        .diff-added { color: #22c55e; }
+        .diff-removed { color: #ef4444; }
+        .diff-changed { color: #eab308; }
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-muted);
+        }
+    </style>
+</head>
+<body>
+    <div class="container container-wide">
+        <h1>CMDB Browser</h1>
+        <p class="subtitle">Browse collected host facts from playbook runs</p>
+
+        <div class="nav-links">
+            <a href="/">Home</a>
+            <a href="/schedules">Schedules</a>
+            <a href="/inventory">Inventory</a>
+            <a href="/storage">Storage</a>
+            <a href="/logs">All Logs</a>
+        </div>
+
+        <div class="stats-bar">
+            <div class="stat-item">
+                <div class="stat-value">{{ hosts|length }}</div>
+                <div class="stat-label">Hosts</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value">{{ groups|length }}</div>
+                <div class="stat-label">Groups</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value">{{ collections|length }}</div>
+                <div class="stat-label">Collection Types</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value">{{ backend_type }}</div>
+                <div class="stat-label">Storage Backend</div>
+            </div>
+        </div>
+
+        <div class="filters">
+            <input type="text" id="searchInput" placeholder="Search hosts..." onkeyup="filterHosts()">
+            <select id="groupFilter" onchange="filterHosts()">
+                <option value="">All Groups</option>
+                {% for group in groups %}
+                <option value="{{ group }}">{{ group }}</option>
+                {% endfor %}
+            </select>
+            <select id="collectionFilter" onchange="filterHosts()">
+                <option value="">All Collections</option>
+                {% for coll in collections %}
+                <option value="{{ coll }}">{{ coll }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        {% if hosts %}
+        <div class="host-grid" id="hostGrid">
+            {% for host in hosts %}
+            <div class="host-card" data-host="{{ host.host }}"
+                 data-groups="{{ host.groups|join(',') }}"
+                 data-collections="{{ host.collections|join(',') }}">
+                <div class="host-header">
+                    <div class="host-name" onclick="viewHost('{{ host.host }}')">{{ host.host }}</div>
+                    <div class="host-meta">
+                        First seen: {{ host.first_seen[:19] if host.first_seen else 'N/A' }}<br>
+                        Last updated: {{ host.last_updated[:19] if host.last_updated else 'N/A' }}
+                    </div>
+                    {% if host.groups %}
+                    <div class="host-groups">
+                        {% for group in host.groups %}
+                        <span class="group-badge">{{ group }}</span>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="host-collections">
+                    {% if host.collections %}
+                    {% for coll in host.collections %}
+                    <div class="collection-item" onclick="viewCollection('{{ host.host }}', '{{ coll }}')">
+                        <div class="collection-name">{{ coll }}</div>
+                    </div>
+                    {% endfor %}
+                    {% else %}
+                    <div class="empty-state">No collections</div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <h2>No host data collected yet</h2>
+            <p>Run inventory playbooks (hardware-inventory, software-inventory, etc.) to collect host facts.</p>
+            <p>Data will appear here automatically via the CMDB callback plugin.</p>
+        </div>
+        {% endif %}
+
+        <div class="footer" style="margin-top: 30px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <p>Ansible Simple Web Interface | CMDB</p>
+                <div class="theme-selector">
+                    <label for="themeSelect">Theme:</label>
+                    <select id="themeSelect" class="theme-select"></select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Data Viewer Modal -->
+    <div class="modal" id="dataModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalTitle">Host Data</h2>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="tabs" id="modalTabs">
+                    <button class="tab-btn active" onclick="showTab('current')">Current Data</button>
+                    <button class="tab-btn" onclick="showTab('history')">History</button>
+                </div>
+                <div id="current-tab" class="tab-content active">
+                    <div class="data-viewer" id="dataViewer">Loading...</div>
+                </div>
+                <div id="history-tab" class="tab-content">
+                    <div id="historyViewer">Loading...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function filterHosts() {
+            const search = document.getElementById('searchInput').value.toLowerCase();
+            const groupFilter = document.getElementById('groupFilter').value;
+            const collectionFilter = document.getElementById('collectionFilter').value;
+            const cards = document.querySelectorAll('.host-card');
+
+            cards.forEach(card => {
+                const host = card.dataset.host.toLowerCase();
+                const groups = card.dataset.groups.split(',');
+                const collections = card.dataset.collections.split(',');
+
+                let show = true;
+                if (search && !host.includes(search)) show = false;
+                if (groupFilter && !groups.includes(groupFilter)) show = false;
+                if (collectionFilter && !collections.includes(collectionFilter)) show = false;
+
+                card.style.display = show ? 'block' : 'none';
+            });
+        }
+
+        async function viewHost(host) {
+            document.getElementById('modalTitle').textContent = host;
+            document.getElementById('dataModal').classList.add('active');
+            document.getElementById('dataViewer').textContent = 'Loading...';
+
+            try {
+                const response = await fetch(`/api/hosts/${encodeURIComponent(host)}`);
+                const data = await response.json();
+                document.getElementById('dataViewer').textContent = JSON.stringify(data, null, 2);
+            } catch (e) {
+                document.getElementById('dataViewer').textContent = 'Error loading data: ' + e.message;
+            }
+        }
+
+        async function viewCollection(host, collection) {
+            document.getElementById('modalTitle').textContent = `${host} / ${collection}`;
+            document.getElementById('dataModal').classList.add('active');
+            document.getElementById('dataViewer').textContent = 'Loading...';
+            document.getElementById('historyViewer').innerHTML = 'Loading...';
+
+            // Load current data
+            try {
+                const response = await fetch(`/api/hosts/${encodeURIComponent(host)}/${encodeURIComponent(collection)}`);
+                const data = await response.json();
+                document.getElementById('dataViewer').textContent = JSON.stringify(data.current || data, null, 2);
+            } catch (e) {
+                document.getElementById('dataViewer').textContent = 'Error: ' + e.message;
+            }
+
+            // Load history
+            try {
+                const response = await fetch(`/api/hosts/${encodeURIComponent(host)}/${encodeURIComponent(collection)}/history`);
+                const history = await response.json();
+
+                if (history.length === 0) {
+                    document.getElementById('historyViewer').innerHTML = '<div class="empty-state">No history available</div>';
+                } else {
+                    let html = '';
+                    history.forEach(entry => {
+                        html += `<div class="history-item">
+                            <div class="history-timestamp">${entry.timestamp || 'Unknown'}</div>
+                            <div>Source: ${entry.source || 'N/A'}</div>`;
+
+                        if (entry.diff_from_next) {
+                            const diff = entry.diff_from_next;
+                            html += '<div class="diff-section">';
+                            if (diff.added && Object.keys(diff.added).length) {
+                                html += '<div class="diff-added">+ Added: ' + Object.keys(diff.added).join(', ') + '</div>';
+                            }
+                            if (diff.removed && Object.keys(diff.removed).length) {
+                                html += '<div class="diff-removed">- Removed: ' + Object.keys(diff.removed).join(', ') + '</div>';
+                            }
+                            if (diff.changed && Object.keys(diff.changed).length) {
+                                html += '<div class="diff-changed">~ Changed: ' + Object.keys(diff.changed).join(', ') + '</div>';
+                            }
+                            html += '</div>';
+                        }
+
+                        html += '</div>';
+                    });
+                    document.getElementById('historyViewer').innerHTML = html;
+                }
+            } catch (e) {
+                document.getElementById('historyViewer').innerHTML = 'Error: ' + e.message;
+            }
+        }
+
+        function showTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(tabName + '-tab').classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('dataModal').classList.remove('active');
+        }
+
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape') closeModal();
+        });
+    </script>
+</body>
+</html>

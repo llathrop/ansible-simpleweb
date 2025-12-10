@@ -886,6 +886,227 @@ def api_history():
 
 
 # =============================================================================
+# Host Facts API (CMDB)
+# Endpoints for collected host data from playbook runs
+# =============================================================================
+
+@app.route('/api/hosts')
+def api_hosts_list():
+    """
+    Get summary of all hosts with collected facts.
+
+    Returns:
+        JSON array of host summaries with collections and timestamps.
+    """
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+
+    hosts = storage_backend.get_all_hosts()
+    return jsonify(hosts)
+
+
+@app.route('/api/hosts/<host>')
+def api_host_facts(host):
+    """
+    Get all collected facts for a specific host.
+
+    Args:
+        host: Hostname or IP address
+
+    Returns:
+        JSON with all host facts and collections.
+    """
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+
+    facts = storage_backend.get_host_facts(host)
+    if not facts:
+        return jsonify({'error': 'Host not found'}), 404
+
+    return jsonify(facts)
+
+
+@app.route('/api/hosts/<host>/<collection>')
+def api_host_collection(host, collection):
+    """
+    Get a specific collection for a host.
+
+    Args:
+        host: Hostname or IP address
+        collection: Collection name (hardware, software, etc.)
+
+    Query params:
+        history: Include history (default: false)
+
+    Returns:
+        JSON with collection data.
+    """
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+
+    include_history = request.args.get('history', 'false').lower() == 'true'
+    data = storage_backend.get_host_collection(host, collection, include_history)
+
+    if not data:
+        return jsonify({'error': 'Collection not found'}), 404
+
+    return jsonify(data)
+
+
+@app.route('/api/hosts/<host>/<collection>/history')
+def api_host_collection_history(host, collection):
+    """
+    Get history of changes for a host's collection.
+
+    Args:
+        host: Hostname or IP address
+        collection: Collection name
+
+    Query params:
+        limit: Max entries (default: 50)
+
+    Returns:
+        JSON array of historical changes with diffs.
+    """
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+
+    limit = request.args.get('limit', 50, type=int)
+    history = storage_backend.get_host_history(host, collection, limit)
+    return jsonify(history)
+
+
+@app.route('/api/hosts', methods=['POST'])
+def api_save_host_facts():
+    """
+    Save collected facts for a host.
+
+    Expected JSON body:
+    {
+        "host": "192.168.1.50",
+        "collection": "hardware",
+        "data": { ... collected data ... },
+        "groups": ["webservers", "production"]  // optional
+    }
+
+    Returns:
+        JSON with save result (created/updated/unchanged).
+    """
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+
+    host = data.get('host')
+    collection = data.get('collection')
+    facts_data = data.get('data')
+
+    if not host or not collection or not facts_data:
+        return jsonify({'error': 'host, collection, and data are required'}), 400
+
+    groups = data.get('groups', [])
+    source = data.get('source', 'api')
+
+    result = storage_backend.save_host_facts(
+        host=host,
+        collection=collection,
+        data=facts_data,
+        groups=groups,
+        source=source
+    )
+
+    return jsonify(result)
+
+
+@app.route('/api/hosts/<host>', methods=['DELETE'])
+def api_delete_host(host):
+    """
+    Delete all facts for a host.
+
+    Args:
+        host: Hostname or IP address
+
+    Returns:
+        JSON with success status.
+    """
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+
+    if storage_backend.delete_host_facts(host):
+        return jsonify({'success': True, 'deleted': host})
+    else:
+        return jsonify({'error': 'Host not found'}), 404
+
+
+@app.route('/api/hosts/<host>/<collection>', methods=['DELETE'])
+def api_delete_host_collection(host, collection):
+    """
+    Delete a specific collection for a host.
+
+    Args:
+        host: Hostname or IP address
+        collection: Collection to delete
+
+    Returns:
+        JSON with success status.
+    """
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+
+    if storage_backend.delete_host_facts(host, collection):
+        return jsonify({'success': True, 'deleted': f'{host}/{collection}'})
+    else:
+        return jsonify({'error': 'Collection not found'}), 404
+
+
+@app.route('/api/hosts/by-group/<group>')
+def api_hosts_by_group(group):
+    """
+    Get all hosts in a specific group.
+
+    Args:
+        group: Ansible group name
+
+    Returns:
+        JSON array of host summaries.
+    """
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+
+    hosts = storage_backend.get_hosts_by_group(group)
+    return jsonify(hosts)
+
+
+@app.route('/cmdb')
+def cmdb_page():
+    """
+    CMDB browser page - view collected host facts.
+    """
+    if not storage_backend:
+        return "Storage backend not initialized", 500
+
+    hosts = storage_backend.get_all_hosts()
+
+    # Get all unique groups
+    all_groups = set()
+    for h in hosts:
+        all_groups.update(h.get('groups', []))
+
+    # Get all unique collections
+    all_collections = set()
+    for h in hosts:
+        all_collections.update(h.get('collections', []))
+
+    return render_template('cmdb.html',
+                          hosts=hosts,
+                          groups=sorted(all_groups),
+                          collections=sorted(all_collections),
+                          backend_type=storage_backend.get_backend_type())
+
+
+# =============================================================================
 # Schedule Routes
 # Playbook scheduling with APScheduler backend
 # =============================================================================

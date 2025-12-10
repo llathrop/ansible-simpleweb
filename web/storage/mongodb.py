@@ -8,6 +8,7 @@ Collections:
 - schedules - Schedule definitions
 - history - Execution history
 - inventory - Inventory items
+- host_facts - Collected host facts (CMDB)
 """
 
 import re
@@ -17,7 +18,7 @@ from typing import Dict, List, Optional, Any
 from pymongo import MongoClient, DESCENDING
 from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
 
-from .base import StorageBackend
+from .base import StorageBackend, compute_diff, is_empty_diff
 
 
 class MongoDBStorage(StorageBackend):
@@ -54,6 +55,7 @@ class MongoDBStorage(StorageBackend):
         self.schedules_collection = self.db['schedules']
         self.history_collection = self.db['history']
         self.inventory_collection = self.db['inventory']
+        self.host_facts_collection = self.db['host_facts']
 
         # Ensure indexes
         self._ensure_indexes()
@@ -73,6 +75,11 @@ class MongoDBStorage(StorageBackend):
             self.inventory_collection.create_index('id', unique=True)
             self.inventory_collection.create_index('hostname')
             self.inventory_collection.create_index('group')
+
+            # Host facts - indexes for CMDB queries
+            self.host_facts_collection.create_index('host', unique=True)
+            self.host_facts_collection.create_index('groups')
+            self.host_facts_collection.create_index([('last_updated', DESCENDING)])
         except Exception as e:
             print(f"Warning: Could not create indexes: {e}")
 
@@ -277,6 +284,229 @@ class MongoDBStorage(StorageBackend):
         except Exception as e:
             print(f"Error searching inventory in MongoDB: {e}")
             return []
+
+    # =========================================================================
+    # Host Facts Operations (CMDB)
+    # =========================================================================
+
+    def get_host_facts(self, host: str) -> Optional[Dict]:
+        """Get all collected facts for a specific host."""
+        try:
+            doc = self.host_facts_collection.find_one({'host': host})
+            if doc:
+                doc.pop('_id', None)
+                return doc
+            return None
+        except Exception as e:
+            print(f"Error getting host facts from MongoDB: {e}")
+            return None
+
+    def get_host_collection(self, host: str, collection: str,
+                            include_history: bool = False) -> Optional[Dict]:
+        """Get a specific collection for a host."""
+        try:
+            doc = self.host_facts_collection.find_one({'host': host})
+            if not doc:
+                return None
+
+            collection_data = doc.get('collections', {}).get(collection)
+            if not collection_data:
+                return None
+
+            if include_history:
+                return collection_data
+            else:
+                return {
+                    'current': collection_data.get('current'),
+                    'last_updated': collection_data.get('last_updated')
+                }
+        except Exception as e:
+            print(f"Error getting host collection from MongoDB: {e}")
+            return None
+
+    def save_host_facts(self, host: str, collection: str, data: Dict,
+                        groups: List[str] = None, source: str = None) -> Dict:
+        """Save collected facts for a host with diff-based history."""
+        try:
+            now = datetime.now().isoformat()
+            existing = self.host_facts_collection.find_one({'host': host})
+
+            if not existing:
+                # Create new host document
+                new_doc = {
+                    'host': host,
+                    'groups': groups or [],
+                    'collections': {
+                        collection: {
+                            'current': data,
+                            'last_updated': now,
+                            'source': source,
+                            'history': []
+                        }
+                    },
+                    'first_seen': now,
+                    'last_updated': now
+                }
+                self.host_facts_collection.insert_one(new_doc)
+                return {
+                    'status': 'created',
+                    'host': host,
+                    'collection': collection
+                }
+
+            # Update existing host
+            # Update groups if provided
+            if groups:
+                existing_groups = set(existing.get('groups', []))
+                updated_groups = list(existing_groups | set(groups))
+            else:
+                updated_groups = existing.get('groups', [])
+
+            collections = existing.get('collections', {})
+
+            if collection not in collections:
+                # New collection for existing host
+                collections[collection] = {
+                    'current': data,
+                    'last_updated': now,
+                    'source': source,
+                    'history': []
+                }
+                changes = None
+            else:
+                # Update existing collection
+                coll = collections[collection]
+                old_data = coll.get('current', {})
+                diff = compute_diff(old_data, data)
+
+                if is_empty_diff(diff):
+                    return {
+                        'status': 'unchanged',
+                        'host': host,
+                        'collection': collection
+                    }
+
+                # Store diff in history
+                history_entry = {
+                    'timestamp': coll.get('last_updated', now),
+                    'source': coll.get('source'),
+                    'diff_from_next': diff
+                }
+
+                history = coll.get('history', [])
+                history.insert(0, history_entry)
+                history = history[:100]  # Limit history
+
+                coll['current'] = data
+                coll['last_updated'] = now
+                coll['source'] = source
+                coll['history'] = history
+                changes = diff
+
+            # Update document
+            self.host_facts_collection.update_one(
+                {'host': host},
+                {'$set': {
+                    'groups': updated_groups,
+                    'collections': collections,
+                    'last_updated': now
+                }}
+            )
+
+            result = {
+                'status': 'updated',
+                'host': host,
+                'collection': collection
+            }
+            if 'changes' in dir() and changes:
+                result['changes'] = changes
+
+            return result
+
+        except Exception as e:
+            print(f"Error saving host facts to MongoDB: {e}")
+            return {
+                'status': 'error',
+                'error': str(e),
+                'host': host,
+                'collection': collection
+            }
+
+    def get_all_hosts(self) -> List[Dict]:
+        """Get summary of all hosts with collected facts."""
+        try:
+            hosts = []
+            cursor = self.host_facts_collection.find().sort('last_updated', DESCENDING)
+
+            for doc in cursor:
+                hosts.append({
+                    'host': doc.get('host'),
+                    'groups': doc.get('groups', []),
+                    'collections': list(doc.get('collections', {}).keys()),
+                    'first_seen': doc.get('first_seen'),
+                    'last_updated': doc.get('last_updated')
+                })
+
+            return hosts
+        except Exception as e:
+            print(f"Error getting all hosts from MongoDB: {e}")
+            return []
+
+    def get_hosts_by_group(self, group: str) -> List[Dict]:
+        """Get all hosts belonging to a specific group."""
+        try:
+            hosts = []
+            cursor = self.host_facts_collection.find({'groups': group})
+
+            for doc in cursor:
+                hosts.append({
+                    'host': doc.get('host'),
+                    'groups': doc.get('groups', []),
+                    'collections': list(doc.get('collections', {}).keys()),
+                    'first_seen': doc.get('first_seen'),
+                    'last_updated': doc.get('last_updated')
+                })
+
+            return hosts
+        except Exception as e:
+            print(f"Error getting hosts by group from MongoDB: {e}")
+            return []
+
+    def get_host_history(self, host: str, collection: str,
+                         limit: int = 50) -> List[Dict]:
+        """Get historical changes for a host's collection."""
+        try:
+            doc = self.host_facts_collection.find_one({'host': host})
+            if not doc:
+                return []
+
+            coll = doc.get('collections', {}).get(collection)
+            if not coll:
+                return []
+
+            history = coll.get('history', [])
+            return history[:limit]
+        except Exception as e:
+            print(f"Error getting host history from MongoDB: {e}")
+            return []
+
+    def delete_host_facts(self, host: str, collection: str = None) -> bool:
+        """Delete facts for a host."""
+        try:
+            if collection:
+                # Delete specific collection
+                result = self.host_facts_collection.update_one(
+                    {'host': host},
+                    {'$unset': {f'collections.{collection}': ''}}
+                )
+                return result.modified_count > 0
+            else:
+                # Delete entire host
+                result = self.host_facts_collection.delete_one({'host': host})
+                return result.deleted_count > 0
+        except Exception as e:
+            print(f"Error deleting host facts from MongoDB: {e}")
+            return False
 
     # =========================================================================
     # Utility Operations

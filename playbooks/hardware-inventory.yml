@@ -60,3 +60,12 @@
     - name: Display hardware inventory as JSON
       debug:
         msg: "{{ hardware_inventory | to_nice_json }}"
+
+    - name: Save hardware inventory to CMDB
+      save_host_facts:
+        collection: hardware
+        data: "{{ hardware_inventory }}"
+        groups: "{{ group_names }}"
+        host: "{{ ansible_host | default(inventory_hostname) }}"
+      delegate_to: localhost
+      ignore_errors: yes

@@ -27,6 +27,8 @@ RUN pip3 install --no-cache-dir -r requirements.txt
 COPY web/ ./web/
 COPY playbooks/ ./playbooks/
 COPY inventory/ ./inventory/
+COPY library/ ./library/
+COPY callback_plugins/ ./callback_plugins/
 COPY ansible.cfg ./
 COPY run-playbook.sh ./
 
