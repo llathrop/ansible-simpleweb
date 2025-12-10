@@ -18,7 +18,8 @@ from typing import Optional
 
 from .base import StorageBackend
 from .flatfile import FlatFileStorage
-from .mongodb import MongoDBStorage
+# Note: MongoDBStorage is imported lazily to avoid requiring pymongo
+# when only using flatfile storage
 
 
 def get_storage_backend() -> StorageBackend:
@@ -35,6 +36,8 @@ def get_storage_backend() -> StorageBackend:
     backend_type = os.environ.get('STORAGE_BACKEND', 'flatfile').lower()
 
     if backend_type == 'mongodb':
+        # Lazy import to avoid requiring pymongo when using flatfile
+        from .mongodb import MongoDBStorage
         host = os.environ.get('MONGODB_HOST', 'mongodb')
         port = int(os.environ.get('MONGODB_PORT', 27017))
         database = os.environ.get('MONGODB_DATABASE', 'ansible_simpleweb')
@@ -45,4 +48,10 @@ def get_storage_backend() -> StorageBackend:
         return FlatFileStorage(config_dir=config_dir)
 
 
-__all__ = ['get_storage_backend', 'StorageBackend', 'FlatFileStorage', 'MongoDBStorage']
+def get_mongodb_storage_class():
+    """Lazy loader for MongoDBStorage class."""
+    from .mongodb import MongoDBStorage
+    return MongoDBStorage
+
+
+__all__ = ['get_storage_backend', 'StorageBackend', 'FlatFileStorage', 'get_mongodb_storage_class']

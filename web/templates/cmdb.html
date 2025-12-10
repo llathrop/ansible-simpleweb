@@ -199,6 +199,53 @@
         .diff-added { color: #22c55e; }
         .diff-removed { color: #ef4444; }
         .diff-changed { color: #eab308; }
+        .diff-category {
+            margin-top: 8px;
+            padding: 8px;
+            background: var(--bg-primary);
+            border-radius: 4px;
+        }
+        .diff-category-title {
+            font-weight: bold;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .diff-category-title::before {
+            content: '';
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+        .diff-category.added .diff-category-title::before { background: #22c55e; }
+        .diff-category.removed .diff-category-title::before { background: #ef4444; }
+        .diff-category.changed .diff-category-title::before { background: #eab308; }
+        .diff-item {
+            font-family: monospace;
+            font-size: 0.85em;
+            padding: 4px 0;
+            border-bottom: 1px solid var(--border-primary);
+        }
+        .diff-item:last-child { border-bottom: none; }
+        .diff-key {
+            color: var(--text-secondary);
+            display: inline-block;
+            min-width: 200px;
+        }
+        .diff-value { color: var(--text-primary); }
+        .diff-old { color: #ef4444; text-decoration: line-through; }
+        .diff-new { color: #22c55e; }
+        .diff-arrow { color: var(--text-muted); margin: 0 8px; }
+        .diff-toggle {
+            cursor: pointer;
+            user-select: none;
+            color: var(--text-link);
+            font-size: 0.85em;
+        }
+        .diff-details { display: none; margin-top: 4px; }
+        .diff-details.expanded { display: block; }
         .empty-state {
             text-align: center;
             padding: 40px;
@@ -388,24 +435,15 @@
                     document.getElementById('historyViewer').innerHTML = '<div class="empty-state">No history available</div>';
                 } else {
                     let html = '';
-                    history.forEach(entry => {
+                    history.forEach((entry, idx) => {
                         html += `<div class="history-item">
-                            <div class="history-timestamp">${entry.timestamp || 'Unknown'}</div>
-                            <div>Source: ${entry.source || 'N/A'}</div>`;
+                            <div class="history-timestamp">${formatTimestamp(entry.timestamp)}</div>
+                            <div style="color: var(--text-muted); font-size: 0.85em;">Source: ${entry.source || 'N/A'}</div>`;
 
                         if (entry.diff_from_next) {
-                            const diff = entry.diff_from_next;
-                            html += '<div class="diff-section">';
-                            if (diff.added && Object.keys(diff.added).length) {
-                                html += '<div class="diff-added">+ Added: ' + Object.keys(diff.added).join(', ') + '</div>';
-                            }
-                            if (diff.removed && Object.keys(diff.removed).length) {
-                                html += '<div class="diff-removed">- Removed: ' + Object.keys(diff.removed).join(', ') + '</div>';
-                            }
-                            if (diff.changed && Object.keys(diff.changed).length) {
-                                html += '<div class="diff-changed">~ Changed: ' + Object.keys(diff.changed).join(', ') + '</div>';
-                            }
-                            html += '</div>';
+                            html += renderDiff(entry.diff_from_next, idx);
+                        } else {
+                            html += '<div style="color: var(--text-muted); margin-top: 8px;">No diff data available</div>';
                         }
 
                         html += '</div>';
@@ -415,6 +453,115 @@
             } catch (e) {
                 document.getElementById('historyViewer').innerHTML = 'Error: ' + e.message;
             }
+        }
+
+        function formatTimestamp(ts) {
+            if (!ts) return 'Unknown';
+            try {
+                const d = new Date(ts);
+                return d.toLocaleString();
+            } catch {
+                return ts.substring(0, 19);
+            }
+        }
+
+        function formatValue(val) {
+            if (val === null) return '<span style="color: var(--text-muted)">null</span>';
+            if (val === undefined) return '<span style="color: var(--text-muted)">undefined</span>';
+            if (typeof val === 'string') return `"${escapeHtml(val.length > 100 ? val.substring(0, 100) + '...' : val)}"`;
+            if (typeof val === 'object') {
+                const str = JSON.stringify(val);
+                return escapeHtml(str.length > 100 ? str.substring(0, 100) + '...' : str);
+            }
+            return String(val);
+        }
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        function renderDiff(diff, entryIdx) {
+            let html = '<div class="diff-section">';
+
+            const addedKeys = Object.keys(diff.added || {});
+            const removedKeys = Object.keys(diff.removed || {});
+            const changedKeys = Object.keys(diff.changed || {});
+            const totalChanges = addedKeys.length + removedKeys.length + changedKeys.length;
+
+            html += `<div style="margin-bottom: 8px; color: var(--text-muted);">
+                ${totalChanges} change${totalChanges !== 1 ? 's' : ''} detected
+            </div>`;
+
+            // Added keys
+            if (addedKeys.length > 0) {
+                html += `<div class="diff-category added">
+                    <div class="diff-category-title">Added (${addedKeys.length})</div>`;
+                addedKeys.slice(0, 20).forEach(key => {
+                    html += `<div class="diff-item">
+                        <span class="diff-key">${escapeHtml(key)}</span>
+                        <span class="diff-new">${formatValue(diff.added[key])}</span>
+                    </div>`;
+                });
+                if (addedKeys.length > 20) {
+                    html += `<div class="diff-item" style="color: var(--text-muted)">...and ${addedKeys.length - 20} more</div>`;
+                }
+                html += '</div>';
+            }
+
+            // Removed keys
+            if (removedKeys.length > 0) {
+                html += `<div class="diff-category removed">
+                    <div class="diff-category-title">Removed (${removedKeys.length})</div>`;
+                removedKeys.slice(0, 20).forEach(key => {
+                    html += `<div class="diff-item">
+                        <span class="diff-key">${escapeHtml(key)}</span>
+                        <span class="diff-old">${formatValue(diff.removed[key])}</span>
+                    </div>`;
+                });
+                if (removedKeys.length > 20) {
+                    html += `<div class="diff-item" style="color: var(--text-muted)">...and ${removedKeys.length - 20} more</div>`;
+                }
+                html += '</div>';
+            }
+
+            // Changed keys
+            if (changedKeys.length > 0) {
+                html += `<div class="diff-category changed">
+                    <div class="diff-category-title">Changed (${changedKeys.length})</div>`;
+                changedKeys.slice(0, 20).forEach(key => {
+                    const change = diff.changed[key];
+                    html += `<div class="diff-item">
+                        <span class="diff-key">${escapeHtml(key)}</span>`;
+
+                    // Handle list diff format
+                    if (change.old_length !== undefined) {
+                        html += `<span class="diff-value">
+                            list[${change.old_length}] <span class="diff-arrow">→</span> list[${change.new_length}]`;
+                        if (change.items_added) {
+                            html += ` <span class="diff-new">+${change.items_added.length}</span>`;
+                        }
+                        if (change.items_removed) {
+                            html += ` <span class="diff-old">-${change.items_removed.length}</span>`;
+                        }
+                        html += '</span>';
+                    } else {
+                        // Regular old/new value
+                        html += `<span class="diff-old">${formatValue(change.old)}</span>
+                            <span class="diff-arrow">→</span>
+                            <span class="diff-new">${formatValue(change.new)}</span>`;
+                    }
+                    html += '</div>';
+                });
+                if (changedKeys.length > 20) {
+                    html += `<div class="diff-item" style="color: var(--text-muted)">...and ${changedKeys.length - 20} more</div>`;
+                }
+                html += '</div>';
+            }
+
+            html += '</div>';
+            return html;
         }
 
         function showTab(tabName) {

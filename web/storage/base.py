@@ -380,18 +380,21 @@ class StorageBackend(ABC):
 # Utility Functions for Diff-Based History
 # =============================================================================
 
-def compute_diff(old_data: Dict, new_data: Dict) -> Dict:
+def compute_diff(old_data: Dict, new_data: Dict, path: str = '') -> Dict:
     """
     Compute the difference between two data dictionaries.
 
-    Returns a diff that can be used to reconstruct old_data from new_data.
+    Recursively drills into nested dicts to find actual leaf-level changes,
+    storing changes with dot-notation paths (e.g., 'memory.free_mb').
 
     Args:
         old_data: Previous data state
         new_data: New data state
+        path: Current path prefix for nested keys (internal use)
 
     Returns:
-        Diff dict with 'added', 'removed', 'changed' keys
+        Diff dict with 'added', 'removed', 'changed' keys.
+        Changed values include 'old' and 'new' for leaf values.
     """
     diff = {
         'added': {},
@@ -404,36 +407,34 @@ def compute_diff(old_data: Dict, new_data: Dict) -> Dict:
 
     # Keys added in new data
     for key in new_keys - old_keys:
-        diff['added'][key] = new_data[key]
+        full_key = f"{path}.{key}" if path else key
+        diff['added'][full_key] = new_data[key]
 
     # Keys removed from old data
     for key in old_keys - new_keys:
-        diff['removed'][key] = old_data[key]
+        full_key = f"{path}.{key}" if path else key
+        diff['removed'][full_key] = old_data[key]
 
     # Keys in both - check for changes
     for key in old_keys & new_keys:
         old_val = old_data[key]
         new_val = new_data[key]
+        full_key = f"{path}.{key}" if path else key
 
         if old_val != new_val:
             if isinstance(old_val, dict) and isinstance(new_val, dict):
-                # Recursive diff for nested dicts
-                nested_diff = compute_diff(old_val, new_val)
-                if nested_diff['added'] or nested_diff['removed'] or nested_diff['changed']:
-                    diff['changed'][key] = {
-                        'old': old_val,
-                        'new': new_val,
-                        'diff': nested_diff
-                    }
+                # Recursive diff for nested dicts - drill down to find actual changes
+                nested_diff = compute_diff(old_val, new_val, full_key)
+                # Merge nested results into our diff (they already have full paths)
+                diff['added'].update(nested_diff['added'])
+                diff['removed'].update(nested_diff['removed'])
+                diff['changed'].update(nested_diff['changed'])
             elif isinstance(old_val, list) and isinstance(new_val, list):
-                # For lists, store old and new values
-                if old_val != new_val:
-                    diff['changed'][key] = {
-                        'old': old_val,
-                        'new': new_val
-                    }
+                # For lists, compute a summary of changes
+                diff['changed'][full_key] = _compute_list_diff(old_val, new_val)
             else:
-                diff['changed'][key] = {
+                # Leaf value changed
+                diff['changed'][full_key] = {
                     'old': old_val,
                     'new': new_val
                 }
@@ -441,6 +442,84 @@ def compute_diff(old_data: Dict, new_data: Dict) -> Dict:
     return diff
 
 
+def _compute_list_diff(old_list: list, new_list: list) -> Dict:
+    """
+    Compute a summary diff for list changes.
+
+    Instead of storing full lists, stores:
+    - Items added (in new but not old)
+    - Items removed (in old but not new)
+    - Length change
+
+    For large lists of dicts/complex objects, just stores counts.
+    """
+    result = {
+        'old_length': len(old_list),
+        'new_length': len(new_list)
+    }
+
+    # For simple scalar lists, compute actual added/removed items
+    try:
+        # Convert to sets for comparison (only works for hashable items)
+        old_set = set(old_list) if all(isinstance(x, (str, int, float, bool, type(None))) for x in old_list) else None
+        new_set = set(new_list) if all(isinstance(x, (str, int, float, bool, type(None))) for x in new_list) else None
+
+        if old_set is not None and new_set is not None:
+            added = new_set - old_set
+            removed = old_set - new_set
+            if added:
+                result['items_added'] = list(added)[:10]  # Limit to 10 for display
+                if len(added) > 10:
+                    result['items_added_count'] = len(added)
+            if removed:
+                result['items_removed'] = list(removed)[:10]
+                if len(removed) > 10:
+                    result['items_removed_count'] = len(removed)
+        else:
+            # Complex objects - just note the change
+            result['note'] = 'List of complex objects changed'
+    except TypeError:
+        # Unhashable types
+        result['note'] = 'List contents changed'
+
+    return result
+
+
 def is_empty_diff(diff: Dict) -> bool:
     """Check if a diff represents no changes."""
     return not diff.get('added') and not diff.get('removed') and not diff.get('changed')
+
+
+def summarize_diff(diff: Dict, max_items: int = 10) -> Dict:
+    """
+    Create a human-readable summary of a diff.
+
+    Args:
+        diff: The diff dict from compute_diff()
+        max_items: Maximum number of items to include per category
+
+    Returns:
+        Summary dict with counts and key examples
+    """
+    summary = {
+        'total_changes': 0,
+        'added_count': len(diff.get('added', {})),
+        'removed_count': len(diff.get('removed', {})),
+        'changed_count': len(diff.get('changed', {})),
+        'added_keys': [],
+        'removed_keys': [],
+        'changed_keys': []
+    }
+
+    summary['total_changes'] = (
+        summary['added_count'] +
+        summary['removed_count'] +
+        summary['changed_count']
+    )
+
+    # Get sample keys for display
+    summary['added_keys'] = list(diff.get('added', {}).keys())[:max_items]
+    summary['removed_keys'] = list(diff.get('removed', {}).keys())[:max_items]
+    summary['changed_keys'] = list(diff.get('changed', {}).keys())[:max_items]
+
+    return summary

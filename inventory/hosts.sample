@@ -1,0 +1,25 @@
+# Ansible Inventory Sample
+# Copy this file to 'hosts' and customize for your environment
+# DO NOT commit the 'hosts' file with real credentials
+
+[local]
+# Container's localhost (uncomment to run playbooks on the container itself)
+# localhost ansible_connection=local
+
+[host_machine]
+# Your actual host machine - update IP and credentials
+# 192.168.1.100 ansible_user=svc-ansible ansible_ssh_private_key_file=/app/.ssh/svc-ansible-key
+
+[remote_servers]
+# Add remote servers here
+# server1.example.com ansible_user=deploy ansible_ssh_private_key_file=/app/.ssh/deploy_key
+# server2.example.com ansible_user=deploy ansible_ssh_pass=CHANGE_ME
+
+[all_hosts:children]
+host_machine
+remote_servers
+
+# Group variables example
+# [webservers:vars]
+# http_port=80
+# ansible_user=www-data

@@ -25,14 +25,38 @@ instance/
 .DS_Store
 Thumbs.db
 
-# Sensitive files
+# SSH Keys and Sensitive files
 *.key
 *.pem
 id_rsa*
 .ssh/
 
-# Logs (we'll commit logs manually as required)
-# logs/*.log
+# Inventory files with credentials (keep sample, ignore local configs)
+inventory/hosts
+inventory/hosts.local
+inventory/*.local
+!inventory/hosts.sample
+
+# Logs (execution logs - can be large)
+logs/*.log
 
 # Runtime configuration (user-specific)
+# Contains schedules, history, inventory data, host_facts
 config/
+
+# Temporary files
+/tmp/
+*.tmp
+*.bak
+
+# MongoDB data (if running locally outside Docker)
+data/db/
+
+# Local development overrides
+docker-compose.override.yml
+.env
+.env.local
+
+# Test output
+*.test.json
+test_output/
