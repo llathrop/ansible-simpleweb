@@ -769,6 +769,123 @@ def api_inventory_search():
 
 
 # =============================================================================
+# Inventory Management Page
+# =============================================================================
+
+@app.route('/inventory')
+def inventory_page():
+    """
+    Inventory management page - view and manage stored inventory items.
+    """
+    if not storage_backend:
+        return "Storage backend not initialized", 500
+
+    inventory = storage_backend.get_all_inventory()
+
+    # Get unique groups
+    groups = sorted(set(item.get('group', 'ungrouped') for item in inventory))
+
+    return render_template('inventory.html',
+                          inventory=inventory,
+                          inventory_json=json.dumps(inventory),
+                          groups=groups,
+                          backend_type=storage_backend.get_backend_type())
+
+
+# =============================================================================
+# Storage Info Page
+# =============================================================================
+
+@app.route('/storage')
+def storage_page():
+    """
+    Storage information page - view DB stats, config, and execution history.
+    """
+    if not storage_backend:
+        return "Storage backend not initialized", 500
+
+    # Get storage info
+    storage_info = {
+        'backend_type': storage_backend.get_backend_type(),
+        'healthy': storage_backend.health_check(),
+        'config': {
+            'STORAGE_BACKEND': os.environ.get('STORAGE_BACKEND', 'flatfile'),
+            'MONGODB_HOST': os.environ.get('MONGODB_HOST', 'mongodb') if storage_backend.get_backend_type() == 'mongodb' else None,
+            'MONGODB_DATABASE': os.environ.get('MONGODB_DATABASE', 'ansible_simpleweb') if storage_backend.get_backend_type() == 'mongodb' else None
+        }
+    }
+
+    # Get stats
+    schedules = schedule_manager.get_all_schedules() if schedule_manager else []
+    inventory = storage_backend.get_all_inventory()
+    history = storage_backend.get_history(limit=100)
+
+    # Add schedule names to history entries
+    schedule_map = {s['id']: s['name'] for s in schedules}
+    for entry in history:
+        entry['schedule_name'] = schedule_map.get(entry.get('schedule_id'), None)
+
+    stats = {
+        'schedules': len(schedules),
+        'inventory': len(inventory),
+        'history': len(history)
+    }
+
+    return render_template('storage.html',
+                          storage_info=storage_info,
+                          stats=stats,
+                          schedules=schedules,
+                          inventory=inventory,
+                          history=history)
+
+
+@app.route('/api/history')
+def api_history():
+    """
+    Get execution history with optional filtering.
+
+    Query params:
+        limit: Max entries to return (default 50)
+        schedule_id: Filter by specific schedule
+
+    Returns:
+        JSON array of history entries.
+    """
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+
+    limit = request.args.get('limit', 50, type=int)
+    schedule_id = request.args.get('schedule_id', None)
+
+    history = storage_backend.get_history(schedule_id=schedule_id, limit=limit)
+
+    # Add schedule names and format for display
+    if schedule_manager:
+        schedules = schedule_manager.get_all_schedules()
+        schedule_map = {s['id']: s['name'] for s in schedules}
+        for entry in history:
+            entry['schedule_name'] = schedule_map.get(entry.get('schedule_id'), None)
+
+            # Format duration
+            if entry.get('duration_seconds'):
+                mins, secs = divmod(int(entry['duration_seconds']), 60)
+                entry['duration_display'] = f"{mins}m {secs}s"
+            else:
+                entry['duration_display'] = 'N/A'
+
+            # Format started time
+            if entry.get('started'):
+                try:
+                    from datetime import datetime
+                    dt = datetime.fromisoformat(entry['started'])
+                    entry['started_display'] = dt.strftime('%Y-%m-%d %H:%M:%S')
+                except:
+                    entry['started_display'] = entry['started']
+
+    return jsonify(history)
+
+
+# =============================================================================
 # Schedule Routes
 # Playbook scheduling with APScheduler backend
 # =============================================================================
