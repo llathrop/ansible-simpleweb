@@ -480,6 +480,32 @@ class FlatFileStorage(StorageBackend):
                 self._write_host_facts_data(data)
                 return True
 
+    def import_host_facts(self, host_data: Dict) -> bool:
+        """
+        Import a complete host facts document (used for migration).
+
+        Directly writes the host document without diff processing,
+        preserving all history and metadata from the source.
+
+        Args:
+            host_data: Complete host document
+
+        Returns:
+            True if imported successfully
+        """
+        with self._host_facts_lock:
+            host = host_data.get('host')
+            if not host:
+                return False
+
+            data = self._load_host_facts_data()
+            if 'hosts' not in data:
+                data['hosts'] = {}
+
+            # Directly set the host data (overwrites if exists)
+            data['hosts'][host] = host_data
+            return self._write_host_facts_data(data)
+
     # =========================================================================
     # Utility Operations
     # =========================================================================

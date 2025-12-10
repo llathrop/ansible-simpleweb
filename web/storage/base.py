@@ -326,6 +326,31 @@ class StorageBackend(ABC):
         """
         pass
 
+    @abstractmethod
+    def import_host_facts(self, host_data: Dict) -> bool:
+        """
+        Import a complete host facts document (used for migration).
+
+        This method imports raw host data including history without
+        applying diff-based processing. Used by migration scripts.
+
+        Args:
+            host_data: Complete host document with structure:
+                {
+                    "host": "hostname",
+                    "groups": [...],
+                    "collections": {
+                        "hardware": {"current": {...}, "history": [...], ...}
+                    },
+                    "first_seen": "...",
+                    "last_updated": "..."
+                }
+
+        Returns:
+            True if imported successfully, False otherwise
+        """
+        pass
+
     # =========================================================================
     # Utility Operations
     # =========================================================================

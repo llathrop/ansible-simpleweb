@@ -29,7 +29,7 @@ services:
       - FLASK_ENV=development
       - FLASK_APP=web/app.py
       # Storage backend: 'flatfile' or 'mongodb'
-      - STORAGE_BACKEND=flatfile
+      - STORAGE_BACKEND=mongodb
       # MongoDB connection (used when STORAGE_BACKEND=mongodb)
       - MONGODB_HOST=mongodb
       - MONGODB_PORT=27017

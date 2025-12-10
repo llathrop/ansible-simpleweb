@@ -508,6 +508,38 @@ class MongoDBStorage(StorageBackend):
             print(f"Error deleting host facts from MongoDB: {e}")
             return False
 
+    def import_host_facts(self, host_data: Dict) -> bool:
+        """
+        Import a complete host facts document (used for migration).
+
+        Directly inserts/replaces the host document without diff processing,
+        preserving all history and metadata from the source.
+
+        Args:
+            host_data: Complete host document
+
+        Returns:
+            True if imported successfully
+        """
+        try:
+            host = host_data.get('host')
+            if not host:
+                return False
+
+            # Remove MongoDB _id if present (from source export)
+            doc = {k: v for k, v in host_data.items() if k != '_id'}
+
+            # Use replace_one with upsert to insert or replace
+            self.host_facts_collection.replace_one(
+                {'host': host},
+                doc,
+                upsert=True
+            )
+            return True
+        except Exception as e:
+            print(f"Error importing host facts to MongoDB: {e}")
+            return False
+
     # =========================================================================
     # Utility Operations
     # =========================================================================

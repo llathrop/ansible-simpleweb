@@ -659,6 +659,232 @@ Content-Type: application/json
 
 ---
 
+## CMDB / Host Facts API
+
+The CMDB (Configuration Management Database) stores collected facts from playbook runs,
+such as hardware specifications, installed software, and system configuration per host.
+
+### GET /api/hosts
+
+Get summary of all hosts with collected facts.
+
+**Request:**
+```http
+GET /api/hosts HTTP/1.1
+Host: localhost:3001
+```
+
+**Response:**
+```json
+[
+  {
+    "host": "192.168.1.50",
+    "groups": ["local_servers"],
+    "collections": ["hardware", "software"],
+    "first_seen": "2025-12-10T04:48:43.000000",
+    "last_updated": "2025-12-10T04:55:52.983452"
+  },
+  {
+    "host": "web-server-01.example.com",
+    "groups": ["webservers", "production"],
+    "collections": ["hardware"],
+    "first_seen": "2025-12-10T04:15:57.087085",
+    "last_updated": "2025-12-10T04:15:57.087085"
+  }
+]
+```
+
+---
+
+### GET /api/hosts/{hostname}
+
+Get all collected facts for a specific host.
+
+**Request:**
+```http
+GET /api/hosts/192.168.1.50 HTTP/1.1
+Host: localhost:3001
+```
+
+**Response:**
+```json
+{
+  "host": "192.168.1.50",
+  "groups": ["local_servers"],
+  "collections": {
+    "hardware": {
+      "current": {
+        "cpu": {
+          "model": "Intel Core i7-6700HQ",
+          "cores": 4,
+          "vcpus": 8
+        },
+        "memory": {
+          "total_mb": 31909
+        },
+        "disks": {
+          "total_size_gb": 925.73
+        }
+      },
+      "last_updated": "2025-12-10T04:48:43.000000",
+      "source": "callback_plugin",
+      "history": []
+    }
+  },
+  "first_seen": "2025-12-10T04:48:43.000000",
+  "last_updated": "2025-12-10T04:55:52.983452"
+}
+```
+
+---
+
+### GET /api/hosts/{hostname}/{collection}
+
+Get a specific collection (e.g., hardware, software) for a host.
+
+**Request:**
+```http
+GET /api/hosts/192.168.1.50/hardware HTTP/1.1
+Host: localhost:3001
+```
+
+**Query Parameters:**
+- `include_history=true` - Include historical changes (diffs)
+
+**Response:**
+```json
+{
+  "current": {
+    "cpu": {...},
+    "memory": {...},
+    "disks": {...}
+  },
+  "last_updated": "2025-12-10T04:48:43.000000",
+  "source": "callback_plugin",
+  "history": [
+    {
+      "timestamp": "2025-12-10T04:30:00.000000",
+      "diff": {
+        "changed": {"memory.free_mb": {"old": 4096, "new": 2048}},
+        "added": {},
+        "removed": {}
+      }
+    }
+  ]
+}
+```
+
+---
+
+### POST /api/hosts/{hostname}/facts
+
+Manually save facts for a host (useful for external integrations).
+
+**Request:**
+```http
+POST /api/hosts/new-server.local/facts HTTP/1.1
+Host: localhost:3001
+Content-Type: application/json
+
+{
+  "collection": "hardware",
+  "data": {
+    "cpu": "Intel Xeon E5",
+    "memory_gb": 64,
+    "disks": [{"device": "/dev/sda", "size_gb": 1000}]
+  },
+  "groups": ["production", "databases"],
+  "source": "api"
+}
+```
+
+**Response:**
+```json
+{
+  "status": "created",
+  "host": "new-server.local",
+  "collection": "hardware"
+}
+```
+
+Status values: `created`, `updated`, `unchanged`
+
+---
+
+### GET /api/hosts/{hostname}/history/{collection}
+
+Get change history for a specific collection.
+
+**Request:**
+```http
+GET /api/hosts/192.168.1.50/history/hardware?limit=10 HTTP/1.1
+Host: localhost:3001
+```
+
+**Response:**
+```json
+[
+  {
+    "timestamp": "2025-12-10T04:48:43.000000",
+    "diff": {
+      "changed": {"memory.free_mb": {"old": 4096, "new": 2048}},
+      "added": {},
+      "removed": {}
+    },
+    "source": "callback_plugin"
+  }
+]
+```
+
+---
+
+### DELETE /api/hosts/{hostname}
+
+Delete all facts for a host.
+
+**Request:**
+```http
+DELETE /api/hosts/old-server.local HTTP/1.1
+Host: localhost:3001
+```
+
+**Query Parameters:**
+- `collection=hardware` - Delete only specific collection (optional)
+
+**Response:**
+```json
+{
+  "deleted": true,
+  "host": "old-server.local"
+}
+```
+
+---
+
+### GET /api/hosts/group/{group_name}
+
+Get all hosts belonging to a specific group.
+
+**Request:**
+```http
+GET /api/hosts/group/webservers HTTP/1.1
+Host: localhost:3001
+```
+
+**Response:**
+```json
+[
+  {
+    "host": "web-server-01.example.com",
+    "groups": ["webservers", "production"],
+    "collections": ["hardware"],
+    "last_updated": "2025-12-10T04:15:57.087085"
+  }
+]
+```
+
+---
+
 ## Future Enhancements
 
 Planned API improvements:

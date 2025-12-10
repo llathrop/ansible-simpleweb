@@ -48,6 +48,7 @@ Data is stored in JSON files:
 | `config/schedules.json` | Schedule definitions |
 | `config/schedule_history.json` | Execution history |
 | `config/inventory.json` | Managed inventory items |
+| `config/host_facts.json` | CMDB data (collected facts per host) |
 
 **Advantages:**
 - No additional services required
@@ -64,6 +65,7 @@ Data is stored in MongoDB collections:
 | `schedules` | Schedule definitions |
 | `history` | Execution history |
 | `inventory` | Managed inventory items |
+| `host_facts` | CMDB data (collected facts per host) |
 
 **Advantages:**
 - Better performance at scale
@@ -73,14 +75,21 @@ Data is stored in MongoDB collections:
 
 ### Switching Backends
 
-Use the migration script to move data between backends:
+Use the migration script to move data between backends. The script migrates:
+
+- **Schedules** - Playbook scheduling configurations
+- **History** - Playbook execution history
+- **Inventory** - Managed inventory items (hosts/groups)
+- **Host Facts** - CMDB data including all collected facts and history
+
+#### Migration Commands
 
 ```bash
-# Preview migration (dry run)
+# Preview migration (dry run) - see what would be migrated
 docker exec ansible-simpleweb python3 /app/web/migrate_storage.py \
   --from flatfile --to mongodb --dry-run
 
-# Perform migration
+# Perform migration (skips existing data by default)
 docker exec ansible-simpleweb python3 /app/web/migrate_storage.py \
   --from flatfile --to mongodb
 
@@ -88,9 +97,98 @@ docker exec ansible-simpleweb python3 /app/web/migrate_storage.py \
 docker exec ansible-simpleweb python3 /app/web/migrate_storage.py \
   --from mongodb --to flatfile
 
-# Force overwrite existing data
+# Force overwrite existing data in target
 docker exec ansible-simpleweb python3 /app/web/migrate_storage.py \
   --from flatfile --to mongodb --force
+```
+
+#### Migration Options
+
+| Option | Description |
+|--------|-------------|
+| `--from` | Source backend (`flatfile` or `mongodb`) |
+| `--to` | Target backend (`flatfile` or `mongodb`) |
+| `--dry-run` | Preview migration without making changes |
+| `--force` | Overwrite existing data in target (default: skip) |
+
+#### Example Migration Output
+
+```
+Migration: flatfile -> mongodb
+Source (flatfile): OK
+Target (mongodb): OK
+
+=== Migrating Schedules ===
+Source has 2 schedules
+Target has 0 schedules
+  MIGRATING: Hardware Check Daily
+  MIGRATING: Weekly Backup Verify
+Schedules: 2 migrated, 0 skipped
+
+=== Migrating History ===
+Source has 45 history entries
+Target has 0 history entries
+History: 45 migrated, 0 skipped
+
+=== Migrating Inventory ===
+Source has 5 inventory items
+Target has 0 inventory items
+  MIGRATING: web-server-01.example.com
+  MIGRATING: 192.168.1.50
+Inventory: 5 migrated, 0 skipped
+
+=== Migrating Host Facts (CMDB) ===
+Source has 3 hosts with collected facts
+Target has 0 hosts with collected facts
+  MIGRATING: 192.168.1.50 (2 collections)
+  MIGRATING: web-server-01.example.com (1 collections)
+Host Facts: 3 migrated, 0 skipped
+
+=== Migration Complete ===
+Migrated 55 total items
+```
+
+#### Complete Migration Workflow
+
+1. **Preview the migration:**
+   ```bash
+   docker exec ansible-simpleweb python3 /app/web/migrate_storage.py \
+     --from flatfile --to mongodb --dry-run
+   ```
+
+2. **Run the migration:**
+   ```bash
+   docker exec ansible-simpleweb python3 /app/web/migrate_storage.py \
+     --from flatfile --to mongodb
+   ```
+
+3. **Update docker-compose.yml** to use the new backend:
+   ```yaml
+   environment:
+     - STORAGE_BACKEND=mongodb
+   ```
+
+4. **Restart the application:**
+   ```bash
+   docker-compose down && docker-compose up -d
+   ```
+
+5. **Verify the switch:**
+   ```bash
+   curl http://localhost:3001/api/storage
+   ```
+
+#### Backup Before Migration
+
+Always backup your data before migrating:
+
+```bash
+# Backup flatfile storage
+cp -r config/ config.backup/
+
+# For MongoDB, use mongodump
+docker exec ansible-simpleweb-mongodb mongodump \
+  --db ansible_simpleweb --out /data/backup
 ```
 
 ### Checking Current Backend
