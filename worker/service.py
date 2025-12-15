@@ -22,6 +22,7 @@ from .config import WorkerConfig
 from .api_client import PrimaryAPIClient
 from .sync import ContentSync, SyncResult
 from .executor import JobExecutor, JobPoller, JobResult
+from .sync_notify import SyncNotificationClient, SyncNotification, PollingFallback
 
 
 class WorkerState(Enum):
@@ -56,6 +57,11 @@ class WorkerService:
         # Job execution components (initialized after registration)
         self.executor: Optional[JobExecutor] = None
         self.poller: Optional[JobPoller] = None
+
+        # Sync notification components
+        self._sync_notify: Optional[SyncNotificationClient] = None
+        self._sync_poll_fallback: Optional[PollingFallback] = None
+        self._sync_pending = False  # Flag for immediate sync
 
         self._state = WorkerState.STARTING
         self._running = False
@@ -233,6 +239,52 @@ class WorkerService:
             self._set_state(old_state)
             return False
 
+    def _on_sync_notification(self, notification: SyncNotification):
+        """
+        Handle sync notification from server.
+
+        Args:
+            notification: Sync notification with revision info
+        """
+        current_rev = self.sync.local_revision
+        if current_rev and current_rev == notification.revision:
+            # Already at this revision
+            return
+
+        print(f"Sync notification: new revision {notification.short_revision} available")
+
+        # Set flag for immediate sync in main loop
+        with self._lock:
+            self._sync_pending = True
+
+    def _init_sync_notifications(self):
+        """Initialize sync notification system."""
+        # Try WebSocket notifications first
+        try:
+            self._sync_notify = SyncNotificationClient(
+                server_url=self.config.server_url,
+                on_sync_available=self._on_sync_notification
+            )
+            self._sync_notify.start()
+            print("Sync notifications enabled (WebSocket)")
+        except Exception as e:
+            print(f"WebSocket sync notifications unavailable: {e}")
+            self._sync_notify = None
+
+        # Set up polling fallback (always available)
+        self._sync_poll_fallback = PollingFallback(
+            api_client=self.api,
+            check_interval=self.config.sync_interval
+        )
+        self._sync_poll_fallback.set_callback(
+            lambda rev: self._on_sync_notification(SyncNotification(rev, rev[:7] if rev else ''))
+        )
+
+        # Only start polling if WebSocket unavailable or as backup
+        if not self._sync_notify or not self._sync_notify.connected:
+            self._sync_poll_fallback.start(self.sync.local_revision)
+            print("Sync polling fallback enabled")
+
     def _poll_jobs(self) -> List[Dict]:
         """
         Poll for assigned jobs and execute them.
@@ -292,8 +344,18 @@ class WorkerService:
                 if current_time - self._last_checkin >= self.config.checkin_interval:
                     self._checkin()
 
-                # Check for content updates at configured interval
-                if current_time - self._last_sync_check >= self.config.sync_interval:
+                # Check for sync notification (immediate sync requested)
+                sync_now = False
+                with self._lock:
+                    if self._sync_pending:
+                        sync_now = True
+                        self._sync_pending = False
+
+                if sync_now:
+                    self._check_sync()
+                    self._last_sync_check = current_time
+                # Check for content updates at configured interval (fallback)
+                elif current_time - self._last_sync_check >= self.config.sync_interval:
                     self._check_sync()
                     self._last_sync_check = current_time
 
@@ -362,6 +424,9 @@ class WorkerService:
         # Initialize job executor
         self._init_executor()
 
+        # Initialize sync notifications
+        self._init_sync_notifications()
+
         # Start main loop
         self._running = True
         self._last_checkin = 0  # Force immediate checkin
@@ -378,6 +443,12 @@ class WorkerService:
         print("Stopping worker service...")
         self._set_state(WorkerState.STOPPING)
         self._running = False
+
+        # Stop sync notifications
+        if self._sync_notify:
+            self._sync_notify.stop()
+        if self._sync_poll_fallback:
+            self._sync_poll_fallback.stop()
 
         # Wait for running jobs to complete (with timeout)
         if self.executor and self.executor.active_job_count > 0:
