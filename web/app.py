@@ -16,6 +16,9 @@ from scheduler import ScheduleManager, build_recurrence_config
 # Import storage backend
 from storage import get_storage_backend
 
+# Import content repository manager (for cluster sync)
+from content_repo import ContentRepository, get_content_repo
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'ansible-simpleweb-dev-key')
 
@@ -35,6 +38,7 @@ CLUSTER_MODE = os.environ.get('CLUSTER_MODE', 'standalone')
 REGISTRATION_TOKEN = os.environ.get('REGISTRATION_TOKEN', '')
 CHECKIN_INTERVAL = int(os.environ.get('CHECKIN_INTERVAL', '600'))  # seconds
 LOCAL_WORKER_TAGS = [t.strip() for t in os.environ.get('LOCAL_WORKER_TAGS', 'local').split(',') if t.strip()]
+CONTENT_DIR = os.environ.get('CONTENT_DIR', '/app')  # Base dir for syncable content
 
 # Track running playbooks by run_id
 # Structure: {run_id: {playbook, target, status, started, log_file, ...}}
@@ -55,6 +59,9 @@ schedule_manager = None
 
 # Storage backend (initialized in main block)
 storage_backend = None
+
+# Content repository (initialized in main block for cluster mode)
+content_repo = None
 
 def get_inventory_targets():
     """
@@ -3062,6 +3069,15 @@ if __name__ == '__main__':
     print(f"Cluster mode: {CLUSTER_MODE}")
     if CLUSTER_MODE in ('standalone', 'primary'):
         init_local_worker()
+
+        # Initialize content repository for syncing to workers
+        content_repo = get_content_repo(CONTENT_DIR)
+        if content_repo.init_repo():
+            status = content_repo.get_status()
+            print(f"Content repository initialized: {status['short_revision'] or 'empty'}")
+            print(f"  Tracked files: {status['tracked_files']}")
+        else:
+            print("WARNING: Content repository initialization failed")
 
     # Initialize the schedule manager with storage backend and managed inventory functions
     schedule_manager = ScheduleManager(
