@@ -20,9 +20,8 @@ RUN pip3 install --no-cache-dir ansible
 # Create app directory
 WORKDIR /app
 
-# Copy requirements and install (worker needs fewer deps than primary)
-COPY requirements.txt .
-RUN pip3 install --no-cache-dir requests psutil
+# Install Python dependencies for worker
+RUN pip3 install --no-cache-dir requests psutil python-socketio[client] websocket-client
 
 # Copy worker service
 COPY worker/ ./worker/
@@ -32,6 +31,10 @@ RUN mkdir -p /app/playbooks /app/inventory /app/library /app/callback_plugins /a
 
 # Copy ansible.cfg template (will be synced from primary)
 COPY ansible.cfg ./
+
+# Copy run-playbook script for job execution
+COPY run-playbook.sh ./
+RUN chmod +x /app/run-playbook.sh
 
 # Create SSH directory for keys
 RUN mkdir -p /root/.ssh && chmod 700 /root/.ssh
@@ -56,4 +59,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD python3 -c "import requests; requests.get('${SERVER_URL}/api/sync/status', timeout=5)" || exit 1
 
 # Run worker service
-CMD ["python3", "-m", "worker.service"]
+CMD ["python3", "-m", "worker"]

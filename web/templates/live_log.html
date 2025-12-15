@@ -35,6 +35,7 @@
             <h1>{{ playbook.replace('-', ' ').title() }}</h1>
             <div class="header-info">
                 <span>Target: <strong>{{ target }}</strong></span>
+                <span>Worker: <strong>{{ worker_name or 'local-executor' }}</strong></span>
                 <span>Log: <strong>{{ log_file }}</strong></span>
             </div>
             <span id="statusBadge" class="status-badge status-{{ status }}">{{ status }}</span>

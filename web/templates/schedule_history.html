@@ -65,6 +65,7 @@
                 <tr>
                     <th>Run Time</th>
                     <th>Duration</th>
+                    <th>Worker</th>
                     <th>Status</th>
                     <th>Log File</th>
                 </tr>
@@ -74,6 +75,7 @@
                 <tr class="history-row status-{{ run.status }}">
                     <td>{{ run.started_display }}</td>
                     <td>{{ run.duration_display }}</td>
+                    <td>{{ run.worker_name or 'local-executor' }}</td>
                     <td>
                         <span class="status-badge status-{{ run.status }}">{{ run.status }}</span>
                     </td>

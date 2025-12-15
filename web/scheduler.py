@@ -153,7 +153,8 @@ class ScheduleManager:
                         print(f"Error saving schedule {schedule_id}: {e}")
 
     def _record_execution(self, schedule_id: str, run_id: str, log_file: str,
-                          status: str, started: datetime, finished: datetime = None):
+                          status: str, started: datetime, finished: datetime = None,
+                          worker_name: str = 'local-executor'):
         """Record execution in history."""
         duration = None
         if finished and started:
@@ -166,7 +167,8 @@ class ScheduleManager:
             'started': started.isoformat() if started else None,
             'finished': finished.isoformat() if finished else None,
             'duration_seconds': duration,
-            'status': status
+            'status': status,
+            'worker_name': worker_name
         }
 
         if self.storage:

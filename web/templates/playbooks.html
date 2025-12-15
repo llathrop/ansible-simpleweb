@@ -100,6 +100,7 @@
                         {% for run in playbook.active_runs %}
                         <div class="active-run-item {{ run.status }}" data-run-id="{{ run.run_id }}">
                             <span class="active-run-target">{{ run.target }}</span>
+                            <span class="active-run-worker" style="color: var(--text-muted); font-size: 12px;">on {{ run.worker_name or 'local-executor' }}</span>
                             <a href="/live/{{ run.run_id }}" class="btn btn-watch">Watch Live</a>
                         </div>
                         {% endfor %}
@@ -143,10 +144,10 @@
 
         // Handle status updates from WebSocket
         socket.on('status_update', function(data) {
-            updatePlaybookStatus(data.playbook, data.status, data.run_id, data.target);
+            updatePlaybookStatus(data.playbook, data.status, data.run_id, data.target, data.worker_name);
         });
 
-        function updatePlaybookStatus(playbookName, status, runId, target) {
+        function updatePlaybookStatus(playbookName, status, runId, target, workerName) {
             const card = document.querySelector(`[data-playbook="${playbookName}"]`);
             if (!card) return;
 
@@ -174,6 +175,7 @@
                     runItem.dataset.runId = runId;
                     runItem.innerHTML = `
                         <span class="active-run-target">${target || 'unknown'}</span>
+                        <span class="active-run-worker" style="color: var(--text-muted); font-size: 12px;">on ${workerName || 'local-executor'}</span>
                         <a href="/live/${runId}" class="btn btn-watch">Watch Live</a>
                     `;
                     activeRunsList.appendChild(runItem);

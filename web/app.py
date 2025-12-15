@@ -511,6 +511,10 @@ def run_playbook_streaming(run_id, playbook_name, target, log_file, inventory_pa
     """
     log_path = os.path.join(LOGS_DIR, log_file)
 
+    # Get worker info from active_runs (before try block for exception handling)
+    with runs_lock:
+        worker_name = active_runs.get(run_id, {}).get('worker_name', 'local-executor')
+
     try:
         # Update status to running
         with runs_lock:
@@ -529,7 +533,8 @@ def run_playbook_streaming(run_id, playbook_name, target, log_file, inventory_pa
             'run_id': run_id,
             'playbook': playbook_name,
             'target': target,
-            'status': 'running'
+            'status': 'running',
+            'worker_name': worker_name
         }, room='status')
 
         # Build command with optional custom inventory
@@ -552,8 +557,8 @@ def run_playbook_streaming(run_id, playbook_name, target, log_file, inventory_pa
 
         # Open log file for writing
         with open(log_path, 'w', buffering=1) as log_f:  # Line buffered
-            # Write header
-            header = f"=== Playbook: {playbook_name} | Target: {target} | Started: {datetime.now().isoformat()} ===\n"
+            # Write header with worker info
+            header = f"=== Playbook: {playbook_name} | Target: {target} | Worker: {worker_name} | Started: {datetime.now().isoformat()} ===\n"
             log_f.write(header)
             log_f.flush()
             socketio.emit('log_line', {'line': header, 'run_id': run_id}, room=f'run:{run_id}')
@@ -602,7 +607,8 @@ def run_playbook_streaming(run_id, playbook_name, target, log_file, inventory_pa
             'run_id': run_id,
             'playbook': playbook_name,
             'target': target,
-            'status': status
+            'status': status,
+            'worker_name': worker_name
         }, room='status')
 
         # Clean up from active_runs after delay (keep for UI display)
@@ -627,7 +633,8 @@ def run_playbook_streaming(run_id, playbook_name, target, log_file, inventory_pa
             'run_id': run_id,
             'playbook': playbook_name,
             'target': target,
-            'status': 'failed'
+            'status': 'failed',
+            'worker_name': worker_name
         }, room='status')
 
     finally:
@@ -1083,7 +1090,9 @@ def run_playbook(playbook_name):
             'status': 'starting',
             'started': datetime.now().isoformat(),
             'log_file': log_file,
-            'managed_host': inventory_path is not None
+            'managed_host': inventory_path is not None,
+            'worker_id': '__local__',
+            'worker_name': 'local-executor'
         }
 
     # Start playbook in background thread with streaming
@@ -1118,7 +1127,8 @@ def live_log(run_id):
                           playbook=run_info['playbook'],
                           target=run_info['target'],
                           status=run_info['status'],
-                          log_file=run_info.get('log_file', ''))
+                          log_file=run_info.get('log_file', ''),
+                          worker_name=run_info.get('worker_name', 'local-executor'))
 
 
 @app.route('/live/batch/<batch_id>')
@@ -1189,7 +1199,40 @@ def view_log(log_file):
     with open(log_path, 'r') as f:
         content = f.read()
 
-    return render_template('log_view.html', log_file=log_file, content=content)
+    # Try to extract metadata from log header
+    # Format: === Playbook: name | Target: target | Worker: worker | Started: timestamp ===
+    playbook_name = None
+    target = None
+    worker_name = None
+    started = None
+
+    first_line = content.split('\n')[0] if content else ''
+    if first_line.startswith('===') and '|' in first_line:
+        import re
+        # Extract playbook name
+        pb_match = re.search(r'Playbook:\s*([^|]+)', first_line)
+        if pb_match:
+            playbook_name = pb_match.group(1).strip()
+        # Extract target
+        tgt_match = re.search(r'Target:\s*([^|]+)', first_line)
+        if tgt_match:
+            target = tgt_match.group(1).strip()
+        # Extract worker
+        wkr_match = re.search(r'Worker:\s*([^|]+)', first_line)
+        if wkr_match:
+            worker_name = wkr_match.group(1).strip()
+        # Extract started time
+        st_match = re.search(r'Started:\s*([^=]+)', first_line)
+        if st_match:
+            started = st_match.group(1).strip()
+
+    return render_template('log_view.html',
+                          log_file=log_file,
+                          content=content,
+                          playbook_name=playbook_name,
+                          target=target,
+                          worker_name=worker_name,
+                          started=started)
 
 @app.route('/api/status')
 def api_status():

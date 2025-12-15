@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   ansible-web:
     build: .
@@ -36,6 +34,11 @@ services:
       - MONGODB_HOST=mongodb
       - MONGODB_PORT=27017
       - MONGODB_DATABASE=ansible_simpleweb
+      # Cluster mode configuration
+      - CLUSTER_MODE=primary
+      - REGISTRATION_TOKEN=cluster-secret-token-change-in-prod
+      - CHECKIN_INTERVAL=60
+      - LOCAL_WORKER_TAGS=local,primary
     depends_on:
       - mongodb
     restart: unless-stopped
@@ -51,6 +54,69 @@ services:
     environment:
       # No auth for local development - add MONGO_INITDB_ROOT_USERNAME/PASSWORD for production
       - MONGO_INITDB_DATABASE=ansible_simpleweb
+    restart: unless-stopped
+
+  # Worker 1 - General purpose
+  worker-1:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: ansible-worker-1
+    environment:
+      - WORKER_NAME=worker-1
+      - SERVER_URL=http://ansible-web:3001
+      - REGISTRATION_TOKEN=cluster-secret-token-change-in-prod
+      - WORKER_TAGS=general,zone-a
+      - CHECKIN_INTERVAL=60
+      - SYNC_INTERVAL=120
+      - MAX_CONCURRENT_JOBS=2
+    volumes:
+      - ./ssh-keys:/app/ssh-keys:ro
+      - ~/.ssh:/root/.ssh:ro
+    depends_on:
+      - ansible-web
+    restart: unless-stopped
+
+  # Worker 2 - High memory workloads
+  worker-2:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: ansible-worker-2
+    environment:
+      - WORKER_NAME=worker-2
+      - SERVER_URL=http://ansible-web:3001
+      - REGISTRATION_TOKEN=cluster-secret-token-change-in-prod
+      - WORKER_TAGS=general,zone-b,high-memory
+      - CHECKIN_INTERVAL=60
+      - SYNC_INTERVAL=120
+      - MAX_CONCURRENT_JOBS=2
+    volumes:
+      - ./ssh-keys:/app/ssh-keys:ro
+      - ~/.ssh:/root/.ssh:ro
+    depends_on:
+      - ansible-web
+    restart: unless-stopped
+
+  # Worker 3 - Network operations
+  worker-3:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: ansible-worker-3
+    environment:
+      - WORKER_NAME=worker-3
+      - SERVER_URL=http://ansible-web:3001
+      - REGISTRATION_TOKEN=cluster-secret-token-change-in-prod
+      - WORKER_TAGS=general,zone-c,network
+      - CHECKIN_INTERVAL=60
+      - SYNC_INTERVAL=120
+      - MAX_CONCURRENT_JOBS=2
+    volumes:
+      - ./ssh-keys:/app/ssh-keys:ro
+      - ~/.ssh:/root/.ssh:ro
+    depends_on:
+      - ansible-web
     restart: unless-stopped
 
 volumes:
