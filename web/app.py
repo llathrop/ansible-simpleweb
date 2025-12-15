@@ -29,6 +29,13 @@ RUN_SCRIPT = '/app/run-playbook.sh'
 INVENTORY_FILE = '/app/inventory/hosts'
 THEMES_DIR = '/app/config/themes'
 
+# Cluster configuration
+# CLUSTER_MODE: 'standalone' (default), 'primary', or 'worker'
+CLUSTER_MODE = os.environ.get('CLUSTER_MODE', 'standalone')
+REGISTRATION_TOKEN = os.environ.get('REGISTRATION_TOKEN', '')
+CHECKIN_INTERVAL = int(os.environ.get('CHECKIN_INTERVAL', '600'))  # seconds
+LOCAL_WORKER_TAGS = [t.strip() for t in os.environ.get('LOCAL_WORKER_TAGS', 'local').split(',') if t.strip()]
+
 # Track running playbooks by run_id
 # Structure: {run_id: {playbook, target, status, started, log_file, ...}}
 active_runs = {}
@@ -2557,6 +2564,395 @@ def api_schedule_history(schedule_id):
     return jsonify(history)
 
 
+# =============================================================================
+# Worker Registration API (Cluster Support)
+# =============================================================================
+
+def init_local_worker():
+    """
+    Initialize the local executor as an implicit worker.
+    Called on startup when running in standalone or primary mode.
+    """
+    if not storage_backend:
+        return
+
+    local_worker = {
+        'id': '__local__',
+        'name': 'local-executor',
+        'tags': LOCAL_WORKER_TAGS,
+        'priority_boost': -1000,  # Always lowest priority
+        'status': 'online',
+        'is_local': True,
+        'registered_at': datetime.now().isoformat(),
+        'last_checkin': datetime.now().isoformat(),
+        'sync_revision': None,
+        'current_jobs': [],
+        'stats': {
+            'load_1m': 0.0,
+            'memory_percent': 0,
+            'jobs_completed': 0,
+            'jobs_failed': 0,
+            'avg_job_duration': 0
+        }
+    }
+    storage_backend.save_worker(local_worker)
+    print(f"Local worker initialized with tags: {LOCAL_WORKER_TAGS}")
+
+
+@app.route('/api/workers/register', methods=['POST'])
+def api_worker_register():
+    """
+    Register a new worker with the primary server.
+
+    Expected JSON body:
+    {
+        "name": "worker-01",
+        "tags": ["network-a", "gpu"],
+        "token": "registration-secret"
+    }
+
+    Returns:
+    {
+        "worker_id": "uuid",
+        "sync_url": "http://primary:3001/api/sync",
+        "api_base": "http://primary:3001/api",
+        "checkin_interval": 600,
+        "current_revision": "abc123" or null
+    }
+    """
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'Request body required'}), 400
+
+    # Validate required fields
+    name = data.get('name')
+    token = data.get('token')
+    tags = data.get('tags', [])
+
+    if not name:
+        return jsonify({'error': 'Worker name is required'}), 400
+
+    if not token:
+        return jsonify({'error': 'Registration token is required'}), 400
+
+    # Validate registration token
+    if not REGISTRATION_TOKEN:
+        return jsonify({'error': 'Server registration token not configured'}), 500
+
+    if token != REGISTRATION_TOKEN:
+        return jsonify({'error': 'Invalid registration token'}), 401
+
+    # Check if worker with this name already exists
+    existing_workers = storage_backend.get_all_workers()
+    for w in existing_workers:
+        if w.get('name') == name and not w.get('is_local'):
+            # Update existing worker instead of creating new
+            worker_id = w['id']
+            worker = {
+                'id': worker_id,
+                'name': name,
+                'tags': tags,
+                'priority_boost': w.get('priority_boost', 0),
+                'status': 'online',
+                'is_local': False,
+                'registered_at': w.get('registered_at', datetime.now().isoformat()),
+                'last_checkin': datetime.now().isoformat(),
+                'sync_revision': None,
+                'current_jobs': w.get('current_jobs', []),
+                'stats': w.get('stats', {
+                    'load_1m': 0.0,
+                    'memory_percent': 0,
+                    'jobs_completed': 0,
+                    'jobs_failed': 0,
+                    'avg_job_duration': 0
+                })
+            }
+            storage_backend.save_worker(worker)
+
+            # Emit event for real-time updates
+            socketio.emit('worker_registered', {
+                'worker_id': worker_id,
+                'name': name,
+                'tags': tags,
+                'status': 'online',
+                'is_reconnect': True
+            }, room='workers')
+
+            return jsonify({
+                'worker_id': worker_id,
+                'sync_url': f"{request.host_url.rstrip('/')}/api/sync",
+                'api_base': f"{request.host_url.rstrip('/')}/api",
+                'checkin_interval': CHECKIN_INTERVAL,
+                'current_revision': None,  # Will be set when git sync is implemented
+                'message': 'Worker re-registered successfully'
+            })
+
+    # Create new worker
+    worker_id = str(uuid.uuid4())
+    worker = {
+        'id': worker_id,
+        'name': name,
+        'tags': tags,
+        'priority_boost': 0,
+        'status': 'online',
+        'is_local': False,
+        'registered_at': datetime.now().isoformat(),
+        'last_checkin': datetime.now().isoformat(),
+        'sync_revision': None,
+        'current_jobs': [],
+        'stats': {
+            'load_1m': 0.0,
+            'memory_percent': 0,
+            'jobs_completed': 0,
+            'jobs_failed': 0,
+            'avg_job_duration': 0
+        }
+    }
+
+    if not storage_backend.save_worker(worker):
+        return jsonify({'error': 'Failed to save worker'}), 500
+
+    # Emit event for real-time updates
+    socketio.emit('worker_registered', {
+        'worker_id': worker_id,
+        'name': name,
+        'tags': tags,
+        'status': 'online',
+        'is_reconnect': False
+    }, room='workers')
+
+    print(f"Worker registered: {name} ({worker_id}) with tags {tags}")
+
+    return jsonify({
+        'worker_id': worker_id,
+        'sync_url': f"{request.host_url.rstrip('/')}/api/sync",
+        'api_base': f"{request.host_url.rstrip('/')}/api",
+        'checkin_interval': CHECKIN_INTERVAL,
+        'current_revision': None,  # Will be set when git sync is implemented
+        'message': 'Worker registered successfully'
+    }), 201
+
+
+@app.route('/api/workers', methods=['GET'])
+def api_get_workers():
+    """
+    Get all registered workers.
+
+    Query parameters:
+    - status: Filter by status (comma-separated, e.g., 'online,busy')
+
+    Returns list of worker objects.
+    """
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+
+    status_filter = request.args.get('status')
+
+    if status_filter:
+        statuses = [s.strip() for s in status_filter.split(',')]
+        workers = storage_backend.get_workers_by_status(statuses)
+    else:
+        workers = storage_backend.get_all_workers()
+
+    return jsonify(workers)
+
+
+@app.route('/api/workers/<worker_id>', methods=['GET'])
+def api_get_worker(worker_id):
+    """Get a single worker by ID."""
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+
+    worker = storage_backend.get_worker(worker_id)
+    if not worker:
+        return jsonify({'error': 'Worker not found'}), 404
+
+    return jsonify(worker)
+
+
+@app.route('/api/workers/<worker_id>', methods=['DELETE'])
+def api_delete_worker(worker_id):
+    """
+    Unregister/delete a worker.
+
+    Cannot delete the local executor (__local__).
+    """
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+
+    if worker_id == '__local__':
+        return jsonify({'error': 'Cannot delete local executor'}), 400
+
+    worker = storage_backend.get_worker(worker_id)
+    if not worker:
+        return jsonify({'error': 'Worker not found'}), 404
+
+    # Check if worker has active jobs
+    active_jobs = storage_backend.get_worker_jobs(worker_id, statuses=['assigned', 'running'])
+    if active_jobs:
+        return jsonify({
+            'error': 'Worker has active jobs',
+            'active_jobs': len(active_jobs),
+            'hint': 'Wait for jobs to complete or reassign them first'
+        }), 409
+
+    if not storage_backend.delete_worker(worker_id):
+        return jsonify({'error': 'Failed to delete worker'}), 500
+
+    # Emit event for real-time updates
+    socketio.emit('worker_removed', {
+        'worker_id': worker_id,
+        'name': worker.get('name')
+    }, room='workers')
+
+    print(f"Worker removed: {worker.get('name')} ({worker_id})")
+
+    return jsonify({'message': 'Worker deleted successfully'})
+
+
+@app.route('/api/workers/<worker_id>/checkin', methods=['POST'])
+def api_worker_checkin(worker_id):
+    """
+    Worker check-in endpoint.
+
+    Expected JSON body:
+    {
+        "sync_revision": "abc123",
+        "active_jobs": [
+            {"job_id": "uuid", "status": "running", "progress": 45}
+        ],
+        "system_stats": {
+            "load_1m": 0.5,
+            "memory_percent": 67,
+            "disk_percent": 45
+        }
+    }
+    """
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+
+    worker = storage_backend.get_worker(worker_id)
+    if not worker:
+        return jsonify({'error': 'Worker not found'}), 404
+
+    data = request.get_json() or {}
+
+    # Build checkin data
+    checkin_data = {}
+
+    if 'sync_revision' in data:
+        checkin_data['sync_revision'] = data['sync_revision']
+
+    if 'system_stats' in data:
+        checkin_data['stats'] = data['system_stats']
+
+    if 'status' in data:
+        checkin_data['status'] = data['status']
+
+    # Update worker with checkin data
+    if not storage_backend.update_worker_checkin(worker_id, checkin_data):
+        return jsonify({'error': 'Failed to update worker'}), 500
+
+    # Update job progress if provided
+    if 'active_jobs' in data:
+        for job_info in data['active_jobs']:
+            job_id = job_info.get('job_id')
+            if job_id:
+                storage_backend.update_job(job_id, {
+                    'progress': job_info.get('progress')
+                })
+
+    # Emit event for real-time updates
+    socketio.emit('worker_checkin', {
+        'worker_id': worker_id,
+        'name': worker.get('name'),
+        'status': checkin_data.get('status', worker.get('status')),
+        'stats': checkin_data.get('stats', {})
+    }, room='workers')
+
+    return jsonify({
+        'message': 'Checkin successful',
+        'next_checkin_seconds': CHECKIN_INTERVAL
+    })
+
+
+@app.route('/api/cluster/status', methods=['GET'])
+def api_cluster_status():
+    """
+    Get cluster status summary.
+
+    Returns overview of cluster health and statistics.
+    """
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+
+    workers = storage_backend.get_all_workers()
+    jobs = storage_backend.get_all_jobs()
+
+    # Count workers by status
+    worker_counts = {'online': 0, 'offline': 0, 'busy': 0, 'stale': 0}
+    for w in workers:
+        status = w.get('status', 'unknown')
+        if status in worker_counts:
+            worker_counts[status] += 1
+
+    # Count jobs by status
+    job_counts = {'queued': 0, 'assigned': 0, 'running': 0, 'completed': 0, 'failed': 0}
+    for j in jobs:
+        status = j.get('status', 'unknown')
+        if status in job_counts:
+            job_counts[status] += 1
+
+    # Find stale workers (no checkin in 2x interval)
+    stale_threshold = datetime.now().timestamp() - (CHECKIN_INTERVAL * 2)
+    stale_workers = []
+    for w in workers:
+        if w.get('is_local'):
+            continue
+        last_checkin = w.get('last_checkin', '')
+        if last_checkin:
+            try:
+                checkin_time = datetime.fromisoformat(last_checkin).timestamp()
+                if checkin_time < stale_threshold:
+                    stale_workers.append({
+                        'id': w['id'],
+                        'name': w.get('name'),
+                        'last_checkin': last_checkin
+                    })
+            except (ValueError, TypeError):
+                pass
+
+    return jsonify({
+        'cluster_mode': CLUSTER_MODE,
+        'checkin_interval': CHECKIN_INTERVAL,
+        'workers': {
+            'total': len(workers),
+            'by_status': worker_counts,
+            'stale': stale_workers
+        },
+        'jobs': {
+            'total': len(jobs),
+            'by_status': job_counts
+        }
+    })
+
+
+# WebSocket handlers for cluster events
+@socketio.on('join_workers')
+def handle_join_workers():
+    """Join the workers room for real-time worker updates"""
+    join_room('workers')
+
+
+@socketio.on('leave_workers')
+def handle_leave_workers():
+    """Leave the workers room"""
+    leave_room('workers')
+
+
 # WebSocket event handlers
 @socketio.on('connect')
 def handle_connect():
@@ -2661,6 +3057,11 @@ if __name__ == '__main__':
         print(f"Storage backend health check: OK")
     else:
         print(f"WARNING: Storage backend health check failed!")
+
+    # Initialize cluster support
+    print(f"Cluster mode: {CLUSTER_MODE}")
+    if CLUSTER_MODE in ('standalone', 'primary'):
+        init_local_worker()
 
     # Initialize the schedule manager with storage backend and managed inventory functions
     schedule_manager = ScheduleManager(
