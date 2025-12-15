@@ -274,8 +274,8 @@ curl http://localhost:3001/api/workers | python3 -m json.tool
 ### Tests Needed
 
 **Unit Tests**
-- [ ] `test_job_dispatch.py` - Test web UI job submission routes to queue in cluster mode
-- [ ] `test_playbook_path.py` - Test playbook path construction includes `.yml` extension
+- [x] ~~`test_job_dispatch.py`~~ - Tests web UI job submission routes to queue in cluster mode (12 tests)
+- [x] ~~`test_playbook_path.py`~~ - Covered in `test_worker_executor.py` with 7 tests for `_resolve_playbook_path()`
 - [ ] `test_worker_ssh_access.py` - Test worker containers can SSH to inventory hosts
 - [ ] `test_log_upload.py` - Test log files are uploaded from workers to primary
 
