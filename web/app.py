@@ -2880,9 +2880,21 @@ def api_worker_checkin(worker_id):
         'stats': checkin_data.get('stats', {})
     }, room='workers')
 
+    # Check if worker needs to sync
+    needs_sync = False
+    current_revision = None
+    repo = get_content_repo(CONTENT_DIR)
+    if repo.is_initialized():
+        current_revision = repo.get_current_revision()
+        worker_revision = data.get('sync_revision')
+        if current_revision and worker_revision != current_revision:
+            needs_sync = True
+
     return jsonify({
         'message': 'Checkin successful',
-        'next_checkin_seconds': CHECKIN_INTERVAL
+        'next_checkin_seconds': CHECKIN_INTERVAL,
+        'sync_needed': needs_sync,
+        'current_revision': current_revision[:7] if current_revision else None
     })
 
 
@@ -2944,6 +2956,164 @@ def api_cluster_status():
             'total': len(jobs),
             'by_status': job_counts
         }
+    })
+
+
+def detect_stale_workers(mark_stale=False, requeue_jobs=False):
+    """
+    Detect workers that have missed check-ins.
+
+    A worker is considered stale if no checkin received within 2x checkin_interval.
+
+    Args:
+        mark_stale: If True, update worker status to 'stale'
+        requeue_jobs: If True, requeue jobs assigned to stale workers
+
+    Returns:
+        dict with stale_workers list and requeued_jobs list
+    """
+    if not storage_backend:
+        return {'stale_workers': [], 'requeued_jobs': []}
+
+    workers = storage_backend.get_all_workers()
+    stale_threshold = datetime.now().timestamp() - (CHECKIN_INTERVAL * 2)
+
+    stale_workers = []
+    requeued_jobs = []
+
+    for worker in workers:
+        # Skip local worker
+        if worker.get('is_local'):
+            continue
+
+        # Skip already offline/stale workers unless we're refreshing
+        current_status = worker.get('status', 'unknown')
+        if current_status in ('offline',) and not mark_stale:
+            continue
+
+        # Check last checkin time
+        last_checkin = worker.get('last_checkin', '')
+        is_stale = False
+
+        if last_checkin:
+            try:
+                checkin_time = datetime.fromisoformat(last_checkin).timestamp()
+                if checkin_time < stale_threshold:
+                    is_stale = True
+            except (ValueError, TypeError):
+                # Invalid timestamp - consider stale if we can't parse it
+                is_stale = True
+        else:
+            # No checkin recorded - worker just registered, give it time
+            registered_at = worker.get('registered_at', '')
+            if registered_at:
+                try:
+                    reg_time = datetime.fromisoformat(registered_at).timestamp()
+                    if reg_time < stale_threshold:
+                        is_stale = True
+                except (ValueError, TypeError):
+                    pass
+
+        if is_stale:
+            stale_info = {
+                'id': worker['id'],
+                'name': worker.get('name'),
+                'last_checkin': last_checkin,
+                'previous_status': current_status
+            }
+            stale_workers.append(stale_info)
+
+            # Mark as stale if requested
+            if mark_stale and current_status != 'stale':
+                storage_backend.update_worker_status(worker['id'], 'stale')
+                stale_info['marked_stale'] = True
+
+                # Emit status change event
+                socketio.emit('worker_status', {
+                    'worker_id': worker['id'],
+                    'name': worker.get('name'),
+                    'status': 'stale',
+                    'previous_status': current_status
+                }, room='workers')
+
+            # Requeue jobs if requested
+            if requeue_jobs:
+                worker_jobs = storage_backend.get_all_jobs({
+                    'assigned_worker': worker['id'],
+                    'status': ['assigned', 'running']
+                })
+                for job in worker_jobs:
+                    storage_backend.update_job(job['id'], {
+                        'status': 'queued',
+                        'assigned_worker': None,
+                        'assigned_at': None,
+                        'started_at': None,
+                        'error_message': f"Requeued: Worker {worker.get('name', worker['id'])} became stale"
+                    })
+                    requeued_jobs.append({
+                        'job_id': job['id'],
+                        'playbook': job.get('playbook'),
+                        'previous_worker': worker['id']
+                    })
+
+                    # Emit job requeued event
+                    socketio.emit('job_requeued', {
+                        'job_id': job['id'],
+                        'playbook': job.get('playbook'),
+                        'reason': 'worker_stale',
+                        'worker_id': worker['id']
+                    }, room='jobs')
+
+    return {
+        'stale_workers': stale_workers,
+        'requeued_jobs': requeued_jobs
+    }
+
+
+@app.route('/api/workers/stale', methods=['GET'])
+def api_get_stale_workers():
+    """
+    Get list of stale workers.
+
+    Returns workers that have missed check-ins (2x interval).
+    """
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+
+    result = detect_stale_workers(mark_stale=False, requeue_jobs=False)
+    return jsonify({
+        'stale_workers': result['stale_workers'],
+        'stale_threshold_seconds': CHECKIN_INTERVAL * 2
+    })
+
+
+@app.route('/api/workers/stale/handle', methods=['POST'])
+def api_handle_stale_workers():
+    """
+    Handle stale workers by marking them and requeuing their jobs.
+
+    Optional JSON body:
+    {
+        "mark_stale": true,      // Update worker status to 'stale'
+        "requeue_jobs": true     // Requeue jobs from stale workers
+    }
+
+    Returns list of affected workers and requeued jobs.
+    """
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+
+    data = request.get_json() or {}
+    mark_stale = data.get('mark_stale', True)
+    requeue_jobs = data.get('requeue_jobs', True)
+
+    result = detect_stale_workers(mark_stale=mark_stale, requeue_jobs=requeue_jobs)
+
+    return jsonify({
+        'message': 'Stale workers handled',
+        'stale_workers_found': len(result['stale_workers']),
+        'jobs_requeued': len(result['requeued_jobs']),
+        'details': result
     })
 
 
