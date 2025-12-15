@@ -3388,6 +3388,88 @@ def api_complete_job(job_id):
 
 
 # =============================================================================
+# Job Routing API (Cluster Support)
+# =============================================================================
+
+def get_job_router():
+    """Get or create the job router instance."""
+    from web.job_router import JobRouter
+    return JobRouter(storage_backend)
+
+
+@app.route('/api/jobs/route', methods=['POST'])
+def api_route_pending_jobs():
+    """
+    Route pending jobs to available workers.
+
+    Query parameters:
+    - limit: Maximum number of jobs to route (default: 10)
+
+    Returns list of routing results.
+    """
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+
+    limit = min(50, max(1, int(request.args.get('limit', 10))))
+    router = get_job_router()
+
+    results = router.route_pending_jobs(limit)
+
+    assigned_count = sum(1 for r in results if r.get('assigned'))
+
+    return jsonify({
+        'routed': len(results),
+        'assigned': assigned_count,
+        'results': results
+    })
+
+
+@app.route('/api/jobs/<job_id>/route', methods=['POST'])
+def api_route_specific_job(job_id):
+    """
+    Route a specific job to a worker.
+
+    Finds the best available worker and assigns the job.
+    """
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+
+    router = get_job_router()
+    result = router.route_job(job_id)
+
+    if result.get('error'):
+        return jsonify(result), 400
+
+    return jsonify(result)
+
+
+@app.route('/api/jobs/<job_id>/recommendations', methods=['GET'])
+def api_job_worker_recommendations(job_id):
+    """
+    Get worker recommendations for a job.
+
+    Returns ranked list of workers with eligibility and scores.
+    """
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+
+    job = storage_backend.get_job(job_id)
+    if not job:
+        return jsonify({'error': 'Job not found'}), 404
+
+    router = get_job_router()
+    recommendations = router.get_worker_recommendations(job_id)
+
+    return jsonify({
+        'job_id': job_id,
+        'playbook': job.get('playbook'),
+        'required_tags': job.get('required_tags', []),
+        'preferred_tags': job.get('preferred_tags', []),
+        'recommendations': recommendations
+    })
+
+
+# =============================================================================
 # Content Sync API (Cluster Support)
 # =============================================================================
 

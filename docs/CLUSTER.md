@@ -278,7 +278,7 @@ SYNC_INTERVAL=300                  # Content sync check interval
 
 ### Job Management
 - [x] Feature 6: Job Submission & Queue API
-- [ ] Feature 7: Job Priority & Assignment
+- [x] Feature 7: Job Priority & Assignment
 - [ ] Feature 10: Job Completion & Results
 
 ### Integration
