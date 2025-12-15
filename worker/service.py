@@ -21,6 +21,7 @@ from enum import Enum
 from .config import WorkerConfig
 from .api_client import PrimaryAPIClient
 from .sync import ContentSync, SyncResult
+from .executor import JobExecutor, JobPoller, JobResult
 
 
 class WorkerState(Enum):
@@ -52,6 +53,10 @@ class WorkerService:
         self.api = PrimaryAPIClient(config.server_url)
         self.sync = ContentSync(self.api, config.content_dir)
 
+        # Job execution components (initialized after registration)
+        self.executor: Optional[JobExecutor] = None
+        self.poller: Optional[JobPoller] = None
+
         self._state = WorkerState.STARTING
         self._running = False
         self._worker_id: Optional[str] = None
@@ -61,6 +66,7 @@ class WorkerService:
         # Timing
         self._last_checkin = 0.0
         self._last_sync_check = 0.0
+        self._last_job_poll = 0.0
 
         # Signal handlers
         signal.signal(signal.SIGTERM, self._handle_shutdown)
@@ -229,21 +235,50 @@ class WorkerService:
 
     def _poll_jobs(self) -> List[Dict]:
         """
-        Poll for assigned jobs.
+        Poll for assigned jobs and execute them.
 
         Returns:
-            List of assigned job dicts
+            List of jobs that were started
         """
+        if not self._worker_id or not self.poller:
+            return []
+
+        return self.poller.poll_once()
+
+    def _on_job_complete(self, result: JobResult):
+        """Callback for job completion."""
+        print(f"Job completed: {result.job_id} (exit: {result.exit_code})")
+
+        # Update active jobs tracking
+        with self._lock:
+            self._active_jobs.pop(result.job_id, None)
+
+    def _init_executor(self):
+        """Initialize job executor and poller after registration."""
         if not self._worker_id:
-            return []
+            return
 
-        response = self.api.get_assigned_jobs(self._worker_id)
+        # Ensure logs directory exists
+        os.makedirs(self.config.logs_dir, exist_ok=True)
 
-        if not response.success:
-            # Don't log every failure - primary may not have this endpoint yet
-            return []
+        self.executor = JobExecutor(
+            api_client=self.api,
+            worker_id=self._worker_id,
+            content_dir=self.config.content_dir,
+            logs_dir=self.config.logs_dir
+        )
 
-        return response.data if isinstance(response.data, list) else []
+        # Register completion callback
+        self.executor.on_complete(self._on_job_complete)
+
+        self.poller = JobPoller(
+            api_client=self.api,
+            worker_id=self._worker_id,
+            executor=self.executor,
+            max_concurrent=self.config.max_concurrent_jobs
+        )
+
+        print(f"Job executor initialized (max concurrent: {self.config.max_concurrent_jobs})")
 
     def _main_loop(self):
         """Main service loop."""
@@ -262,17 +297,30 @@ class WorkerService:
                     self._check_sync()
                     self._last_sync_check = current_time
 
-                # Update state based on active jobs
-                with self._lock:
-                    if self._active_jobs:
+                # Poll for jobs at poll interval
+                if current_time - self._last_job_poll >= self.config.poll_interval:
+                    started = self._poll_jobs()
+                    self._last_job_poll = current_time
+                    if started:
+                        for job in started:
+                            with self._lock:
+                                self._active_jobs[job.get('id')] = {
+                                    'status': 'running',
+                                    'started': datetime.now().isoformat()
+                                }
+
+                # Update state based on executor's active jobs
+                if self.executor:
+                    active_count = self.executor.active_job_count
+                    if active_count > 0:
                         if self._state != WorkerState.BUSY:
                             self._set_state(WorkerState.BUSY)
                     else:
                         if self._state != WorkerState.IDLE:
                             self._set_state(WorkerState.IDLE)
 
-                # Sleep before next poll
-                time.sleep(self.config.poll_interval)
+                # Sleep a bit between iterations
+                time.sleep(1)
 
             except Exception as e:
                 print(f"Error in main loop: {e}")
@@ -311,10 +359,14 @@ class WorkerService:
         if not self._initial_sync():
             return False
 
+        # Initialize job executor
+        self._init_executor()
+
         # Start main loop
         self._running = True
         self._last_checkin = 0  # Force immediate checkin
         self._last_sync_check = time.time()
+        self._last_job_poll = 0  # Force immediate job poll
 
         print("Worker service started successfully")
         self._main_loop()
@@ -326,6 +378,14 @@ class WorkerService:
         print("Stopping worker service...")
         self._set_state(WorkerState.STOPPING)
         self._running = False
+
+        # Wait for running jobs to complete (with timeout)
+        if self.executor and self.executor.active_job_count > 0:
+            print(f"Waiting for {self.executor.active_job_count} active jobs to complete...")
+            if self.executor.wait_for_jobs(timeout=60):
+                print("All jobs completed")
+            else:
+                print("Timeout waiting for jobs - some may still be running")
 
         # Final checkin
         if self._worker_id:

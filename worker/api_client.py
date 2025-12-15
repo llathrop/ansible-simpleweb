@@ -164,9 +164,26 @@ class PrimaryAPIClient:
         """
         return self._request(
             'GET',
-            f'/api/workers/{worker_id}/jobs',
-            params={'status': 'assigned'}
+            '/api/jobs',
+            params={'worker': worker_id, 'status': 'assigned'}
         )
+
+    def start_job(self, job_id: str, worker_id: str, log_file: str = None) -> APIResponse:
+        """
+        Mark a job as started.
+
+        Args:
+            job_id: Job ID
+            worker_id: This worker's ID
+            log_file: Optional log file name
+
+        Returns:
+            APIResponse
+        """
+        data = {'worker_id': worker_id}
+        if log_file:
+            data['log_file'] = log_file
+        return self._request('POST', f'/api/jobs/{job_id}/start', json=data)
 
     def update_job_status(self, job_id: str, status: str, **kwargs) -> APIResponse:
         """
@@ -187,21 +204,34 @@ class PrimaryAPIClient:
             json=data
         )
 
-    def complete_job(self, job_id: str, result: Dict) -> APIResponse:
+    def complete_job(self, job_id: str, worker_id: str, exit_code: int,
+                     log_file: str = None, error_message: str = None) -> APIResponse:
         """
         Report job completion.
 
         Args:
             job_id: Job ID
-            result: Completion data (status, exit_code, log, etc.)
+            worker_id: This worker's ID
+            exit_code: Process exit code (0 = success)
+            log_file: Log file name
+            error_message: Error message if failed
 
         Returns:
             APIResponse
         """
+        data = {
+            'worker_id': worker_id,
+            'exit_code': exit_code
+        }
+        if log_file:
+            data['log_file'] = log_file
+        if error_message:
+            data['error_message'] = error_message
+
         return self._request(
             'POST',
             f'/api/jobs/{job_id}/complete',
-            json=result
+            json=data
         )
 
     # =========================================================================
