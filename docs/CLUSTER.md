@@ -91,6 +91,62 @@ All worker and job state is communicated via REST API:
 - Periodic health check-ins
 - System statistics
 
+## Worker Networking
+
+**Workers need network access to target hosts.** Choose one of these options:
+
+### Option 1: Bridge Network (Default)
+
+Workers run in Docker's bridge network. This works if:
+- Target hosts are accessible from the Docker network
+- You're running playbooks against containers on the same Docker network
+
+### Option 2: Host Network Mode
+
+For full network access to external targets, edit `docker-compose.yml`:
+
+```yaml
+worker-1:
+  # ...
+  network_mode: host
+  environment:
+    - SERVER_URL=http://localhost:3001  # Change from ansible-web
+```
+
+**Note:** With host network mode, workers can't resolve `ansible-web` hostname. Use `localhost` instead.
+
+### Option 3: Extra Hosts
+
+Add DNS entries for target hosts that aren't resolvable:
+
+```yaml
+worker-1:
+  # ...
+  extra_hosts:
+    - "target1.example.com:192.168.1.100"
+    - "target2.example.com:192.168.1.101"
+```
+
+### SSH Key Configuration
+
+Workers mount SSH keys from two locations:
+
+```yaml
+volumes:
+  # Uploaded keys from web UI
+  - ./ssh-keys:/app/ssh-keys:ro
+  # Host's SSH keys
+  - ~/.ssh:/root/.ssh:ro
+```
+
+In your inventory file, specify the key per host:
+
+```ini
+[webservers]
+web1.example.com ansible_ssh_private_key_file=/root/.ssh/id_rsa
+web2.example.com ansible_ssh_private_key_file=/app/ssh-keys/deploy_key
+```
+
 ## Directory Structure
 
 ### Content Repository (Git-synced)

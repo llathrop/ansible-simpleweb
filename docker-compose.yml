@@ -57,11 +57,16 @@ services:
     restart: unless-stopped
 
   # Worker 1 - General purpose
+  # Workers need network access to target hosts. Options:
+  # 1. Use Docker's default bridge network (targets must be reachable from Docker network)
+  # 2. Use host network mode (uncomment network_mode below, comment out depends_on)
+  # 3. Add extra_hosts for DNS resolution
   worker-1:
     build:
       context: .
       dockerfile: Dockerfile.worker
     container_name: ansible-worker-1
+    # network_mode: host  # Uncomment for direct host network access to targets
     environment:
       - WORKER_NAME=worker-1
       - SERVER_URL=http://ansible-web:3001
@@ -71,10 +76,15 @@ services:
       - SYNC_INTERVAL=120
       - MAX_CONCURRENT_JOBS=2
     volumes:
+      # SSH keys for target authentication
       - ./ssh-keys:/app/ssh-keys:ro
       - ~/.ssh:/root/.ssh:ro
+    # For host network mode, change SERVER_URL to http://localhost:3001
     depends_on:
       - ansible-web
+    # extra_hosts:  # Add DNS entries for targets if needed
+    #   - "target1.example.com:192.168.1.100"
+    #   - "target2.example.com:192.168.1.101"
     restart: unless-stopped
 
   # Worker 2 - High memory workloads
@@ -83,6 +93,7 @@ services:
       context: .
       dockerfile: Dockerfile.worker
     container_name: ansible-worker-2
+    # network_mode: host  # Uncomment for direct host network access to targets
     environment:
       - WORKER_NAME=worker-2
       - SERVER_URL=http://ansible-web:3001
@@ -104,6 +115,7 @@ services:
       context: .
       dockerfile: Dockerfile.worker
     container_name: ansible-worker-3
+    # network_mode: host  # Uncomment for direct host network access to targets
     environment:
       - WORKER_NAME=worker-3
       - SERVER_URL=http://ansible-web:3001
