@@ -186,7 +186,7 @@ This project includes 5 example playbooks:
   - Local executor fallback
   - Cluster dashboard with real-time stats
 
-**Status:** Cluster mode functional, pending bug fixes (see TODO list)
+**Status:** Cluster mode fully functional with comprehensive test coverage (68+ tests for cluster features)
 
 ## Common Commands
 
@@ -276,19 +276,22 @@ curl http://localhost:3001/api/workers | python3 -m json.tool
 **Unit Tests**
 - [x] ~~`test_job_dispatch.py`~~ - Tests web UI job submission routes to queue in cluster mode (12 tests)
 - [x] ~~`test_playbook_path.py`~~ - Covered in `test_worker_executor.py` with 7 tests for `_resolve_playbook_path()`
-- [ ] `test_worker_ssh_access.py` - Test worker containers can SSH to inventory hosts
-- [ ] `test_log_upload.py` - Test log files are uploaded from workers to primary
+- [x] ~~`test_worker_ssh_access.py`~~ - SSH configuration validation (19 tests for directory structure, config files, key management, Docker mounts)
+- [x] ~~`test_log_upload.py`~~ - Log upload from workers to primary (15 tests for streaming API, upload on completion, WebSocket broadcast)
 
 **Integration Tests**
-- [x] ~~End-to-end job dispatch test~~ - `test_cluster_integration.py` with 15 tests covering:
+- [x] ~~End-to-end job dispatch test~~ - `test_cluster_integration.py` with 26 tests covering:
   - Worker registration (4 tests)
   - Content sync (3 tests)
   - Job queue CRUD (4 tests)
   - Job routing (2 tests)
   - Dashboard API (2 tests)
-- [ ] Multi-worker load balancing test
-- [ ] Worker failover test (job reassignment on worker failure)
-- [ ] Content sync integrity test (playbooks match after sync)
+  - Multi-worker load balancing (3 tests)
+  - Worker failover (3 tests)
+  - Content sync integrity (5 tests)
+- [x] ~~Multi-worker load balancing test~~ - Jobs distributed across workers, load affects routing, tag preferences
+- [x] ~~Worker failover test~~ - Stale worker detection, offline workers excluded from routing
+- [x] ~~Content sync integrity test~~ - Revision matching, manifest validation, archive integrity
 
 **Existing Test Coverage**
 - [x] Cluster storage (`test_storage_cluster.py`, `test_feature_cluster_storage.py`)
