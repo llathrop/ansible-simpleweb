@@ -280,7 +280,12 @@ curl http://localhost:3001/api/workers | python3 -m json.tool
 - [ ] `test_log_upload.py` - Test log files are uploaded from workers to primary
 
 **Integration Tests**
-- [ ] End-to-end job dispatch test (submit → route → execute → complete)
+- [x] ~~End-to-end job dispatch test~~ - `test_cluster_integration.py` with 15 tests covering:
+  - Worker registration (4 tests)
+  - Content sync (3 tests)
+  - Job queue CRUD (4 tests)
+  - Job routing (2 tests)
+  - Dashboard API (2 tests)
 - [ ] Multi-worker load balancing test
 - [ ] Worker failover test (job reassignment on worker failure)
 - [ ] Content sync integrity test (playbooks match after sync)
