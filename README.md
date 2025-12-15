@@ -309,22 +309,22 @@ curl http://localhost:3001/api/workers | python3 -m json.tool
 ### Documentation Updates
 
 **README Updates**
-- [ ] Add cluster mode configuration section
-- [ ] Document environment variables for workers
-- [ ] Add troubleshooting guide for cluster issues
-- [ ] Document tag-based job routing
+- [x] ~~Add cluster mode configuration section~~ - Added "Cluster Mode (NEW)" section with architecture diagram
+- [x] ~~Document environment variables for workers~~ - Covered in docs/CLUSTER.md "Configuration" section
+- [x] ~~Add troubleshooting guide for cluster issues~~ - Covered in docs/CLUSTER.md
+- [x] ~~Document tag-based job routing~~ - Covered in docs/CLUSTER.md "Worker Tags" section
 
 **Code Comments**
-- [ ] Document `run_playbook()` cluster mode logic in `app.py`
-- [ ] Document `JobRouter` scoring algorithm
-- [ ] Document worker sync process in `worker/sync.py`
-- [ ] Add docstrings to `job_status.html` template JavaScript
+- [x] ~~Document `run_playbook()` cluster mode logic in `app.py`~~ - Added comments in code
+- [x] ~~Document `JobRouter` scoring algorithm~~ - Docstrings in job_router.py
+- [x] ~~Document worker sync process in `worker/sync.py`~~ - Docstrings in sync.py
+- [x] ~~Add docstrings to `job_status.html` template JavaScript~~ - Added comments
 
 **New Documentation Files**
-- [ ] `docs/CLUSTER.md` - Comprehensive cluster setup and operation guide
-- [ ] `docs/WORKER_SETUP.md` - Worker configuration and deployment
-- [ ] `docs/JOB_ROUTING.md` - Tag-based routing and priority system
-- [ ] `docs/API_CLUSTER.md` - Cluster-related API endpoints
+- [x] ~~`docs/CLUSTER.md`~~ - Comprehensive guide with architecture, networking, tags, data models, and all 13 features
+- [ ] `docs/WORKER_SETUP.md` - Worker configuration and deployment (partial - covered in CLUSTER.md)
+- [ ] `docs/JOB_ROUTING.md` - Tag-based routing and priority system (covered in CLUSTER.md)
+- [ ] `docs/API_CLUSTER.md` - Cluster-related API endpoints (covered in docs/API.md)
 
 ### Infrastructure Improvements
 
