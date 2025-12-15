@@ -96,6 +96,41 @@ class JobExecutor:
         playbook_name = os.path.splitext(os.path.basename(playbook))[0]
         return f"{playbook_name}_{job_id[:8]}_{timestamp}.log"
 
+    def _resolve_playbook_path(self, playbook: str) -> str:
+        """
+        Resolve playbook name to full path, handling extension normalization.
+
+        The web UI stores playbook names without extensions (e.g., 'service-status'),
+        but the actual files have .yml or .yaml extensions. This method:
+        1. If playbook already has .yml/.yaml extension, uses it as-is
+        2. Otherwise, checks for .yml first, then .yaml
+        3. Falls back to the original name if no file found (will error at runtime)
+
+        Args:
+            playbook: Playbook name (with or without extension)
+
+        Returns:
+            Full path to the playbook file
+        """
+        playbooks_dir = os.path.join(self.content_dir, 'playbooks')
+
+        # If already has a YAML extension, use as-is
+        if playbook.endswith('.yml') or playbook.endswith('.yaml'):
+            return os.path.join(playbooks_dir, playbook)
+
+        # Try .yml extension first (most common)
+        yml_path = os.path.join(playbooks_dir, f"{playbook}.yml")
+        if os.path.exists(yml_path):
+            return yml_path
+
+        # Try .yaml extension
+        yaml_path = os.path.join(playbooks_dir, f"{playbook}.yaml")
+        if os.path.exists(yaml_path):
+            return yaml_path
+
+        # Fall back to original (will fail at runtime with clear error)
+        return os.path.join(playbooks_dir, playbook)
+
     def _build_ansible_command(self, job: Dict) -> List[str]:
         """
         Build ansible-playbook command for a job.
@@ -110,7 +145,8 @@ class JobExecutor:
         target = job.get('target', 'all')
         extra_vars = job.get('extra_vars', {})
 
-        playbook_path = os.path.join(self.content_dir, 'playbooks', playbook)
+        # Resolve playbook path with extension handling
+        playbook_path = self._resolve_playbook_path(playbook)
         inventory_path = os.path.join(self.content_dir, 'inventory', 'hosts')
 
         cmd = [

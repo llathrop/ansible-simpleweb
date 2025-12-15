@@ -64,8 +64,70 @@ class TestJobExecutor(unittest.TestCase):
         self.assertIn('job-123', filename)
         self.assertTrue(filename.endswith('.log'))
 
+    def test_resolve_playbook_path_with_yml_extension(self):
+        """Test path resolution when playbook already has .yml extension."""
+        # Create test playbook
+        playbook_path = os.path.join(self.content_dir, 'playbooks', 'test.yml')
+        with open(playbook_path, 'w') as f:
+            f.write('---\n')
+
+        resolved = self.executor._resolve_playbook_path('test.yml')
+        self.assertEqual(resolved, playbook_path)
+
+    def test_resolve_playbook_path_with_yaml_extension(self):
+        """Test path resolution when playbook has .yaml extension."""
+        playbook_path = os.path.join(self.content_dir, 'playbooks', 'deploy.yaml')
+        with open(playbook_path, 'w') as f:
+            f.write('---\n')
+
+        resolved = self.executor._resolve_playbook_path('deploy.yaml')
+        self.assertEqual(resolved, playbook_path)
+
+    def test_resolve_playbook_path_without_extension_finds_yml(self):
+        """Test path resolution adds .yml when file exists."""
+        # This is the key fix - web UI sends 'service-status', not 'service-status.yml'
+        playbook_path = os.path.join(self.content_dir, 'playbooks', 'service-status.yml')
+        with open(playbook_path, 'w') as f:
+            f.write('---\n')
+
+        resolved = self.executor._resolve_playbook_path('service-status')
+        self.assertEqual(resolved, playbook_path)
+
+    def test_resolve_playbook_path_without_extension_finds_yaml(self):
+        """Test path resolution adds .yaml when .yml doesn't exist."""
+        playbook_path = os.path.join(self.content_dir, 'playbooks', 'backup.yaml')
+        with open(playbook_path, 'w') as f:
+            f.write('---\n')
+
+        resolved = self.executor._resolve_playbook_path('backup')
+        self.assertEqual(resolved, playbook_path)
+
+    def test_resolve_playbook_path_prefers_yml_over_yaml(self):
+        """Test that .yml is preferred when both extensions exist."""
+        yml_path = os.path.join(self.content_dir, 'playbooks', 'common.yml')
+        yaml_path = os.path.join(self.content_dir, 'playbooks', 'common.yaml')
+        with open(yml_path, 'w') as f:
+            f.write('---\n# yml version\n')
+        with open(yaml_path, 'w') as f:
+            f.write('---\n# yaml version\n')
+
+        resolved = self.executor._resolve_playbook_path('common')
+        self.assertEqual(resolved, yml_path)
+
+    def test_resolve_playbook_path_fallback_when_not_found(self):
+        """Test path resolution falls back to original name when file not found."""
+        # This allows ansible-playbook to provide its own error message
+        resolved = self.executor._resolve_playbook_path('nonexistent')
+        expected = os.path.join(self.content_dir, 'playbooks', 'nonexistent')
+        self.assertEqual(resolved, expected)
+
     def test_build_ansible_command_basic(self):
         """Test building basic ansible command."""
+        # Create playbook file so path resolution works
+        playbook_path = os.path.join(self.content_dir, 'playbooks', 'test.yml')
+        with open(playbook_path, 'w') as f:
+            f.write('---\n')
+
         job = {
             'playbook': 'test.yml',
             'target': 'webservers'
@@ -78,8 +140,31 @@ class TestJobExecutor(unittest.TestCase):
         self.assertIn('-l', cmd)
         self.assertIn('webservers', cmd)
 
+    def test_build_ansible_command_resolves_extension(self):
+        """Test that command building resolves playbook extension."""
+        # Create playbook with .yml extension
+        playbook_path = os.path.join(self.content_dir, 'playbooks', 'hardware-inventory.yml')
+        with open(playbook_path, 'w') as f:
+            f.write('---\n')
+
+        # Job has playbook name WITHOUT extension (as sent by web UI)
+        job = {
+            'playbook': 'hardware-inventory',
+            'target': 'all'
+        }
+
+        cmd = self.executor._build_ansible_command(job)
+
+        # Should resolve to the full path with .yml
+        self.assertIn(playbook_path, cmd)
+
     def test_build_ansible_command_with_extra_vars(self):
         """Test building command with extra vars."""
+        # Create playbook file so path resolution works
+        playbook_path = os.path.join(self.content_dir, 'playbooks', 'deploy.yml')
+        with open(playbook_path, 'w') as f:
+            f.write('---\n')
+
         job = {
             'playbook': 'deploy.yml',
             'target': 'all',
