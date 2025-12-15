@@ -269,7 +269,7 @@ curl http://localhost:3001/api/workers | python3 -m json.tool
 ### Critical Bugs
 - [x] ~~**Playbook path missing `.yml` extension**~~ - Fixed: `_resolve_playbook_path()` now auto-detects .yml/.yaml extensions
 - [x] ~~**Workers cannot reach external targets**~~ - Fixed: Added network configuration options (host mode, extra_hosts) and SSH key documentation in docker-compose.yml and docs/CLUSTER.md
-- [ ] **Live view broken for cluster jobs** - Live log streaming (`/live/<run_id>`) doesn't work for jobs dispatched to remote workers; needs WebSocket relay from worker to primary
+- [x] ~~**Live view broken for cluster jobs**~~ - Fixed: Workers stream logs via `/api/jobs/{id}/log/stream`, primary broadcasts via WebSocket to job_status.html
 
 ### Tests Needed
 

@@ -204,6 +204,33 @@ class PrimaryAPIClient:
             json=data
         )
 
+    def stream_log(self, job_id: str, worker_id: str, content: str,
+                   append: bool = True) -> APIResponse:
+        """
+        Stream log content to primary during job execution.
+
+        This enables live log viewing in the web UI for cluster jobs.
+        Call periodically during playbook execution to send log chunks.
+
+        Args:
+            job_id: Job ID
+            worker_id: This worker's ID
+            content: Log content chunk to send
+            append: True to append to existing log, False to replace
+
+        Returns:
+            APIResponse with bytes_written on success
+        """
+        return self._request(
+            'POST',
+            f'/api/jobs/{job_id}/log/stream',
+            json={
+                'worker_id': worker_id,
+                'content': content,
+                'append': append
+            }
+        )
+
     def complete_job(self, job_id: str, worker_id: str, exit_code: int,
                      log_file: str = None, log_content: str = None,
                      error_message: str = None, duration_seconds: float = None,

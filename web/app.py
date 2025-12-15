@@ -3437,6 +3437,75 @@ def api_cancel_job(job_id):
     })
 
 
+@app.route('/api/jobs/<job_id>/log/stream', methods=['POST'])
+def api_stream_job_log(job_id):
+    """
+    Stream log content from worker during job execution.
+
+    This endpoint allows workers to send partial log content while a job
+    is running, enabling live log viewing in the web UI.
+
+    Expected JSON body:
+    {
+        "worker_id": "worker-uuid",
+        "content": "log content chunk...",
+        "append": true,           // true to append, false to replace
+        "offset": 0               // byte offset for append (optional)
+    }
+
+    The log content is written to a partial log file that is served
+    to the web UI during execution.
+    """
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+
+    job = storage_backend.get_job(job_id)
+    if not job:
+        return jsonify({'error': 'Job not found'}), 404
+
+    if job.get('status') not in ('assigned', 'running'):
+        return jsonify({'error': 'Job is not running'}), 400
+
+    data = request.get_json() or {}
+    worker_id = data.get('worker_id')
+    content = data.get('content', '')
+    append = data.get('append', True)
+
+    # Verify worker owns this job
+    if job.get('assigned_worker') != worker_id:
+        return jsonify({'error': 'Worker does not own this job'}), 403
+
+    # Create partial log filename
+    partial_log_file = f"partial-{job_id}.log"
+    partial_log_path = os.path.join(LOGS_DIR, partial_log_file)
+
+    try:
+        os.makedirs(LOGS_DIR, exist_ok=True)
+        mode = 'a' if append else 'w'
+        with open(partial_log_path, mode) as f:
+            f.write(content)
+
+        # Update job with partial log reference if not set
+        if not job.get('partial_log_file'):
+            storage_backend.update_job(job_id, {'partial_log_file': partial_log_file})
+
+        # Broadcast log update via WebSocket for live viewing
+        if socketio:
+            socketio.emit('job_log_update', {
+                'job_id': job_id,
+                'content': content,
+                'append': append
+            }, room=f'job_{job_id}')
+
+    except IOError as e:
+        return jsonify({'error': f'Failed to write log: {str(e)}'}), 500
+
+    return jsonify({
+        'status': 'ok',
+        'bytes_written': len(content)
+    })
+
+
 @app.route('/api/jobs/<job_id>/log', methods=['GET'])
 def api_get_job_log(job_id):
     """
@@ -3446,7 +3515,8 @@ def api_get_job_log(job_id):
     - lines: Number of lines to return (default: all, use negative for tail)
     - format: 'text' (default) or 'json'
 
-    Returns the job log content.
+    Returns the job log content. During execution, returns partial log
+    streamed from the worker. After completion, returns the full log.
     """
     if not storage_backend:
         return jsonify({'error': 'Storage backend not initialized'}), 500
@@ -3455,12 +3525,24 @@ def api_get_job_log(job_id):
     if not job:
         return jsonify({'error': 'Job not found'}), 404
 
+    # Determine which log file to use
+    # During execution, use partial log if available
+    # After completion, use final log
     log_file = job.get('log_file')
+    partial_log_file = job.get('partial_log_file')
+
+    # For running jobs, prefer partial log
+    if job.get('status') in ('assigned', 'running') and partial_log_file:
+        log_path = os.path.join(LOGS_DIR, partial_log_file)
+        if os.path.exists(log_path):
+            log_file = partial_log_file
+
     if not log_file:
         return jsonify({
             'job_id': job_id,
             'status': job.get('status'),
             'log': None,
+            'content': None,
             'message': 'No log file available (job may not have started)'
         })
 
@@ -3471,6 +3553,7 @@ def api_get_job_log(job_id):
             'job_id': job_id,
             'status': job.get('status'),
             'log': None,
+            'content': None,
             'message': 'Log file not found'
         })
 
@@ -4264,6 +4347,57 @@ def handle_leave_batch(data):
     batch_id = data.get('batch_id')
     if batch_id:
         leave_room(f'batch:{batch_id}')
+
+
+@socketio.on('join_job')
+def handle_join_job(data):
+    """
+    Join a specific cluster job's room to receive live log updates.
+
+    This is used for jobs executed on remote workers. Workers stream
+    log content to the primary, which broadcasts to connected clients.
+    """
+    job_id = data.get('job_id')
+    if job_id:
+        join_room(f'job_{job_id}')
+
+        # Send current log content for catch-up
+        if storage_backend:
+            job = storage_backend.get_job(job_id)
+            if job:
+                # Check for partial log (during execution)
+                partial_log_file = job.get('partial_log_file')
+                log_file = job.get('log_file')
+
+                log_content = None
+                log_path = None
+
+                # Prefer partial log for running jobs
+                if job.get('status') in ('assigned', 'running') and partial_log_file:
+                    log_path = os.path.join(LOGS_DIR, partial_log_file)
+                elif log_file:
+                    log_path = os.path.join(LOGS_DIR, log_file)
+
+                if log_path and os.path.exists(log_path):
+                    try:
+                        with open(log_path, 'r') as f:
+                            log_content = f.read()
+                    except IOError:
+                        pass
+
+                emit('job_log_catchup', {
+                    'job_id': job_id,
+                    'content': log_content or '',
+                    'status': job.get('status')
+                })
+
+
+@socketio.on('leave_job')
+def handle_leave_job(data):
+    """Leave a specific cluster job's room"""
+    job_id = data.get('job_id')
+    if job_id:
+        leave_room(f'job_{job_id}')
 
 
 if __name__ == '__main__':

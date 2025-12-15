@@ -170,6 +170,9 @@ class JobExecutor:
         """
         Execute ansible-playbook and capture output.
 
+        Streams log output to both a local file and to the primary server
+        for live viewing in the web UI.
+
         Args:
             job: Job dict
             log_path: Path to write log output
@@ -178,17 +181,29 @@ class JobExecutor:
             Tuple of (exit_code, error_message)
         """
         cmd = self._build_ansible_command(job)
+        job_id = job.get('id')
+
+        # Configuration for log streaming
+        # Stream buffer to primary every N lines or N seconds
+        STREAM_BUFFER_LINES = 10
+        STREAM_INTERVAL_SECONDS = 2.0
 
         try:
             with open(log_path, 'w') as log_file:
                 # Write header
-                log_file.write(f"Job ID: {job.get('id')}\n")
-                log_file.write(f"Playbook: {job.get('playbook')}\n")
-                log_file.write(f"Target: {job.get('target', 'all')}\n")
-                log_file.write(f"Started: {datetime.now().isoformat()}\n")
-                log_file.write(f"Command: {' '.join(cmd)}\n")
-                log_file.write("=" * 60 + "\n\n")
+                header = (
+                    f"Job ID: {job.get('id')}\n"
+                    f"Playbook: {job.get('playbook')}\n"
+                    f"Target: {job.get('target', 'all')}\n"
+                    f"Started: {datetime.now().isoformat()}\n"
+                    f"Command: {' '.join(cmd)}\n"
+                    + "=" * 60 + "\n\n"
+                )
+                log_file.write(header)
                 log_file.flush()
+
+                # Stream header to primary (first chunk, not append)
+                self._stream_log_chunk(job_id, header, append=False)
 
                 # Execute playbook
                 process = subprocess.Popen(
@@ -199,18 +214,50 @@ class JobExecutor:
                     env={**os.environ, 'ANSIBLE_FORCE_COLOR': 'false'}
                 )
 
-                # Stream output to log file
+                # Buffer for streaming to primary
+                import time
+                stream_buffer = []
+                last_stream_time = time.time()
+
+                # Stream output to log file and primary
                 for line in process.stdout:
                     decoded_line = line.decode('utf-8', errors='replace')
                     log_file.write(decoded_line)
                     log_file.flush()
 
+                    # Add to stream buffer
+                    stream_buffer.append(decoded_line)
+
+                    # Stream to primary when buffer is full or time elapsed
+                    current_time = time.time()
+                    should_stream = (
+                        len(stream_buffer) >= STREAM_BUFFER_LINES or
+                        (current_time - last_stream_time) >= STREAM_INTERVAL_SECONDS
+                    )
+
+                    if should_stream and stream_buffer:
+                        content = ''.join(stream_buffer)
+                        self._stream_log_chunk(job_id, content, append=True)
+                        stream_buffer = []
+                        last_stream_time = current_time
+
                 process.wait()
 
+                # Stream any remaining buffer content
+                if stream_buffer:
+                    content = ''.join(stream_buffer)
+                    self._stream_log_chunk(job_id, content, append=True)
+
                 # Write footer
-                log_file.write("\n" + "=" * 60 + "\n")
-                log_file.write(f"Completed: {datetime.now().isoformat()}\n")
-                log_file.write(f"Exit Code: {process.returncode}\n")
+                footer = (
+                    "\n" + "=" * 60 + "\n"
+                    f"Completed: {datetime.now().isoformat()}\n"
+                    f"Exit Code: {process.returncode}\n"
+                )
+                log_file.write(footer)
+
+                # Stream footer
+                self._stream_log_chunk(job_id, footer, append=True)
 
                 return process.returncode, None
 
@@ -223,6 +270,25 @@ class JobExecutor:
         except Exception as e:
             error_msg = f"Execution error: {str(e)}"
             return 1, error_msg
+
+    def _stream_log_chunk(self, job_id: str, content: str, append: bool = True):
+        """
+        Stream a log chunk to the primary server for live viewing.
+
+        Failures are logged but don't interrupt job execution.
+
+        Args:
+            job_id: Job ID
+            content: Log content to stream
+            append: True to append, False to replace
+        """
+        try:
+            response = self.api.stream_log(job_id, self.worker_id, content, append)
+            if not response.success:
+                # Log failure but don't interrupt job
+                print(f"Warning: Log stream failed for job {job_id}: {response.error}")
+        except Exception as e:
+            print(f"Warning: Log stream error for job {job_id}: {e}")
 
     def _run_job(self, job: Dict):
         """

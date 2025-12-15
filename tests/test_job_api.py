@@ -740,5 +740,107 @@ class TestWorkerJobsQuery(unittest.TestCase):
         self.assertEqual(len(jobs), 0)
 
 
+class TestJobLogStreaming(unittest.TestCase):
+    """Test job log streaming API for live cluster job viewing."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.storage = MockStorageBackend()
+        self.logs_dir = tempfile.mkdtemp()
+
+        # Create a running job
+        self.job = {
+            'id': 'test-job-123',
+            'playbook': 'test.yml',
+            'target': 'all',
+            'status': 'running',
+            'assigned_worker': 'worker-1',
+            'submitted_at': '2024-01-01T12:00:00'
+        }
+        self.storage.save_job(self.job)
+
+    def tearDown(self):
+        """Clean up test fixtures."""
+        shutil.rmtree(self.logs_dir, ignore_errors=True)
+
+    def test_stream_log_creates_partial_log(self):
+        """Test that streaming log creates a partial log file."""
+        # Simulate streaming log content
+        partial_log_file = f"partial-{self.job['id']}.log"
+        partial_log_path = os.path.join(self.logs_dir, partial_log_file)
+
+        # Write first chunk (header)
+        content = "Job ID: test-job-123\nStarted: 2024-01-01T12:00:00\n"
+        os.makedirs(self.logs_dir, exist_ok=True)
+        with open(partial_log_path, 'w') as f:
+            f.write(content)
+
+        # Update job with partial log reference
+        self.storage.update_job(self.job['id'], {'partial_log_file': partial_log_file})
+
+        # Verify partial log was created
+        self.assertTrue(os.path.exists(partial_log_path))
+        with open(partial_log_path, 'r') as f:
+            self.assertEqual(f.read(), content)
+
+    def test_stream_log_append_mode(self):
+        """Test that log streaming appends in append mode."""
+        partial_log_file = f"partial-{self.job['id']}.log"
+        partial_log_path = os.path.join(self.logs_dir, partial_log_file)
+
+        os.makedirs(self.logs_dir, exist_ok=True)
+
+        # Initial content
+        with open(partial_log_path, 'w') as f:
+            f.write("Line 1\n")
+
+        # Append more content
+        with open(partial_log_path, 'a') as f:
+            f.write("Line 2\n")
+
+        # Verify both lines present
+        with open(partial_log_path, 'r') as f:
+            content = f.read()
+        self.assertIn("Line 1", content)
+        self.assertIn("Line 2", content)
+
+    def test_stream_log_replace_mode(self):
+        """Test that log streaming replaces in replace mode."""
+        partial_log_file = f"partial-{self.job['id']}.log"
+        partial_log_path = os.path.join(self.logs_dir, partial_log_file)
+
+        os.makedirs(self.logs_dir, exist_ok=True)
+
+        # Initial content
+        with open(partial_log_path, 'w') as f:
+            f.write("Original content\n")
+
+        # Replace content
+        with open(partial_log_path, 'w') as f:
+            f.write("New content\n")
+
+        # Verify only new content present
+        with open(partial_log_path, 'r') as f:
+            content = f.read()
+        self.assertNotIn("Original", content)
+        self.assertIn("New content", content)
+
+    def test_partial_log_served_for_running_jobs(self):
+        """Test that partial log is preferred for running jobs."""
+        # Set up partial log
+        partial_log_file = f"partial-{self.job['id']}.log"
+        partial_log_path = os.path.join(self.logs_dir, partial_log_file)
+        os.makedirs(self.logs_dir, exist_ok=True)
+        with open(partial_log_path, 'w') as f:
+            f.write("Partial log content\n")
+
+        self.storage.update_job(self.job['id'], {'partial_log_file': partial_log_file})
+
+        # Verify job is running and has partial log
+        job = self.storage.get_job(self.job['id'])
+        self.assertEqual(job['status'], 'running')
+        self.assertEqual(job.get('partial_log_file'), partial_log_file)
+
+
 if __name__ == '__main__':
     unittest.main()

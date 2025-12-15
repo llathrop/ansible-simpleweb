@@ -88,6 +88,29 @@
             padding: 40px;
             color: var(--text-muted);
         }
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.85em;
+            color: var(--text-muted);
+        }
+        .connection-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #dc3545;
+        }
+        .connection-dot.connected {
+            background: #28a745;
+        }
+        .log-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
     </style>
 </head>
 <body>
@@ -123,28 +146,22 @@
                     <div class="info-label">Submitted</div>
                     <div class="info-value">{{ job.submitted_at }}</div>
                 </div>
-                {% if job.started_at %}
-                <div class="info-item">
+                <div class="info-item" id="startedItem" style="{% if not job.started_at %}display: none;{% endif %}">
                     <div class="info-label">Started</div>
-                    <div class="info-value">{{ job.started_at }}</div>
+                    <div class="info-value" id="startedAt">{{ job.started_at or '' }}</div>
                 </div>
-                {% endif %}
-                {% if job.completed_at %}
-                <div class="info-item">
+                <div class="info-item" id="completedItem" style="{% if not job.completed_at %}display: none;{% endif %}">
                     <div class="info-label">Completed</div>
-                    <div class="info-value">{{ job.completed_at }}</div>
+                    <div class="info-value" id="completedAt">{{ job.completed_at or '' }}</div>
                 </div>
-                {% endif %}
-                {% if job.exit_code is not none %}
-                <div class="info-item">
+                <div class="info-item" id="exitCodeItem" style="{% if job.exit_code is none %}display: none;{% endif %}">
                     <div class="info-label">Exit Code</div>
-                    <div class="info-value">{{ job.exit_code }}</div>
+                    <div class="info-value" id="exitCode">{{ job.exit_code }}</div>
                 </div>
-                {% endif %}
             </div>
 
             {% if job.error_message %}
-            <div style="margin-top: 15px; padding: 10px; background: var(--danger-bg, #ffebee); color: var(--danger-color, #c62828); border-radius: 4px;">
+            <div id="errorMessage" style="margin-top: 15px; padding: 10px; background: var(--danger-bg, #ffebee); color: var(--danger-color, #c62828); border-radius: 4px;">
                 <strong>Error:</strong> {{ job.error_message }}
             </div>
             {% endif %}
@@ -165,9 +182,17 @@
             </div>
         </div>
 
+        <!-- Live Output Log Section - always shown for running jobs -->
+        <div class="log-header">
+            <h3>Output Log</h3>
+            <div class="connection-status">
+                <span class="connection-dot" id="connectionDot"></span>
+                <span id="connectionText">Connecting...</span>
+            </div>
+        </div>
+        <div class="log-section" id="logContent">Waiting for output...</div>
+
         {% if job.log_file %}
-        <h3>Output Log</h3>
-        <div class="log-section" id="logContent">Loading log...</div>
         <div style="margin-top: 10px;">
             <a href="/logs/{{ job.log_file }}" class="btn btn-secondary">View Full Log</a>
         </div>
@@ -191,6 +216,46 @@
         const waitingSection = document.getElementById('waitingSection');
         const waitingText = document.getElementById('waitingText');
         const logContent = document.getElementById('logContent');
+        const connectionDot = document.getElementById('connectionDot');
+        const connectionText = document.getElementById('connectionText');
+
+        // Connect to WebSocket for live log updates
+        const socket = io();
+
+        socket.on('connect', function() {
+            connectionDot.classList.add('connected');
+            connectionText.textContent = 'Live';
+
+            // Join this job's room for live log updates
+            socket.emit('join_job', { job_id: jobId });
+        });
+
+        socket.on('disconnect', function() {
+            connectionDot.classList.remove('connected');
+            connectionText.textContent = 'Disconnected';
+        });
+
+        // Receive catch-up log content when joining
+        socket.on('job_log_catchup', function(data) {
+            if (data.job_id === jobId && data.content) {
+                logContent.textContent = data.content;
+                logContent.scrollTop = logContent.scrollHeight;
+            }
+        });
+
+        // Receive live log updates from worker
+        socket.on('job_log_update', function(data) {
+            if (data.job_id === jobId) {
+                if (data.append) {
+                    // Append new content
+                    logContent.textContent += data.content;
+                } else {
+                    // Replace content
+                    logContent.textContent = data.content;
+                }
+                logContent.scrollTop = logContent.scrollHeight;
+            }
+        });
 
         // Poll for job status updates
         function updateJobStatus() {
@@ -203,7 +268,6 @@
 
                     // Update worker name
                     if (job.assigned_worker) {
-                        // Fetch worker details
                         fetch(`/api/workers/${job.assigned_worker}`)
                             .then(r => r.json())
                             .then(worker => {
@@ -212,6 +276,20 @@
                             .catch(() => {
                                 workerName.textContent = job.assigned_worker;
                             });
+                    }
+
+                    // Update timestamps
+                    if (job.started_at) {
+                        document.getElementById('startedItem').style.display = '';
+                        document.getElementById('startedAt').textContent = job.started_at;
+                    }
+                    if (job.completed_at) {
+                        document.getElementById('completedItem').style.display = '';
+                        document.getElementById('completedAt').textContent = job.completed_at;
+                    }
+                    if (job.exit_code !== null && job.exit_code !== undefined) {
+                        document.getElementById('exitCodeItem').style.display = '';
+                        document.getElementById('exitCode').textContent = job.exit_code;
                     }
 
                     // Update waiting message
@@ -228,38 +306,41 @@
                         waitingSection.style.display = 'none';
                     }
 
-                    // If job completed with log, reload page to show log link
-                    if ((job.status === 'completed' || job.status === 'failed') && job.log_file) {
-                        location.reload();
+                    // If job completed, do a final log fetch and stop polling
+                    if (job.status === 'completed' || job.status === 'failed') {
+                        loadLog();
                     }
                 })
                 .catch(err => console.error('Error fetching job status:', err));
         }
 
-        // Load log content if available
+        // Load log content via API (fallback for when WebSocket misses data)
         function loadLog() {
-            if (logContent) {
-                fetch(`/api/jobs/${jobId}/log`)
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.content) {
-                            logContent.textContent = data.content;
-                            logContent.scrollTop = logContent.scrollHeight;
-                        }
-                    })
-                    .catch(() => {
-                        logContent.textContent = 'Log not yet available...';
-                    });
-            }
+            fetch(`/api/jobs/${jobId}/log?format=json`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.log) {
+                        logContent.textContent = data.log;
+                        logContent.scrollTop = logContent.scrollHeight;
+                    } else if (data.content) {
+                        logContent.textContent = data.content;
+                        logContent.scrollTop = logContent.scrollHeight;
+                    }
+                })
+                .catch(() => {
+                    // Keep existing content on error
+                });
         }
 
-        // Poll every 2 seconds
+        // Poll for status every 2 seconds
         setInterval(updateJobStatus, 2000);
-        setInterval(loadLog, 3000);
+
+        // Poll for log every 5 seconds as fallback
+        setInterval(loadLog, 5000);
 
         // Initial load
         updateJobStatus();
-        if (logContent) loadLog();
+        loadLog();
     </script>
 </body>
 </html>
