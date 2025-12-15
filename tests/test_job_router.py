@@ -203,8 +203,13 @@ class TestPreferenceScoring(unittest.TestCase):
         self.storage = MockStorageBackend()
         self.router = JobRouter(self.storage)
 
-    def test_local_worker_bonus(self):
-        """Test bonus for local worker."""
+    def test_local_worker_no_preference_bonus(self):
+        """Test that local worker has no special preference bonus.
+
+        Local workers use priority_boost (applied in score_worker) instead of
+        preference_score bonus. This ensures local workers are always lowest
+        priority when remote workers are available.
+        """
         local_worker = {'id': '__local__', 'is_local': True, 'tags': []}
         remote_worker = {'id': 'w1', 'is_local': False, 'tags': []}
 
@@ -213,7 +218,9 @@ class TestPreferenceScoring(unittest.TestCase):
         local_score = self.router.calculate_preference_score(local_worker, job)
         remote_score = self.router.calculate_preference_score(remote_worker, job)
 
-        self.assertGreater(local_score, remote_score)
+        # Local and remote should have equal preference scores
+        # (priority is handled via priority_boost in total score calculation)
+        self.assertEqual(local_score, remote_score)
 
     def test_long_running_tag_bonus(self):
         """Test bonus for workers with long-running capability."""

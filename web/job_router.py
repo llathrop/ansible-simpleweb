@@ -23,6 +23,7 @@ class WorkerScore:
     tag_score: float
     load_score: float
     preference_score: float
+    priority_boost: float
     eligible: bool
     reason: str = ""
 
@@ -193,9 +194,7 @@ class JobRouter:
         worker_tags = set(worker.get('tags', []))
         job_type = job.get('job_type', 'normal')
 
-        # Bonus for local worker (lower latency)
-        if worker.get('is_local'):
-            score += 5
+        # Note: Local worker penalty is applied via priority_boost in score_worker()
 
         # Bonus for matching job type capabilities
         if job_type == 'long_running':
@@ -250,6 +249,7 @@ class JobRouter:
                 tag_score=0,
                 load_score=0,
                 preference_score=0,
+                priority_boost=0,
                 eligible=False,
                 reason=reason
             )
@@ -266,6 +266,11 @@ class JobRouter:
             preference_score * self.PREFERENCE_WEIGHT
         )
 
+        # Apply priority boost (can be negative for lower priority workers)
+        # Local executor has priority_boost of -1000 to ensure lowest priority
+        priority_boost = worker.get('priority_boost', 0)
+        total_score += priority_boost
+
         return WorkerScore(
             worker_id=worker['id'],
             worker_name=worker.get('name', 'Unknown'),
@@ -273,6 +278,7 @@ class JobRouter:
             tag_score=tag_score,
             load_score=load_score,
             preference_score=preference_score,
+            priority_boost=priority_boost,
             eligible=True,
             reason="Eligible"
         )
@@ -352,7 +358,8 @@ class JobRouter:
                 'total': round(score.total_score, 2),
                 'tag': round(score.tag_score, 2),
                 'load': round(score.load_score, 2),
-                'preference': round(score.preference_score, 2)
+                'preference': round(score.preference_score, 2),
+                'priority_boost': round(score.priority_boost, 2)
             }
         }
 
@@ -403,13 +410,15 @@ class JobRouter:
             recommendations.append({
                 'worker_id': worker['id'],
                 'worker_name': worker.get('name'),
+                'is_local': worker.get('is_local', False),
                 'eligible': score.eligible,
                 'reason': score.reason,
                 'scores': {
                     'total': round(score.total_score, 2),
                     'tag': round(score.tag_score, 2),
                     'load': round(score.load_score, 2),
-                    'preference': round(score.preference_score, 2)
+                    'preference': round(score.preference_score, 2),
+                    'priority_boost': round(score.priority_boost, 2)
                 }
             })
 
