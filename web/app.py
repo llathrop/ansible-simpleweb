@@ -1056,6 +1056,14 @@ def index():
 
     return render_template('index.html', playbooks=playbook_data, targets=targets)
 
+def _has_remote_workers():
+    """Check if there are remote workers available (not just local)."""
+    if not storage_backend:
+        return False
+    workers = storage_backend.get_all_workers()
+    return any(not w.get('is_local') and w.get('status') == 'online' for w in workers)
+
+
 @app.route('/run/<playbook_name>')
 def run_playbook(playbook_name):
     """Trigger playbook execution with streaming"""
@@ -1065,6 +1073,50 @@ def run_playbook(playbook_name):
     # Get target from query parameter, default to host_machine
     target = request.args.get('target', 'host_machine')
 
+    # Check if we should use the cluster job queue
+    # Use job queue if: cluster mode is 'primary' AND there are remote workers online
+    use_cluster = CLUSTER_MODE == 'primary' and _has_remote_workers()
+
+    if use_cluster:
+        # Submit to job queue for cluster dispatch
+        job_id = str(uuid.uuid4())
+        now = datetime.now().isoformat()
+
+        job = {
+            'id': job_id,
+            'playbook': playbook_name,
+            'target': target,
+            'required_tags': [],
+            'preferred_tags': [],
+            'priority': 50,
+            'job_type': 'normal',
+            'extra_vars': {},
+            'status': 'queued',
+            'assigned_worker': None,
+            'submitted_by': 'web-ui',
+            'submitted_at': now,
+            'assigned_at': None,
+            'started_at': None,
+            'completed_at': None,
+            'log_file': None,
+            'exit_code': None,
+            'error_message': None
+        }
+
+        if storage_backend.save_job(job):
+            # Trigger automatic job routing
+            try:
+                router = get_job_router()
+                router.route_job(job_id)
+            except Exception as e:
+                print(f"Warning: Auto-routing failed for job {job_id}: {e}")
+
+            # Redirect to job status page
+            return redirect(url_for('job_status_page', job_id=job_id))
+        else:
+            return jsonify({'error': 'Failed to submit job to cluster'}), 500
+
+    # Local execution path (standalone mode or no remote workers)
     # Check if this playbook+target combination is already running
     is_running, existing_run_id = is_playbook_target_running(playbook_name, target)
     if is_running:
@@ -1129,6 +1181,28 @@ def live_log(run_id):
                           status=run_info['status'],
                           log_file=run_info.get('log_file', ''),
                           worker_name=run_info.get('worker_name', 'local-executor'))
+
+
+@app.route('/job/<job_id>')
+def job_status_page(job_id):
+    """View job status page for cluster jobs."""
+    if not storage_backend:
+        return "Storage backend not initialized", 500
+
+    job = storage_backend.get_job(job_id)
+    if not job:
+        return "Job not found", 404
+
+    # Get worker info if assigned
+    worker_name = None
+    if job.get('assigned_worker'):
+        worker = storage_backend.get_worker(job['assigned_worker'])
+        if worker:
+            worker_name = worker.get('name', job['assigned_worker'])
+
+    return render_template('job_status.html',
+                          job=job,
+                          worker_name=worker_name)
 
 
 @app.route('/live/batch/<batch_id>')
@@ -3760,7 +3834,7 @@ def api_complete_job(job_id):
 
 def get_job_router():
     """Get or create the job router instance."""
-    from web.job_router import JobRouter
+    from job_router import JobRouter
     return JobRouter(storage_backend)
 
 

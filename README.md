@@ -172,8 +172,21 @@ This project includes 5 example playbooks:
 ✅ **Step 7:** Batch job execution with live monitoring
 ✅ **Step 8:** Schedule management with batch support and success tracking
 ✅ **Step 9:** Host configuration wizard with SSH key management
+✅ **Step 10:** Cluster mode with distributed workers (13 features implemented)
+  - Worker registration and authentication
+  - Content repository with revision tracking
+  - Sync API for playbook/inventory distribution
+  - Worker service with health reporting
+  - Job queue with priority support
+  - Smart job routing with tag-based targeting
+  - Worker execution with log capture
+  - Worker check-in and heartbeat monitoring
+  - Job completion reporting with log upload
+  - Sync notification via WebSocket
+  - Local executor fallback
+  - Cluster dashboard with real-time stats
 
-**Status:** Production-ready for local use
+**Status:** Cluster mode functional, pending bug fixes (see TODO list)
 
 ## Common Commands
 
@@ -208,9 +221,146 @@ docker-compose exec -T ansible-web ansible-playbook playbooks/your-playbook.yml 
 - SSH keys mounted read-only from `~/.ssh`
 - Service account recommended for target hosts (see [Configuration](docs/CONFIGURATION.md))
 
-## Future Enhancements / TODO
+## Cluster Mode (NEW)
 
-### Planned Features
+Distribute Ansible workloads across multiple worker nodes for scalability and fault tolerance.
+
+### Cluster Features
+- 🔗 **Worker Registration** - Workers auto-register with primary server using tokens
+- 📊 **Worker Dashboard** - Real-time view of all workers with health stats
+- ⚖️ **Smart Job Routing** - Automatic job assignment based on tags, load, and preferences
+- 🔄 **Content Sync** - Playbooks/inventory sync from primary to workers with revision tracking
+- 📡 **Real-time Updates** - WebSocket notifications for sync events
+- 🏷️ **Tag-Based Targeting** - Route jobs to specific workers via required/preferred tags
+- 💓 **Health Monitoring** - Worker check-ins with CPU, memory, and disk stats
+- 🖥️ **Local Executor Fallback** - Built-in local worker as lowest-priority fallback
+
+### Quick Cluster Setup
+
+```bash
+# Start cluster with 3 workers
+docker-compose up -d
+
+# Verify workers registered
+curl http://localhost:3001/api/workers | python3 -m json.tool
+```
+
+### Cluster Architecture
+```
+                    ┌─────────────────┐
+                    │  Primary Server │
+                    │  (ansible-web)  │
+                    └────────┬────────┘
+                             │
+        ┌────────────────────┼────────────────────┐
+        │                    │                    │
+        ▼                    ▼                    ▼
+┌───────────────┐  ┌───────────────┐  ┌───────────────┐
+│   Worker-1    │  │   Worker-2    │  │   Worker-3    │
+│  zone-a       │  │  zone-b       │  │  zone-c       │
+│  general      │  │  high-memory  │  │  network      │
+└───────────────┘  └───────────────┘  └───────────────┘
+```
+
+---
+
+## Current TODO List
+
+### Critical Bugs
+- [ ] **Playbook path missing `.yml` extension** - Jobs dispatched to workers fail because executor builds path as `/app/playbooks/service-status` instead of `/app/playbooks/service-status.yml` (see `worker/executor.py:113`)
+- [ ] **Workers cannot reach external targets** - Workers need SSH access to target hosts (mount inventory SSH keys, configure networking)
+- [ ] **Live view broken for cluster jobs** - Live log streaming (`/live/<run_id>`) doesn't work for jobs dispatched to remote workers; needs WebSocket relay from worker to primary
+
+### Tests Needed
+
+**Unit Tests**
+- [ ] `test_job_dispatch.py` - Test web UI job submission routes to queue in cluster mode
+- [ ] `test_playbook_path.py` - Test playbook path construction includes `.yml` extension
+- [ ] `test_worker_ssh_access.py` - Test worker containers can SSH to inventory hosts
+- [ ] `test_log_upload.py` - Test log files are uploaded from workers to primary
+
+**Integration Tests**
+- [ ] End-to-end job dispatch test (submit → route → execute → complete)
+- [ ] Multi-worker load balancing test
+- [ ] Worker failover test (job reassignment on worker failure)
+- [ ] Content sync integrity test (playbooks match after sync)
+
+**Existing Test Coverage**
+- [x] Cluster storage (`test_storage_cluster.py`, `test_feature_cluster_storage.py`)
+- [x] Worker registration (`test_worker_api.py`, `test_feature_worker_registration.py`)
+- [x] Content repository (`test_content_repo.py`, `test_feature_content_repo.py`)
+- [x] Sync API (`test_sync_api.py`, `test_feature_sync_api.py`)
+- [x] Worker service (`test_worker.py`, `test_feature_worker.py`)
+- [x] Job API (`test_job_api.py`, `test_feature_job_queue.py`)
+- [x] Job routing (`test_feature_job_routing.py`)
+- [x] Worker execution (`test_worker_executor.py`, `test_feature_worker_execution.py`)
+- [x] Worker check-in (`test_worker_checkin.py`, `test_feature_worker_checkin.py`)
+- [x] Job completion (`test_job_completion.py`, `test_feature_job_completion.py`)
+- [x] Sync notification (`test_sync_notification.py`, `test_feature_sync_notification.py`)
+- [x] Local worker (`test_local_worker.py`, `test_feature_local_worker.py`)
+- [x] Job router (`test_job_router.py`)
+- [x] Cluster dashboard (`test_cluster_dashboard.py`, `test_feature_cluster_dashboard.py`)
+
+### Documentation Updates
+
+**README Updates**
+- [ ] Add cluster mode configuration section
+- [ ] Document environment variables for workers
+- [ ] Add troubleshooting guide for cluster issues
+- [ ] Document tag-based job routing
+
+**Code Comments**
+- [ ] Document `run_playbook()` cluster mode logic in `app.py`
+- [ ] Document `JobRouter` scoring algorithm
+- [ ] Document worker sync process in `worker/sync.py`
+- [ ] Add docstrings to `job_status.html` template JavaScript
+
+**New Documentation Files**
+- [ ] `docs/CLUSTER.md` - Comprehensive cluster setup and operation guide
+- [ ] `docs/WORKER_SETUP.md` - Worker configuration and deployment
+- [ ] `docs/JOB_ROUTING.md` - Tag-based routing and priority system
+- [ ] `docs/API_CLUSTER.md` - Cluster-related API endpoints
+
+### Infrastructure Improvements
+
+**Worker Configuration**
+- [ ] Mount inventory file to workers for target host access
+- [ ] Configure SSH agent forwarding for workers
+- [ ] Add health check endpoint to worker Dockerfile
+- [ ] Support custom ansible.cfg per worker
+
+**Networking**
+- [ ] Document network requirements for workers to reach targets
+- [ ] Add DNS configuration for service discovery
+- [ ] Support external workers (not in Docker network)
+
+**Security**
+- [ ] Rotate registration tokens periodically
+- [ ] Add TLS between workers and primary
+- [ ] Implement job result signing/verification
+- [ ] Add worker authentication beyond token
+
+### Feature Enhancements
+
+**Job Management**
+- [ ] Job cancellation (kill running playbook on worker)
+- [ ] Job retry with configurable attempts
+- [ ] Job timeout handling
+- [ ] Job priority queuing (high/normal/low)
+
+**Worker Management**
+- [ ] Manual worker enable/disable from dashboard
+- [ ] Worker maintenance mode (drain jobs before shutdown)
+- [ ] Worker auto-scaling based on queue depth
+- [ ] Worker groups/pools for isolation
+
+**Monitoring**
+- [ ] Prometheus metrics endpoint
+- [ ] Grafana dashboard templates
+- [ ] Alert rules for worker failures
+- [ ] Job queue depth monitoring
+
+### Original Planned Features (Pre-Cluster)
 
 **Authentication & Security**
 - [ ] Add authentication system (JWT, OAuth, or basic auth)
@@ -249,7 +399,7 @@ docker-compose exec -T ansible-web ansible-playbook playbooks/your-playbook.yml 
 - [x] ~~Inventory management UI (add/edit hosts via web)~~ Full CMDB with multi-step wizard
 - [x] ~~SSH key management interface~~ Upload/select SSH keys in host wizard
 - [ ] Ansible Vault integration
-- [ ] Multi-user playbook execution queue
+- [x] ~~Multi-user playbook execution queue~~ Cluster job queue with worker dispatch
 
 **Monitoring & Reporting**
 - [x] ~~Execution history dashboard~~ Schedule history with per-schedule tracking
