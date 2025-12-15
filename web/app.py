@@ -714,6 +714,10 @@ def run_batch_job_streaming(batch_id, playbooks, targets, name=None):
         failed_count = 0
         results = []
 
+        # Check if we should dispatch to cluster workers
+        use_cluster = CLUSTER_MODE == 'primary' and _has_remote_workers()
+        current_worker_name = None
+
         for i, playbook_name in enumerate(playbooks):
             # Check if playbook exists
             if playbook_name not in get_playbooks():
@@ -732,114 +736,276 @@ def run_batch_job_streaming(batch_id, playbooks, targets, name=None):
                                        completed_count, failed_count, results, 'failed')
                 continue
 
-            # Generate run_id and log file for this playbook execution
-            run_id = str(uuid.uuid4())
-            # Use 'batch' as target indicator in filename since we're running against inventory
-            target_label = f"batch-{len(targets)}targets"
-            log_file = generate_log_filename(playbook_name, target_label, run_id)
-            log_path = os.path.join(LOGS_DIR, log_file)
-
             playbook_started = datetime.now().isoformat()
 
             # Update current playbook in batch job
             with batch_lock:
                 if batch_id in active_batch_jobs:
                     active_batch_jobs[batch_id]['current_playbook'] = playbook_name
-                    active_batch_jobs[batch_id]['current_run_id'] = run_id
 
-            socketio.emit('batch_job_progress', {
-                'batch_id': batch_id,
-                'current_playbook': playbook_name,
-                'current_index': i + 1,
-                'total': len(playbooks),
-                'completed': completed_count,
-                'failed': failed_count,
-                'status': 'running'
-            }, room='batch_jobs')
+            if use_cluster:
+                # === CLUSTER MODE: Dispatch to worker via job queue ===
+                # Submit jobs for each target (or combined if using batch inventory)
+                target_str = ','.join(targets) if len(targets) <= 3 else targets[0]
 
-            # Build and execute the playbook command
-            try:
-                cmd = ['bash', RUN_SCRIPT, '--stream', playbook_name]
-                if inventory_path:
-                    cmd.extend(['-i', inventory_path])
-                # No -l limit since the inventory already contains only our targets
+                socketio.emit('batch_job_progress', {
+                    'batch_id': batch_id,
+                    'current_playbook': playbook_name,
+                    'current_index': i + 1,
+                    'total': len(playbooks),
+                    'completed': completed_count,
+                    'failed': failed_count,
+                    'status': 'running',
+                    'worker_name': current_worker_name
+                }, room='batch_jobs')
 
-                process = subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    bufsize=1,
-                    cwd='/app'
+                # Submit job to cluster queue
+                job = _submit_cluster_job(
+                    playbook=playbook_name,
+                    target=target_str,
+                    priority=50,
+                    submitted_by=f'batch:{batch_id[:8]}'
                 )
 
-                # Write log file with streaming
-                with open(log_path, 'w', buffering=1) as log_f:
-                    header = f"=== Batch Job: {batch_id[:8]} | Playbook: {playbook_name} | Targets: {', '.join(targets)} | Started: {playbook_started} ===\n"
-                    log_f.write(header)
-                    log_f.flush()
-
-                    # Emit to batch-specific room
-                    socketio.emit('batch_log_line', {
-                        'batch_id': batch_id,
+                if not job:
+                    # Failed to submit - fall back to local execution marker
+                    failed_count += 1
+                    result = {
                         'playbook': playbook_name,
-                        'line': header
-                    }, room=f'batch:{batch_id}')
+                        'status': 'failed',
+                        'error': 'Failed to submit to cluster queue',
+                        'started': playbook_started,
+                        'finished': datetime.now().isoformat()
+                    }
+                    results.append(result)
+                    continue
 
-                    for line in process.stdout:
-                        log_f.write(line)
+                job_id = job['id']
+
+                # Update batch with current job
+                with batch_lock:
+                    if batch_id in active_batch_jobs:
+                        active_batch_jobs[batch_id]['current_job_id'] = job_id
+
+                # Emit header to batch log
+                header = f"=== Batch Job: {batch_id[:8]} | Playbook: {playbook_name} | Targets: {', '.join(targets)} | Cluster Job: {job_id[:8]} | Started: {playbook_started} ===\n"
+                socketio.emit('batch_log_line', {
+                    'batch_id': batch_id,
+                    'playbook': playbook_name,
+                    'line': header
+                }, room=f'batch:{batch_id}')
+
+                # Wait for job completion with progress updates and log streaming
+                import time
+                poll_start = time.time()
+                last_status = 'queued'
+                last_log_pos = 0  # Track how much of partial log we've sent
+
+                while time.time() - poll_start < 600:  # 10 min timeout
+                    job_state = storage_backend.get_job(job_id) if storage_backend else None
+                    if not job_state:
+                        break
+
+                    current_status = job_state.get('status', 'unknown')
+
+                    # Update worker name when job is assigned
+                    if job_state.get('assigned_worker') and not current_worker_name:
+                        current_worker_name = _get_worker_name(job_state['assigned_worker'])
+                        socketio.emit('batch_job_progress', {
+                            'batch_id': batch_id,
+                            'current_playbook': playbook_name,
+                            'worker_name': current_worker_name,
+                            'worker_id': job_state['assigned_worker'],
+                            'status': 'running'
+                        }, room='batch_jobs')
+
+                    # Emit status change
+                    if current_status != last_status:
+                        socketio.emit('batch_log_line', {
+                            'batch_id': batch_id,
+                            'playbook': playbook_name,
+                            'line': f"[Cluster] Job status: {current_status} (worker: {current_worker_name or 'pending'})\n"
+                        }, room=f'batch:{batch_id}')
+                        last_status = current_status
+
+                    # Stream partial log content to batch view
+                    partial_log_file = job_state.get('partial_log_file')
+                    if partial_log_file:
+                        partial_log_path = os.path.join(LOGS_DIR, partial_log_file)
+                        try:
+                            if os.path.exists(partial_log_path):
+                                with open(partial_log_path, 'r') as pf:
+                                    pf.seek(last_log_pos)
+                                    new_content = pf.read()
+                                    if new_content:
+                                        last_log_pos = pf.tell()
+                                        # Emit each line separately for proper display
+                                        for line in new_content.splitlines(keepends=True):
+                                            socketio.emit('batch_log_line', {
+                                                'batch_id': batch_id,
+                                                'playbook': playbook_name,
+                                                'line': line
+                                            }, room=f'batch:{batch_id}')
+                        except Exception:
+                            pass  # Ignore partial log read errors
+
+                    if current_status in ['completed', 'failed', 'cancelled']:
+                        break
+
+                    time.sleep(0.5)  # Poll more frequently for smoother log streaming
+
+                # Get final job state
+                final_job = storage_backend.get_job(job_id) if storage_backend else None
+                playbook_finished = datetime.now().isoformat()
+
+                if final_job:
+                    exit_code = final_job.get('exit_code', -1)
+                    playbook_status = 'completed' if exit_code == 0 else 'failed'
+                    log_file = final_job.get('log_file')
+                    worker_id = final_job.get('assigned_worker')
+                    current_worker_name = _get_worker_name(worker_id)
+
+                    if exit_code == 0:
+                        completed_count += 1
+                    else:
+                        failed_count += 1
+
+                    result = {
+                        'playbook': playbook_name,
+                        'status': playbook_status,
+                        'job_id': job_id,
+                        'log_file': log_file,
+                        'exit_code': exit_code,
+                        'started': playbook_started,
+                        'finished': playbook_finished,
+                        'worker_id': worker_id,
+                        'worker_name': current_worker_name
+                    }
+
+                    footer = f"\n=== Finished: {playbook_finished} | Exit Code: {exit_code} | Worker: {current_worker_name} | Status: {playbook_status.upper()} ===\n"
+                else:
+                    failed_count += 1
+                    result = {
+                        'playbook': playbook_name,
+                        'status': 'failed',
+                        'error': 'Job timeout or not found',
+                        'job_id': job_id,
+                        'started': playbook_started,
+                        'finished': playbook_finished
+                    }
+                    footer = f"\n=== Finished: {playbook_finished} | Status: FAILED (timeout) ===\n"
+
+                socketio.emit('batch_log_line', {
+                    'batch_id': batch_id,
+                    'playbook': playbook_name,
+                    'line': footer
+                }, room=f'batch:{batch_id}')
+                results.append(result)
+
+            else:
+                # === LOCAL MODE: Execute directly via subprocess ===
+                run_id = str(uuid.uuid4())
+                target_label = f"batch-{len(targets)}targets"
+                log_file = generate_log_filename(playbook_name, target_label, run_id)
+                log_path = os.path.join(LOGS_DIR, log_file)
+
+                with batch_lock:
+                    if batch_id in active_batch_jobs:
+                        active_batch_jobs[batch_id]['current_run_id'] = run_id
+
+                socketio.emit('batch_job_progress', {
+                    'batch_id': batch_id,
+                    'current_playbook': playbook_name,
+                    'current_index': i + 1,
+                    'total': len(playbooks),
+                    'completed': completed_count,
+                    'failed': failed_count,
+                    'status': 'running',
+                    'worker_name': 'local-executor'
+                }, room='batch_jobs')
+
+                # Build and execute the playbook command
+                try:
+                    cmd = ['bash', RUN_SCRIPT, '--stream', playbook_name]
+                    if inventory_path:
+                        cmd.extend(['-i', inventory_path])
+
+                    process = subprocess.Popen(
+                        cmd,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        text=True,
+                        bufsize=1,
+                        cwd='/app'
+                    )
+
+                    with open(log_path, 'w', buffering=1) as log_f:
+                        header = f"=== Batch Job: {batch_id[:8]} | Playbook: {playbook_name} | Targets: {', '.join(targets)} | Worker: local-executor | Started: {playbook_started} ===\n"
+                        log_f.write(header)
+                        log_f.flush()
+
+                        socketio.emit('batch_log_line', {
+                            'batch_id': batch_id,
+                            'playbook': playbook_name,
+                            'line': header
+                        }, room=f'batch:{batch_id}')
+
+                        for line in process.stdout:
+                            log_f.write(line)
+                            log_f.flush()
+                            socketio.emit('batch_log_line', {
+                                'batch_id': batch_id,
+                                'playbook': playbook_name,
+                                'line': line
+                            }, room=f'batch:{batch_id}')
+
+                        process.wait()
+                        exit_code = process.returncode
+
+                        playbook_status = 'completed' if exit_code == 0 else 'failed'
+                        footer = f"\n=== Finished: {datetime.now().isoformat()} | Exit Code: {exit_code} | Worker: local-executor | Status: {playbook_status.upper()} ===\n"
+                        log_f.write(footer)
                         log_f.flush()
                         socketio.emit('batch_log_line', {
                             'batch_id': batch_id,
                             'playbook': playbook_name,
-                            'line': line
+                            'line': footer
                         }, room=f'batch:{batch_id}')
 
-                    process.wait()
-                    exit_code = process.returncode
+                    playbook_finished = datetime.now().isoformat()
 
-                    playbook_status = 'completed' if exit_code == 0 else 'failed'
-                    footer = f"\n=== Finished: {datetime.now().isoformat()} | Exit Code: {exit_code} | Status: {playbook_status.upper()} ===\n"
-                    log_f.write(footer)
-                    log_f.flush()
-                    socketio.emit('batch_log_line', {
-                        'batch_id': batch_id,
+                    if exit_code == 0:
+                        completed_count += 1
+                    else:
+                        failed_count += 1
+
+                    result = {
                         'playbook': playbook_name,
-                        'line': footer
-                    }, room=f'batch:{batch_id}')
+                        'status': playbook_status,
+                        'run_id': run_id,
+                        'log_file': log_file,
+                        'exit_code': exit_code,
+                        'started': playbook_started,
+                        'finished': playbook_finished,
+                        'worker_name': 'local-executor'
+                    }
+                    results.append(result)
 
-                playbook_finished = datetime.now().isoformat()
-
-                if exit_code == 0:
-                    completed_count += 1
-                else:
+                except Exception as e:
                     failed_count += 1
-
-                result = {
-                    'playbook': playbook_name,
-                    'status': playbook_status,
-                    'run_id': run_id,
-                    'log_file': log_file,
-                    'exit_code': exit_code,
-                    'started': playbook_started,
-                    'finished': playbook_finished
-                }
-                results.append(result)
-
-            except Exception as e:
-                failed_count += 1
-                result = {
-                    'playbook': playbook_name,
-                    'status': 'failed',
-                    'error': str(e),
-                    'started': playbook_started,
-                    'finished': datetime.now().isoformat()
-                }
-                results.append(result)
+                    result = {
+                        'playbook': playbook_name,
+                        'status': 'failed',
+                        'error': str(e),
+                        'started': playbook_started,
+                        'finished': datetime.now().isoformat()
+                    }
+                    results.append(result)
 
             # Update progress after each playbook
             _update_batch_progress(batch_id, playbook_name, i + 1, len(playbooks),
-                                   completed_count, failed_count, results, 'running')
+                                   completed_count, failed_count, results, 'running',
+                                   worker_name=current_worker_name)
 
         # Determine final batch status
         if failed_count == 0:
@@ -920,13 +1086,15 @@ def run_batch_job_streaming(batch_id, playbooks, targets, name=None):
 
 
 def _update_batch_progress(batch_id, current_playbook, current_index, total,
-                           completed, failed, results, status):
+                           completed, failed, results, status, worker_name=None):
     """Helper to update batch job progress in memory and storage."""
     with batch_lock:
         if batch_id in active_batch_jobs:
             active_batch_jobs[batch_id]['completed'] = completed
             active_batch_jobs[batch_id]['failed'] = failed
             active_batch_jobs[batch_id]['results'] = results
+            if worker_name:
+                active_batch_jobs[batch_id]['worker_name'] = worker_name
 
     if storage_backend:
         batch_job = storage_backend.get_batch_job(batch_id)
@@ -934,9 +1102,11 @@ def _update_batch_progress(batch_id, current_playbook, current_index, total,
             batch_job['completed'] = completed
             batch_job['failed'] = failed
             batch_job['results'] = results
+            if worker_name:
+                batch_job['worker_name'] = worker_name
             storage_backend.save_batch_job(batch_id, batch_job)
 
-    socketio.emit('batch_job_progress', {
+    emit_data = {
         'batch_id': batch_id,
         'current_playbook': current_playbook,
         'current_index': current_index,
@@ -944,7 +1114,11 @@ def _update_batch_progress(batch_id, current_playbook, current_index, total,
         'completed': completed,
         'failed': failed,
         'status': status
-    }, room='batch_jobs')
+    }
+    if worker_name:
+        emit_data['worker_name'] = worker_name
+
+    socketio.emit('batch_job_progress', emit_data, room='batch_jobs')
 
 
 def create_batch_job(playbooks, targets, name=None):
@@ -1062,6 +1236,124 @@ def _has_remote_workers():
         return False
     workers = storage_backend.get_all_workers()
     return any(not w.get('is_local') and w.get('status') == 'online' for w in workers)
+
+
+def _should_use_cluster_dispatch():
+    """
+    Check if cluster dispatch should be used for job execution.
+
+    Returns True when:
+    - Running in 'primary' cluster mode
+    - There are remote workers available
+    """
+    return CLUSTER_MODE == 'primary' and _has_remote_workers()
+
+
+def _submit_cluster_job(playbook: str, target: str, priority: int = 50,
+                        required_tags: list = None, preferred_tags: list = None,
+                        extra_vars: dict = None, submitted_by: str = 'internal') -> dict:
+    """
+    Submit a job to the cluster queue and return the job info.
+
+    This helper is used by batch jobs and scheduled jobs to dispatch
+    work through the cluster job queue instead of running locally.
+
+    Args:
+        playbook: Name of playbook to execute
+        target: Target host/group
+        priority: Job priority (0-100, higher = more important)
+        required_tags: Tags worker must have
+        preferred_tags: Tags that boost worker selection score
+        extra_vars: Extra variables to pass to ansible
+        submitted_by: Source of job submission
+
+    Returns:
+        dict: Job info including 'id', or None if submission failed
+    """
+    if not storage_backend:
+        return None
+
+    job_id = str(uuid.uuid4())
+    now = datetime.now().isoformat()
+
+    job = {
+        'id': job_id,
+        'playbook': playbook,
+        'target': target,
+        'required_tags': required_tags or [],
+        'preferred_tags': preferred_tags or [],
+        'priority': priority,
+        'job_type': 'normal',
+        'extra_vars': extra_vars or {},
+        'status': 'queued',
+        'assigned_worker': None,
+        'submitted_by': submitted_by,
+        'submitted_at': now,
+        'assigned_at': None,
+        'started_at': None,
+        'completed_at': None,
+        'log_file': None,
+        'exit_code': None,
+        'error_message': None
+    }
+
+    if storage_backend.save_job(job):
+        # Route the job immediately
+        try:
+            router = get_job_router()
+            router.route_job(job_id)
+        except Exception as e:
+            print(f"Warning: Auto-routing failed for job {job_id}: {e}")
+        return job
+    return None
+
+
+def _wait_for_job_completion(job_id: str, timeout: int = 600, poll_interval: float = 1.0) -> dict:
+    """
+    Wait for a cluster job to complete.
+
+    Polls job status until it reaches a terminal state (completed/failed/cancelled)
+    or timeout is reached.
+
+    Args:
+        job_id: Job ID to monitor
+        timeout: Maximum seconds to wait
+        poll_interval: Seconds between status checks
+
+    Returns:
+        dict: Final job state, or None if timeout/error
+    """
+    if not storage_backend:
+        return None
+
+    import time
+    start_time = time.time()
+
+    while time.time() - start_time < timeout:
+        job = storage_backend.get_job(job_id)
+        if not job:
+            return None
+
+        status = job.get('status')
+        if status in ['completed', 'failed', 'cancelled']:
+            return job
+
+        time.sleep(poll_interval)
+
+    # Timeout - return current state
+    return storage_backend.get_job(job_id)
+
+
+def _get_worker_name(worker_id: str) -> str:
+    """Get worker name from ID, with fallback."""
+    if not worker_id or not storage_backend:
+        return 'local-executor'
+    if worker_id == '__local__':
+        return 'local-executor'
+    worker = storage_backend.get_worker(worker_id)
+    if worker:
+        return worker.get('name', worker_id[:8])
+    return worker_id[:8] if len(worker_id) > 8 else worker_id
 
 
 @app.route('/run/<playbook_name>')
@@ -4337,8 +4629,64 @@ def handle_join_batch(data):
                 'failed': batch_job.get('failed', 0),
                 'total': batch_job.get('total', 0),
                 'current_playbook': batch_job.get('current_playbook'),
-                'results': batch_job.get('results', [])
+                'results': batch_job.get('results', []),
+                'worker_name': batch_job.get('worker_name')
             })
+
+            # Send log catchup for completed/in-progress playbooks
+            results = batch_job.get('results', [])
+            for result in results:
+                playbook = result.get('playbook')
+                log_file = result.get('log_file')
+                job_id = result.get('job_id')
+
+                # Try to read from final log file first, then partial log
+                log_content = None
+                if log_file:
+                    log_path = os.path.join(LOGS_DIR, log_file)
+                    if os.path.exists(log_path):
+                        try:
+                            with open(log_path, 'r') as f:
+                                log_content = f.read()
+                        except:
+                            pass
+
+                if not log_content and job_id:
+                    # Try partial log
+                    partial_path = os.path.join(LOGS_DIR, f'partial-{job_id}.log')
+                    if os.path.exists(partial_path):
+                        try:
+                            with open(partial_path, 'r') as f:
+                                log_content = f.read()
+                        except:
+                            pass
+
+                if log_content:
+                    # Send log lines for this playbook
+                    for line in log_content.splitlines(keepends=True):
+                        emit('batch_log_line', {
+                            'batch_id': batch_id,
+                            'playbook': playbook,
+                            'line': line
+                        })
+
+            # Also check for current running job's partial log
+            current_job_id = batch_job.get('current_job_id')
+            current_playbook = batch_job.get('current_playbook')
+            if current_job_id and current_playbook and batch_job.get('status') == 'running':
+                partial_path = os.path.join(LOGS_DIR, f'partial-{current_job_id}.log')
+                if os.path.exists(partial_path):
+                    try:
+                        with open(partial_path, 'r') as f:
+                            log_content = f.read()
+                            for line in log_content.splitlines(keepends=True):
+                                emit('batch_log_line', {
+                                    'batch_id': batch_id,
+                                    'playbook': current_playbook,
+                                    'line': line
+                                })
+                    except:
+                        pass
 
 
 @socketio.on('leave_batch')
@@ -4433,7 +4781,12 @@ if __name__ == '__main__':
         storage=storage_backend,
         is_managed_host_fn=is_managed_host,
         generate_managed_inventory_fn=generate_managed_inventory,
-        create_batch_job_fn=create_batch_job
+        create_batch_job_fn=create_batch_job,
+        # Cluster dispatch functions for scheduled jobs
+        use_cluster_dispatch_fn=_should_use_cluster_dispatch,
+        submit_cluster_job_fn=_submit_cluster_job,
+        wait_for_job_completion_fn=_wait_for_job_completion,
+        get_worker_name_fn=_get_worker_name
     )
     schedule_manager.start()
     print("Schedule manager initialized and started")

@@ -317,7 +317,8 @@ class WorkerService:
             api_client=self.api,
             worker_id=self._worker_id,
             content_dir=self.config.content_dir,
-            logs_dir=self.config.logs_dir
+            logs_dir=self.config.logs_dir,
+            worker_name=self.config.worker_name
         )
 
         # Register completion callback

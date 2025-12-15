@@ -45,7 +45,7 @@ class JobExecutor:
     """
 
     def __init__(self, api_client: PrimaryAPIClient, worker_id: str,
-                 content_dir: str, logs_dir: str):
+                 content_dir: str, logs_dir: str, worker_name: str = None):
         """
         Initialize job executor.
 
@@ -54,9 +54,11 @@ class JobExecutor:
             worker_id: This worker's ID
             content_dir: Directory containing playbooks/inventory
             logs_dir: Directory for job logs
+            worker_name: Human-readable worker name for logs
         """
         self.api = api_client
         self.worker_id = worker_id
+        self.worker_name = worker_name or worker_id[:8]
         self.content_dir = content_dir
         self.logs_dir = logs_dir
 
@@ -190,8 +192,9 @@ class JobExecutor:
 
         try:
             with open(log_path, 'w') as log_file:
-                # Write header
+                # Write header with worker identification
                 header = (
+                    f"Worker: {self.worker_name} ({self.worker_id[:8]})\n"
                     f"Job ID: {job.get('id')}\n"
                     f"Playbook: {job.get('playbook')}\n"
                     f"Target: {job.get('target', 'all')}\n"

@@ -31,9 +31,9 @@
 # ==============================================================================
 [remote_servers]
 # Add your remote servers here
+192.168.1.50 ansible_user=svc_ansible ansible_ssh_pass=mDpdilMAQ7rCMkhS1OA2 ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
 # Example:
 # server1.example.com ansible_user=admin ansible_ssh_private_key_file=/app/.ssh/id_rsa
-# 192.168.1.50 ansible_user=admin ansible_ssh_pass=password
 
 # ==============================================================================
 # GROUP COMPOSITION

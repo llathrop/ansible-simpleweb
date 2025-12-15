@@ -188,6 +188,7 @@
                 <div class="batch-header-info">
                     <span>Targets: <strong id="batchTargets">{{ targets | join(', ') }}</strong></span>
                     <span style="margin-left: 15px;">Batch ID: <strong>{{ batch_id[:8] }}</strong></span>
+                    <span style="margin-left: 15px;" id="workerInfo">Worker: <strong id="workerName">-</strong></span>
                 </div>
             </div>
             <div class="header-right" style="display: flex; align-items: center; gap: 15px;">
@@ -259,6 +260,7 @@
         const failedInfoEl = document.getElementById('failedInfo');
         const currentIndicator = document.getElementById('currentIndicator');
         const playbookTabs = document.getElementById('playbookTabs');
+        const workerNameEl = document.getElementById('workerName');
 
         let autoScroll = true;
         let lineCount = 0;
@@ -376,6 +378,13 @@
 
             if (data.status) {
                 updateStatus(data.status);
+            }
+
+            // Update worker name if provided
+            if (data.worker_name) {
+                workerNameEl.textContent = data.worker_name;
+            } else if (data.worker_id) {
+                workerNameEl.textContent = data.worker_id.substring(0, 8) + '...';
             }
 
             // Update tab statuses from results

@@ -42,7 +42,9 @@ class ScheduleManager:
     def __init__(self, socketio, run_playbook_fn: Callable, active_runs: Dict,
                  runs_lock: threading.Lock, storage=None,
                  is_managed_host_fn: Callable = None, generate_managed_inventory_fn: Callable = None,
-                 create_batch_job_fn: Callable = None):
+                 create_batch_job_fn: Callable = None,
+                 use_cluster_dispatch_fn: Callable = None, submit_cluster_job_fn: Callable = None,
+                 wait_for_job_completion_fn: Callable = None, get_worker_name_fn: Callable = None):
         """
         Initialize the schedule manager.
 
@@ -55,6 +57,10 @@ class ScheduleManager:
             is_managed_host_fn: Optional function to check if host is in managed inventory
             generate_managed_inventory_fn: Optional function to generate temp inventory for managed hosts
             create_batch_job_fn: Optional function to create and execute batch jobs
+            use_cluster_dispatch_fn: Function returning True if cluster dispatch should be used
+            submit_cluster_job_fn: Function to submit jobs to cluster queue
+            wait_for_job_completion_fn: Function to wait for cluster job completion
+            get_worker_name_fn: Function to get worker name from ID
         """
         self.socketio = socketio
         self.run_playbook_fn = run_playbook_fn
@@ -64,6 +70,10 @@ class ScheduleManager:
         self.is_managed_host = is_managed_host_fn
         self.generate_managed_inventory = generate_managed_inventory_fn
         self.create_batch_job_fn = create_batch_job_fn
+        self.use_cluster_dispatch = use_cluster_dispatch_fn
+        self.submit_cluster_job = submit_cluster_job_fn
+        self.wait_for_job_completion = wait_for_job_completion_fn
+        self.get_worker_name = get_worker_name_fn
 
         # Schedule storage (in-memory cache, backed by storage backend)
         self.schedules: Dict[str, Dict] = {}
@@ -274,6 +284,7 @@ class ScheduleManager:
 
         This is called by APScheduler in a worker thread.
         Supports both single playbook and batch executions.
+        Dispatches to cluster workers when available.
         """
         # Get schedule info
         with self.schedules_lock:
@@ -290,10 +301,133 @@ class ScheduleManager:
             self._execute_batch_schedule(schedule_id, schedule)
             return
 
-        # Single playbook execution (original behavior)
+        # Single playbook execution
         playbook = schedule['playbook']
         target = schedule['target']
 
+        # Check if we should use cluster dispatch
+        use_cluster = (self.use_cluster_dispatch and self.submit_cluster_job
+                       and self.wait_for_job_completion and self.use_cluster_dispatch())
+
+        if use_cluster:
+            self._execute_via_cluster(schedule_id, schedule, playbook, target)
+        else:
+            self._execute_locally(schedule_id, schedule, playbook, target)
+
+    def _execute_via_cluster(self, schedule_id: str, schedule: dict,
+                             playbook: str, target: str):
+        """Execute scheduled playbook via cluster dispatch."""
+        started = datetime.now()
+        worker_name = 'pending-assignment'
+
+        # Update schedule status
+        with self.schedules_lock:
+            if schedule_id in self.schedules:
+                self.schedules[schedule_id]['last_run'] = started.isoformat()
+                self.schedules[schedule_id]['last_status'] = 'running'
+                self._save_schedule(schedule_id)
+
+        # Emit schedule started event
+        self.socketio.emit('schedule_started', {
+            'schedule_id': schedule_id,
+            'playbook': playbook,
+            'target': target,
+            'via_cluster': True
+        }, room='schedules')
+
+        status = 'failed'
+        job_id = None
+        log_file = None
+
+        try:
+            # Submit job to cluster queue
+            job = self.submit_cluster_job(
+                playbook=playbook,
+                target=target,
+                priority=60,  # Slightly higher priority for scheduled jobs
+                submitted_by=f'scheduler:{schedule_id[:8]}'
+            )
+
+            if not job:
+                print(f"Failed to submit cluster job for schedule {schedule_id}")
+                status = 'failed'
+            else:
+                job_id = job.get('id')
+
+                # Track as running
+                with self.running_jobs_lock:
+                    self.running_jobs[schedule_id] = job_id
+
+                # Wait for job completion (max 30 minutes for scheduled jobs)
+                final_job = self.wait_for_job_completion(job_id, timeout=1800, poll_interval=2.0)
+
+                if final_job:
+                    job_status = final_job.get('status', 'unknown')
+                    exit_code = final_job.get('exit_code')
+                    log_file = final_job.get('log_file')
+                    worker_id = final_job.get('assigned_worker')
+
+                    # Get worker name
+                    if self.get_worker_name and worker_id:
+                        worker_name = self.get_worker_name(worker_id)
+
+                    if job_status == 'completed' and exit_code == 0:
+                        status = 'completed'
+                    elif job_status == 'completed':
+                        status = 'failed'  # Non-zero exit
+                    else:
+                        status = job_status
+                else:
+                    status = 'timeout'
+
+        except Exception as e:
+            status = 'failed'
+            print(f"Scheduled cluster execution error: {e}")
+
+        finished = datetime.now()
+
+        # Update schedule
+        with self.schedules_lock:
+            if schedule_id in self.schedules:
+                self.schedules[schedule_id]['last_status'] = status
+                self.schedules[schedule_id]['run_count'] = self.schedules[schedule_id].get('run_count', 0) + 1
+                self.schedules[schedule_id]['current_run_id'] = None
+
+                if status == 'completed':
+                    self.schedules[schedule_id]['success_count'] = self.schedules[schedule_id].get('success_count', 0) + 1
+                else:
+                    self.schedules[schedule_id]['failed_count'] = self.schedules[schedule_id].get('failed_count', 0) + 1
+
+                if schedule['recurrence']['type'] == 'once':
+                    self.schedules[schedule_id]['enabled'] = False
+
+                self._save_schedule(schedule_id)
+
+        self._update_next_run(schedule_id)
+
+        # Record in history with worker name
+        self._record_execution(schedule_id, job_id or 'cluster-error',
+                               log_file or 'cluster-dispatch', status, started, finished,
+                               worker_name=worker_name)
+
+        # Remove from running jobs
+        with self.running_jobs_lock:
+            if schedule_id in self.running_jobs:
+                del self.running_jobs[schedule_id]
+
+        # Emit completion event
+        self.socketio.emit('schedule_completed', {
+            'schedule_id': schedule_id,
+            'job_id': job_id,
+            'status': status,
+            'log_file': log_file,
+            'worker_name': worker_name,
+            'via_cluster': True
+        }, room='schedules')
+
+    def _execute_locally(self, schedule_id: str, schedule: dict,
+                         playbook: str, target: str):
+        """Execute scheduled playbook locally (fallback when no workers)."""
         # Generate unique run ID and log filename
         run_id = str(uuid.uuid4())
         timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
@@ -382,7 +516,8 @@ class ScheduleManager:
         self._update_next_run(schedule_id)
 
         # Record in history
-        self._record_execution(schedule_id, run_id, log_file, status, started, finished)
+        self._record_execution(schedule_id, run_id, log_file, status, started, finished,
+                               worker_name='local-executor')
 
         # Remove from running jobs
         with self.running_jobs_lock:
