@@ -3511,9 +3511,21 @@ def api_complete_job(job_id):
     {
         "worker_id": "worker-uuid",
         "exit_code": 0,
-        "log_file": "job-uuid-2024-01-01.log",
-        "error_message": null  // Optional: error details if failed
+        "log_file": "job-uuid-2024-01-01.log",    // Optional: log filename on worker
+        "log_content": "...",                      // Optional: full log content
+        "error_message": null,                     // Optional: error details if failed
+        "duration_seconds": 120,                   // Optional: execution duration
+        "cmdb_facts": {                            // Optional: CMDB facts to store
+            "hostname": {...},
+            ...
+        },
+        "checkin": {                               // Optional: piggyback checkin data
+            "sync_revision": "abc123",
+            "system_stats": {...}
+        }
     }
+
+    Returns job status and updated worker statistics.
     """
     if not storage_backend:
         return jsonify({'error': 'Storage backend not initialized'}), 500
@@ -3533,12 +3545,26 @@ def api_complete_job(job_id):
 
     exit_code = data.get('exit_code', 0)
     status = 'completed' if exit_code == 0 else 'failed'
+    completed_at = datetime.now().isoformat()
+
+    # Calculate duration if started_at is available
+    duration_seconds = data.get('duration_seconds')
+    if duration_seconds is None and job.get('started_at'):
+        try:
+            started = datetime.fromisoformat(job['started_at'])
+            completed = datetime.fromisoformat(completed_at)
+            duration_seconds = (completed - started).total_seconds()
+        except (ValueError, TypeError):
+            pass
 
     updates = {
         'status': status,
         'exit_code': exit_code,
-        'completed_at': datetime.now().isoformat()
+        'completed_at': completed_at
     }
+
+    if duration_seconds is not None:
+        updates['duration_seconds'] = duration_seconds
 
     if data.get('log_file'):
         updates['log_file'] = data['log_file']
@@ -3546,14 +3572,124 @@ def api_complete_job(job_id):
     if data.get('error_message'):
         updates['error_message'] = data['error_message']
 
+    # Store log content if provided
+    log_stored = False
+    if data.get('log_content'):
+        log_filename = data.get('log_file') or f"job-{job_id}-{completed_at[:10]}.log"
+        log_path = os.path.join(LOGS_DIR, log_filename)
+        try:
+            os.makedirs(LOGS_DIR, exist_ok=True)
+            with open(log_path, 'w') as f:
+                f.write(data['log_content'])
+            updates['log_file'] = log_filename
+            log_stored = True
+        except Exception as e:
+            print(f"Error storing log for job {job_id}: {e}")
+
     if not storage_backend.update_job(job_id, updates):
         return jsonify({'error': 'Failed to update job'}), 500
+
+    # Update worker statistics
+    worker = storage_backend.get_worker(worker_id)
+    worker_stats_updated = False
+    if worker:
+        current_stats = worker.get('stats', {})
+
+        # Update completion counts
+        jobs_completed = current_stats.get('jobs_completed', 0)
+        jobs_failed = current_stats.get('jobs_failed', 0)
+
+        if status == 'completed':
+            jobs_completed += 1
+        else:
+            jobs_failed += 1
+
+        # Update average duration
+        avg_duration = current_stats.get('avg_job_duration', 0)
+        if duration_seconds is not None and jobs_completed > 0:
+            # Running average
+            total_jobs = jobs_completed + jobs_failed
+            if total_jobs > 1:
+                avg_duration = ((avg_duration * (total_jobs - 1)) + duration_seconds) / total_jobs
+            else:
+                avg_duration = duration_seconds
+
+        updated_stats = {
+            'jobs_completed': jobs_completed,
+            'jobs_failed': jobs_failed,
+            'avg_job_duration': round(avg_duration, 2),
+            'last_job_completed': completed_at
+        }
+
+        # Merge with existing stats (preserve other fields like load, memory)
+        merged_stats = {**current_stats, **updated_stats}
+
+        # Update worker with new stats
+        storage_backend.update_worker_checkin(worker_id, {'stats': merged_stats})
+        worker_stats_updated = True
+
+    # Process CMDB facts if provided
+    cmdb_facts_stored = 0
+    if data.get('cmdb_facts') and isinstance(data['cmdb_facts'], dict):
+        for host, facts in data['cmdb_facts'].items():
+            try:
+                # Derive collection from playbook name
+                playbook = job.get('playbook', 'unknown')
+                collection = playbook.replace('.yml', '').replace('.yaml', '')
+
+                # Add metadata
+                facts_with_meta = {
+                    **facts,
+                    '_meta': {
+                        'job_id': job_id,
+                        'playbook': playbook,
+                        'collected_at': completed_at,
+                        'collector': 'job_completion'
+                    }
+                }
+
+                storage_backend.save_host_facts(
+                    host=host,
+                    collection=collection,
+                    data=facts_with_meta,
+                    groups=[],
+                    source='job'
+                )
+                cmdb_facts_stored += 1
+            except Exception as e:
+                print(f"Error storing CMDB facts for {host}: {e}")
+
+    # Process piggyback checkin if provided
+    checkin_processed = False
+    if data.get('checkin') and isinstance(data['checkin'], dict):
+        checkin_data = data['checkin']
+        # Add completion status to checkin
+        checkin_data['status'] = 'online' if not data.get('checkin', {}).get('status') else data['checkin']['status']
+        storage_backend.update_worker_checkin(worker_id, checkin_data)
+        checkin_processed = True
+
+    # Emit job completion event
+    socketio.emit('job_completed', {
+        'job_id': job_id,
+        'playbook': job.get('playbook'),
+        'target': job.get('target'),
+        'status': status,
+        'exit_code': exit_code,
+        'worker_id': worker_id,
+        'duration_seconds': duration_seconds,
+        'completed_at': completed_at
+    }, room='jobs')
 
     return jsonify({
         'job_id': job_id,
         'status': status,
         'exit_code': exit_code,
-        'message': f'Job {status}'
+        'duration_seconds': duration_seconds,
+        'message': f'Job {status}',
+        'log_stored': log_stored,
+        'worker_stats_updated': worker_stats_updated,
+        'cmdb_facts_stored': cmdb_facts_stored,
+        'checkin_processed': checkin_processed
     })
 
 

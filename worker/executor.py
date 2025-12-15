@@ -196,7 +196,8 @@ class JobExecutor:
             job: Job dict to execute
         """
         job_id = job.get('id')
-        started_at = datetime.now().isoformat()
+        start_time = datetime.now()
+        started_at = start_time.isoformat()
 
         # Track as active
         with self._lock:
@@ -218,11 +219,24 @@ class JobExecutor:
         # Execute the playbook
         exit_code, error_message = self._execute_playbook(job, log_path)
 
-        completed_at = datetime.now().isoformat()
+        end_time = datetime.now()
+        completed_at = end_time.isoformat()
+
+        # Calculate duration
+        duration_seconds = (end_time - start_time).total_seconds()
 
         # Remove from active jobs
         with self._lock:
             self._active_jobs.pop(job_id, None)
+
+        # Read log content for upload to primary
+        log_content = None
+        try:
+            if os.path.exists(log_path):
+                with open(log_path, 'r') as f:
+                    log_content = f.read()
+        except Exception as e:
+            print(f"Warning: Could not read log file for upload: {e}")
 
         # Create result
         result = JobResult(
@@ -235,13 +249,15 @@ class JobExecutor:
             completed_at=completed_at
         )
 
-        # Report completion to primary
+        # Report completion to primary with full details
         complete_response = self.api.complete_job(
             job_id,
             self.worker_id,
             exit_code,
             log_file=log_filename,
-            error_message=error_message
+            log_content=log_content,
+            error_message=error_message,
+            duration_seconds=duration_seconds
         )
 
         if not complete_response.success:
@@ -254,7 +270,7 @@ class JobExecutor:
             except Exception as e:
                 print(f"Error in completion callback: {e}")
 
-        print(f"Job {job_id} completed with exit code {exit_code}")
+        print(f"Job {job_id} completed with exit code {exit_code} (duration: {duration_seconds:.1f}s)")
 
     def execute_job(self, job: Dict, async_exec: bool = True) -> Optional[JobResult]:
         """

@@ -205,19 +205,25 @@ class PrimaryAPIClient:
         )
 
     def complete_job(self, job_id: str, worker_id: str, exit_code: int,
-                     log_file: str = None, error_message: str = None) -> APIResponse:
+                     log_file: str = None, log_content: str = None,
+                     error_message: str = None, duration_seconds: float = None,
+                     cmdb_facts: Dict = None, checkin: Dict = None) -> APIResponse:
         """
-        Report job completion.
+        Report job completion with full results.
 
         Args:
             job_id: Job ID
             worker_id: This worker's ID
             exit_code: Process exit code (0 = success)
             log_file: Log file name
+            log_content: Full log content (optional - for log upload)
             error_message: Error message if failed
+            duration_seconds: Job execution duration
+            cmdb_facts: CMDB facts collected during execution
+            checkin: Piggyback checkin data
 
         Returns:
-            APIResponse
+            APIResponse with completion status and worker stats update info
         """
         data = {
             'worker_id': worker_id,
@@ -225,8 +231,16 @@ class PrimaryAPIClient:
         }
         if log_file:
             data['log_file'] = log_file
+        if log_content:
+            data['log_content'] = log_content
         if error_message:
             data['error_message'] = error_message
+        if duration_seconds is not None:
+            data['duration_seconds'] = duration_seconds
+        if cmdb_facts:
+            data['cmdb_facts'] = cmdb_facts
+        if checkin:
+            data['checkin'] = checkin
 
         return self._request(
             'POST',
