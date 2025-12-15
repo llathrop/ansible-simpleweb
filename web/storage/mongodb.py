@@ -57,6 +57,8 @@ class MongoDBStorage(StorageBackend):
         self.inventory_collection = self.db['inventory']
         self.host_facts_collection = self.db['host_facts']
         self.batch_jobs_collection = self.db['batch_jobs']
+        self.workers_collection = self.db['workers']
+        self.job_queue_collection = self.db['job_queue']
 
         # Ensure indexes
         self._ensure_indexes()
@@ -86,6 +88,20 @@ class MongoDBStorage(StorageBackend):
             self.batch_jobs_collection.create_index('id', unique=True)
             self.batch_jobs_collection.create_index('status')
             self.batch_jobs_collection.create_index([('created', DESCENDING)])
+
+            # Workers - indexes for cluster support
+            self.workers_collection.create_index('id', unique=True)
+            self.workers_collection.create_index('status')
+            self.workers_collection.create_index('name')
+            self.workers_collection.create_index([('registered_at', DESCENDING)])
+
+            # Job queue - indexes for cluster support
+            self.job_queue_collection.create_index('id', unique=True)
+            self.job_queue_collection.create_index('status')
+            self.job_queue_collection.create_index('assigned_worker')
+            self.job_queue_collection.create_index('playbook')
+            self.job_queue_collection.create_index([('submitted_at', DESCENDING)])
+            self.job_queue_collection.create_index([('priority', DESCENDING)])
         except Exception as e:
             print(f"Warning: Could not create indexes: {e}")
 
@@ -647,6 +663,247 @@ class MongoDBStorage(StorageBackend):
             return result.deleted_count
         except Exception as e:
             print(f"Error cleaning up batch jobs in MongoDB: {e}")
+            return 0
+
+    # =========================================================================
+    # Worker Operations (Cluster Support)
+    # =========================================================================
+
+    def get_all_workers(self) -> List[Dict]:
+        """Get all registered workers, sorted by registered_at (newest first)."""
+        try:
+            workers = []
+            cursor = self.workers_collection.find().sort('registered_at', DESCENDING)
+            for doc in cursor:
+                doc.pop('_id', None)
+                workers.append(doc)
+            return workers
+        except Exception as e:
+            print(f"Error loading workers from MongoDB: {e}")
+            return []
+
+    def get_worker(self, worker_id: str) -> Optional[Dict]:
+        """Get a single worker by ID."""
+        try:
+            doc = self.workers_collection.find_one({'id': worker_id})
+            if doc:
+                doc.pop('_id', None)
+                return doc
+            return None
+        except Exception as e:
+            print(f"Error getting worker from MongoDB: {e}")
+            return None
+
+    def save_worker(self, worker: Dict) -> bool:
+        """Save or update a worker."""
+        try:
+            worker_id = worker.get('id')
+            if not worker_id:
+                print("Error: Worker must have an 'id' field")
+                return False
+
+            self.workers_collection.replace_one(
+                {'id': worker_id},
+                worker,
+                upsert=True
+            )
+            return True
+        except Exception as e:
+            print(f"Error saving worker to MongoDB: {e}")
+            return False
+
+    def delete_worker(self, worker_id: str) -> bool:
+        """Delete a worker."""
+        try:
+            result = self.workers_collection.delete_one({'id': worker_id})
+            return result.deleted_count > 0
+        except Exception as e:
+            print(f"Error deleting worker from MongoDB: {e}")
+            return False
+
+    def get_workers_by_status(self, statuses: List[str]) -> List[Dict]:
+        """Get workers filtered by status."""
+        try:
+            workers = []
+            cursor = self.workers_collection.find(
+                {'status': {'$in': statuses}}
+            ).sort('registered_at', DESCENDING)
+            for doc in cursor:
+                doc.pop('_id', None)
+                workers.append(doc)
+            return workers
+        except Exception as e:
+            print(f"Error getting workers by status from MongoDB: {e}")
+            return []
+
+    def update_worker_checkin(self, worker_id: str, checkin_data: Dict) -> bool:
+        """Update worker with checkin data."""
+        try:
+            update_fields = {
+                'last_checkin': datetime.now().isoformat()
+            }
+
+            # Update stats if provided
+            if 'stats' in checkin_data:
+                for key, value in checkin_data['stats'].items():
+                    update_fields[f'stats.{key}'] = value
+
+            # Update sync revision if provided
+            if 'sync_revision' in checkin_data:
+                update_fields['sync_revision'] = checkin_data['sync_revision']
+
+            # Update status if provided
+            if 'status' in checkin_data:
+                update_fields['status'] = checkin_data['status']
+
+            result = self.workers_collection.update_one(
+                {'id': worker_id},
+                {'$set': update_fields}
+            )
+            return result.matched_count > 0
+        except Exception as e:
+            print(f"Error updating worker checkin in MongoDB: {e}")
+            return False
+
+    # =========================================================================
+    # Job Queue Operations (Cluster Support)
+    # =========================================================================
+
+    def get_all_jobs(self, filters: Dict = None) -> List[Dict]:
+        """Get all jobs from the queue, optionally filtered."""
+        try:
+            query = filters if filters else {}
+            jobs = []
+            cursor = self.job_queue_collection.find(query).sort('submitted_at', DESCENDING)
+            for doc in cursor:
+                doc.pop('_id', None)
+                jobs.append(doc)
+            return jobs
+        except Exception as e:
+            print(f"Error loading jobs from MongoDB: {e}")
+            return []
+
+    def get_job(self, job_id: str) -> Optional[Dict]:
+        """Get a single job by ID."""
+        try:
+            doc = self.job_queue_collection.find_one({'id': job_id})
+            if doc:
+                doc.pop('_id', None)
+                return doc
+            return None
+        except Exception as e:
+            print(f"Error getting job from MongoDB: {e}")
+            return None
+
+    def save_job(self, job: Dict) -> bool:
+        """Save or update a job."""
+        try:
+            job_id = job.get('id')
+            if not job_id:
+                print("Error: Job must have an 'id' field")
+                return False
+
+            self.job_queue_collection.replace_one(
+                {'id': job_id},
+                job,
+                upsert=True
+            )
+            return True
+        except Exception as e:
+            print(f"Error saving job to MongoDB: {e}")
+            return False
+
+    def update_job(self, job_id: str, updates: Dict) -> bool:
+        """Partially update a job."""
+        try:
+            result = self.job_queue_collection.update_one(
+                {'id': job_id},
+                {'$set': updates}
+            )
+            return result.matched_count > 0
+        except Exception as e:
+            print(f"Error updating job in MongoDB: {e}")
+            return False
+
+    def delete_job(self, job_id: str) -> bool:
+        """Delete a job."""
+        try:
+            result = self.job_queue_collection.delete_one({'id': job_id})
+            return result.deleted_count > 0
+        except Exception as e:
+            print(f"Error deleting job from MongoDB: {e}")
+            return False
+
+    def get_pending_jobs(self) -> List[Dict]:
+        """Get all jobs with status 'queued' awaiting assignment."""
+        try:
+            jobs = []
+            # Sort by priority (highest first), then by submitted_at (oldest first)
+            cursor = self.job_queue_collection.find(
+                {'status': 'queued'}
+            ).sort([('priority', DESCENDING), ('submitted_at', 1)])
+            for doc in cursor:
+                doc.pop('_id', None)
+                jobs.append(doc)
+            return jobs
+        except Exception as e:
+            print(f"Error getting pending jobs from MongoDB: {e}")
+            return []
+
+    def get_worker_jobs(self, worker_id: str, statuses: List[str] = None) -> List[Dict]:
+        """Get jobs assigned to a specific worker."""
+        try:
+            query = {'assigned_worker': worker_id}
+            if statuses:
+                query['status'] = {'$in': statuses}
+
+            jobs = []
+            cursor = self.job_queue_collection.find(query).sort('submitted_at', DESCENDING)
+            for doc in cursor:
+                doc.pop('_id', None)
+                jobs.append(doc)
+            return jobs
+        except Exception as e:
+            print(f"Error getting worker jobs from MongoDB: {e}")
+            return []
+
+    def cleanup_jobs(self, max_age_days: int = 30, keep_count: int = 500) -> int:
+        """Clean up old completed/failed jobs."""
+        try:
+            from datetime import timedelta
+
+            # Count total jobs
+            total = self.job_queue_collection.count_documents({})
+            if total <= keep_count:
+                return 0
+
+            # Calculate cutoff date
+            cutoff = datetime.now() - timedelta(days=max_age_days)
+            cutoff_str = cutoff.isoformat()
+
+            # Terminal statuses that can be cleaned up
+            terminal_statuses = ['completed', 'failed', 'cancelled']
+
+            # Get IDs of newest jobs to keep
+            cursor = self.job_queue_collection.find(
+                {},
+                {'id': 1}
+            ).sort('submitted_at', DESCENDING).limit(keep_count)
+            keep_ids = {doc['id'] for doc in cursor}
+
+            # Delete jobs that are:
+            # 1. Not in the keep_ids set
+            # 2. Older than cutoff
+            # 3. In terminal status
+            result = self.job_queue_collection.delete_many({
+                'id': {'$nin': list(keep_ids)},
+                'submitted_at': {'$lt': cutoff_str},
+                'status': {'$in': terminal_statuses}
+            })
+
+            return result.deleted_count
+        except Exception as e:
+            print(f"Error cleaning up jobs in MongoDB: {e}")
             return 0
 
     # =========================================================================

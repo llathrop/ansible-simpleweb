@@ -42,6 +42,8 @@ class FlatFileStorage(StorageBackend):
         self.inventory_file = os.path.join(config_dir, 'inventory.json')
         self.host_facts_file = os.path.join(config_dir, 'host_facts.json')
         self.batch_jobs_file = os.path.join(config_dir, 'batch_jobs.json')
+        self.workers_file = os.path.join(config_dir, 'workers.json')
+        self.job_queue_file = os.path.join(config_dir, 'job_queue.json')
 
         # Thread safety locks
         self._schedules_lock = threading.RLock()
@@ -49,6 +51,8 @@ class FlatFileStorage(StorageBackend):
         self._inventory_lock = threading.RLock()
         self._host_facts_lock = threading.RLock()
         self._batch_jobs_lock = threading.RLock()
+        self._workers_lock = threading.RLock()
+        self._job_queue_lock = threading.RLock()
 
         # Ensure config directory exists
         os.makedirs(config_dir, exist_ok=True)
@@ -653,6 +657,332 @@ class FlatFileStorage(StorageBackend):
                 return removed_count
             except Exception as e:
                 print(f"Error cleaning up batch jobs: {e}")
+                return 0
+
+    # =========================================================================
+    # Worker Operations (Cluster Support)
+    # =========================================================================
+
+    def _load_workers_data(self) -> Dict:
+        """Load all workers data from file."""
+        if not os.path.exists(self.workers_file):
+            return {'version': '1.0', 'workers': []}
+        try:
+            with open(self.workers_file, 'r') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError) as e:
+            print(f"Error loading workers: {e}")
+            return {'version': '1.0', 'workers': []}
+
+    def _write_workers_data(self, data: Dict) -> bool:
+        """Write all workers data to file."""
+        try:
+            with open(self.workers_file, 'w') as f:
+                json.dump(data, f, indent=2, default=str)
+            return True
+        except IOError as e:
+            print(f"Error writing workers: {e}")
+            return False
+
+    def get_all_workers(self) -> List[Dict]:
+        """Get all registered workers, sorted by registered_at (newest first)."""
+        with self._workers_lock:
+            data = self._load_workers_data()
+            workers = data.get('workers', [])
+            workers.sort(key=lambda x: x.get('registered_at', ''), reverse=True)
+            return workers
+
+    def get_worker(self, worker_id: str) -> Optional[Dict]:
+        """Get a single worker by ID."""
+        with self._workers_lock:
+            data = self._load_workers_data()
+            for worker in data.get('workers', []):
+                if worker.get('id') == worker_id:
+                    return worker
+            return None
+
+    def save_worker(self, worker: Dict) -> bool:
+        """Save or update a worker."""
+        with self._workers_lock:
+            try:
+                data = self._load_workers_data()
+                workers = data.get('workers', [])
+                worker_id = worker.get('id')
+
+                if not worker_id:
+                    print("Error: Worker must have an 'id' field")
+                    return False
+
+                # Find and update existing or append new
+                found = False
+                for i, existing in enumerate(workers):
+                    if existing.get('id') == worker_id:
+                        workers[i] = worker
+                        found = True
+                        break
+
+                if not found:
+                    workers.append(worker)
+
+                data['workers'] = workers
+                return self._write_workers_data(data)
+            except Exception as e:
+                print(f"Error saving worker: {e}")
+                return False
+
+    def delete_worker(self, worker_id: str) -> bool:
+        """Delete a worker."""
+        with self._workers_lock:
+            try:
+                data = self._load_workers_data()
+                workers = data.get('workers', [])
+                original_len = len(workers)
+                workers = [w for w in workers if w.get('id') != worker_id]
+
+                if len(workers) < original_len:
+                    data['workers'] = workers
+                    return self._write_workers_data(data)
+                return False
+            except Exception as e:
+                print(f"Error deleting worker: {e}")
+                return False
+
+    def get_workers_by_status(self, statuses: List[str]) -> List[Dict]:
+        """Get workers filtered by status."""
+        with self._workers_lock:
+            data = self._load_workers_data()
+            workers = data.get('workers', [])
+            filtered = [w for w in workers if w.get('status') in statuses]
+            filtered.sort(key=lambda x: x.get('registered_at', ''), reverse=True)
+            return filtered
+
+    def update_worker_checkin(self, worker_id: str, checkin_data: Dict) -> bool:
+        """Update worker with checkin data."""
+        with self._workers_lock:
+            try:
+                data = self._load_workers_data()
+                workers = data.get('workers', [])
+
+                for i, worker in enumerate(workers):
+                    if worker.get('id') == worker_id:
+                        # Update checkin timestamp
+                        worker['last_checkin'] = datetime.now().isoformat()
+
+                        # Update stats if provided
+                        if 'stats' in checkin_data:
+                            if 'stats' not in worker:
+                                worker['stats'] = {}
+                            worker['stats'].update(checkin_data['stats'])
+
+                        # Update sync revision if provided
+                        if 'sync_revision' in checkin_data:
+                            worker['sync_revision'] = checkin_data['sync_revision']
+
+                        # Update status if provided
+                        if 'status' in checkin_data:
+                            worker['status'] = checkin_data['status']
+
+                        workers[i] = worker
+                        data['workers'] = workers
+                        return self._write_workers_data(data)
+
+                return False  # Worker not found
+            except Exception as e:
+                print(f"Error updating worker checkin: {e}")
+                return False
+
+    # =========================================================================
+    # Job Queue Operations (Cluster Support)
+    # =========================================================================
+
+    def _load_job_queue_data(self) -> Dict:
+        """Load all job queue data from file."""
+        if not os.path.exists(self.job_queue_file):
+            return {'version': '1.0', 'jobs': []}
+        try:
+            with open(self.job_queue_file, 'r') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError) as e:
+            print(f"Error loading job queue: {e}")
+            return {'version': '1.0', 'jobs': []}
+
+    def _write_job_queue_data(self, data: Dict) -> bool:
+        """Write all job queue data to file."""
+        try:
+            with open(self.job_queue_file, 'w') as f:
+                json.dump(data, f, indent=2, default=str)
+            return True
+        except IOError as e:
+            print(f"Error writing job queue: {e}")
+            return False
+
+    def get_all_jobs(self, filters: Dict = None) -> List[Dict]:
+        """Get all jobs from the queue, optionally filtered."""
+        with self._job_queue_lock:
+            data = self._load_job_queue_data()
+            jobs = data.get('jobs', [])
+
+            if filters:
+                filtered_jobs = []
+                for job in jobs:
+                    match = True
+                    for key, value in filters.items():
+                        if job.get(key) != value:
+                            match = False
+                            break
+                    if match:
+                        filtered_jobs.append(job)
+                jobs = filtered_jobs
+
+            # Sort by submitted_at (newest first)
+            jobs.sort(key=lambda x: x.get('submitted_at', ''), reverse=True)
+            return jobs
+
+    def get_job(self, job_id: str) -> Optional[Dict]:
+        """Get a single job by ID."""
+        with self._job_queue_lock:
+            data = self._load_job_queue_data()
+            for job in data.get('jobs', []):
+                if job.get('id') == job_id:
+                    return job
+            return None
+
+    def save_job(self, job: Dict) -> bool:
+        """Save or update a job."""
+        with self._job_queue_lock:
+            try:
+                data = self._load_job_queue_data()
+                jobs = data.get('jobs', [])
+                job_id = job.get('id')
+
+                if not job_id:
+                    print("Error: Job must have an 'id' field")
+                    return False
+
+                # Find and update existing or append new
+                found = False
+                for i, existing in enumerate(jobs):
+                    if existing.get('id') == job_id:
+                        jobs[i] = job
+                        found = True
+                        break
+
+                if not found:
+                    jobs.append(job)
+
+                data['jobs'] = jobs
+                return self._write_job_queue_data(data)
+            except Exception as e:
+                print(f"Error saving job: {e}")
+                return False
+
+    def update_job(self, job_id: str, updates: Dict) -> bool:
+        """Partially update a job."""
+        with self._job_queue_lock:
+            try:
+                data = self._load_job_queue_data()
+                jobs = data.get('jobs', [])
+
+                for i, job in enumerate(jobs):
+                    if job.get('id') == job_id:
+                        job.update(updates)
+                        jobs[i] = job
+                        data['jobs'] = jobs
+                        return self._write_job_queue_data(data)
+
+                return False  # Job not found
+            except Exception as e:
+                print(f"Error updating job: {e}")
+                return False
+
+    def delete_job(self, job_id: str) -> bool:
+        """Delete a job."""
+        with self._job_queue_lock:
+            try:
+                data = self._load_job_queue_data()
+                jobs = data.get('jobs', [])
+                original_len = len(jobs)
+                jobs = [j for j in jobs if j.get('id') != job_id]
+
+                if len(jobs) < original_len:
+                    data['jobs'] = jobs
+                    return self._write_job_queue_data(data)
+                return False
+            except Exception as e:
+                print(f"Error deleting job: {e}")
+                return False
+
+    def get_pending_jobs(self) -> List[Dict]:
+        """Get all jobs with status 'queued' awaiting assignment."""
+        with self._job_queue_lock:
+            data = self._load_job_queue_data()
+            jobs = data.get('jobs', [])
+            pending = [j for j in jobs if j.get('status') == 'queued']
+            # Sort by priority (highest first), then by submitted_at (oldest first)
+            pending.sort(key=lambda x: (-x.get('priority', 50), x.get('submitted_at', '')))
+            return pending
+
+    def get_worker_jobs(self, worker_id: str, statuses: List[str] = None) -> List[Dict]:
+        """Get jobs assigned to a specific worker."""
+        with self._job_queue_lock:
+            data = self._load_job_queue_data()
+            jobs = data.get('jobs', [])
+            worker_jobs = [j for j in jobs if j.get('assigned_worker') == worker_id]
+
+            if statuses:
+                worker_jobs = [j for j in worker_jobs if j.get('status') in statuses]
+
+            worker_jobs.sort(key=lambda x: x.get('submitted_at', ''), reverse=True)
+            return worker_jobs
+
+    def cleanup_jobs(self, max_age_days: int = 30, keep_count: int = 500) -> int:
+        """Clean up old completed/failed jobs."""
+        with self._job_queue_lock:
+            try:
+                from datetime import timedelta
+
+                data = self._load_job_queue_data()
+                jobs = data.get('jobs', [])
+
+                if len(jobs) <= keep_count:
+                    return 0
+
+                # Sort by submitted_at (newest first)
+                jobs.sort(key=lambda x: x.get('submitted_at', ''), reverse=True)
+
+                # Calculate cutoff date
+                cutoff = datetime.now() - timedelta(days=max_age_days)
+                cutoff_str = cutoff.isoformat()
+
+                # Terminal statuses that can be cleaned up
+                terminal_statuses = ['completed', 'failed', 'cancelled']
+
+                jobs_to_keep = []
+                removed_count = 0
+
+                for i, job in enumerate(jobs):
+                    submitted = job.get('submitted_at', '')
+                    status = job.get('status', '')
+
+                    # Always keep non-terminal jobs (queued, assigned, running)
+                    if status not in terminal_statuses:
+                        jobs_to_keep.append(job)
+                    # Keep if within keep_count
+                    elif i < keep_count:
+                        jobs_to_keep.append(job)
+                    # Keep if newer than cutoff
+                    elif submitted >= cutoff_str:
+                        jobs_to_keep.append(job)
+                    else:
+                        removed_count += 1
+
+                if removed_count > 0:
+                    data['jobs'] = jobs_to_keep
+                    self._write_job_queue_data(data)
+
+                return removed_count
+            except Exception as e:
+                print(f"Error cleaning up jobs: {e}")
                 return 0
 
     # =========================================================================

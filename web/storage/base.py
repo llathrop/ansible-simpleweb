@@ -464,6 +464,240 @@ class StorageBackend(ABC):
     # Utility Operations
     # =========================================================================
 
+    # =========================================================================
+    # Worker Operations (Cluster Support)
+    # =========================================================================
+
+    @abstractmethod
+    def get_all_workers(self) -> List[Dict]:
+        """
+        Get all registered workers.
+
+        Returns:
+            List of worker dicts, sorted by registered_at (newest first)
+        """
+        pass
+
+    @abstractmethod
+    def get_worker(self, worker_id: str) -> Optional[Dict]:
+        """
+        Get a single worker by ID.
+
+        Args:
+            worker_id: UUID of the worker (or '__local__' for local executor)
+
+        Returns:
+            Worker dict or None if not found.
+            Structure: {
+                "id": "uuid",
+                "name": "worker-01",
+                "tags": ["network-a", "gpu"],
+                "priority_boost": 0,
+                "status": "online|offline|busy|stale",
+                "is_local": false,
+                "registered_at": "ISO timestamp",
+                "last_checkin": "ISO timestamp",
+                "sync_revision": "git-sha",
+                "current_jobs": ["job-id", ...],
+                "stats": {
+                    "load_1m": 0.5,
+                    "memory_percent": 45,
+                    "jobs_completed": 150,
+                    "jobs_failed": 3,
+                    "avg_job_duration": 120
+                }
+            }
+        """
+        pass
+
+    @abstractmethod
+    def save_worker(self, worker: Dict) -> bool:
+        """
+        Save or update a worker.
+
+        Args:
+            worker: Worker data dict (must include 'id')
+
+        Returns:
+            True if successful
+        """
+        pass
+
+    @abstractmethod
+    def delete_worker(self, worker_id: str) -> bool:
+        """
+        Delete a worker.
+
+        Args:
+            worker_id: UUID of the worker
+
+        Returns:
+            True if deleted, False if not found
+        """
+        pass
+
+    @abstractmethod
+    def get_workers_by_status(self, statuses: List[str]) -> List[Dict]:
+        """
+        Get workers filtered by status.
+
+        Args:
+            statuses: List of statuses to filter by (e.g., ['online', 'busy'])
+
+        Returns:
+            List of matching worker dicts
+        """
+        pass
+
+    @abstractmethod
+    def update_worker_checkin(self, worker_id: str, checkin_data: Dict) -> bool:
+        """
+        Update worker with checkin data.
+
+        Args:
+            worker_id: UUID of the worker
+            checkin_data: Dict with checkin info (stats, sync_revision, etc.)
+
+        Returns:
+            True if successful, False if worker not found
+        """
+        pass
+
+    # =========================================================================
+    # Job Queue Operations (Cluster Support)
+    # =========================================================================
+
+    @abstractmethod
+    def get_all_jobs(self, filters: Dict = None) -> List[Dict]:
+        """
+        Get all jobs from the queue, optionally filtered.
+
+        Args:
+            filters: Optional dict of filters (status, playbook, assigned_worker, etc.)
+
+        Returns:
+            List of job dicts, sorted by submitted_at (newest first)
+        """
+        pass
+
+    @abstractmethod
+    def get_job(self, job_id: str) -> Optional[Dict]:
+        """
+        Get a single job by ID.
+
+        Args:
+            job_id: UUID of the job
+
+        Returns:
+            Job dict or None if not found.
+            Structure: {
+                "id": "uuid",
+                "playbook": "hardware-inventory.yml",
+                "target": "webservers",
+                "required_tags": ["network-a"],
+                "preferred_tags": ["high-memory"],
+                "priority": 50,
+                "job_type": "normal|long_running",
+                "status": "queued|assigned|running|completed|failed|cancelled",
+                "assigned_worker": "worker-id|null|__local__",
+                "submitted_by": "user|schedule:id",
+                "submitted_at": "ISO timestamp",
+                "assigned_at": "ISO timestamp|null",
+                "started_at": "ISO timestamp|null",
+                "completed_at": "ISO timestamp|null",
+                "log_file": "path|null",
+                "exit_code": "int|null",
+                "error_message": "string|null"
+            }
+        """
+        pass
+
+    @abstractmethod
+    def save_job(self, job: Dict) -> bool:
+        """
+        Save or update a job.
+
+        Args:
+            job: Job data dict (must include 'id')
+
+        Returns:
+            True if successful
+        """
+        pass
+
+    @abstractmethod
+    def update_job(self, job_id: str, updates: Dict) -> bool:
+        """
+        Partially update a job.
+
+        Args:
+            job_id: UUID of the job
+            updates: Dict of fields to update
+
+        Returns:
+            True if successful, False if job not found
+        """
+        pass
+
+    @abstractmethod
+    def delete_job(self, job_id: str) -> bool:
+        """
+        Delete a job.
+
+        Args:
+            job_id: UUID of the job
+
+        Returns:
+            True if deleted, False if not found
+        """
+        pass
+
+    @abstractmethod
+    def get_pending_jobs(self) -> List[Dict]:
+        """
+        Get all jobs with status 'queued' awaiting assignment.
+
+        Returns:
+            List of pending job dicts, sorted by priority (highest first),
+            then by submitted_at (oldest first)
+        """
+        pass
+
+    @abstractmethod
+    def get_worker_jobs(self, worker_id: str, statuses: List[str] = None) -> List[Dict]:
+        """
+        Get jobs assigned to a specific worker.
+
+        Args:
+            worker_id: UUID of the worker
+            statuses: Optional list of statuses to filter by
+
+        Returns:
+            List of job dicts for that worker
+        """
+        pass
+
+    @abstractmethod
+    def cleanup_jobs(self, max_age_days: int = 30, keep_count: int = 500) -> int:
+        """
+        Clean up old completed/failed jobs.
+
+        Keeps at minimum keep_count jobs, and removes completed/failed jobs
+        older than max_age_days.
+
+        Args:
+            max_age_days: Maximum age in days for completed jobs
+            keep_count: Minimum number of jobs to keep regardless of age
+
+        Returns:
+            Number of jobs removed
+        """
+        pass
+
+    # =========================================================================
+    # Utility Operations
+    # =========================================================================
+
     @abstractmethod
     def health_check(self) -> bool:
         """
