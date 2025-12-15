@@ -2948,6 +2948,446 @@ def api_cluster_status():
 
 
 # =============================================================================
+# Job Queue API (Cluster Support)
+# =============================================================================
+
+@app.route('/api/jobs', methods=['POST'])
+def api_submit_job():
+    """
+    Submit a new job to the queue.
+
+    Expected JSON body:
+    {
+        "playbook": "hardware-inventory.yml",
+        "target": "webservers",
+        "required_tags": ["network-a"],        // Optional: worker must have ALL tags
+        "preferred_tags": ["high-memory"],     // Optional: prefer workers with tags
+        "priority": 50,                        // Optional: 1-100, higher = more urgent
+        "job_type": "normal",                  // Optional: "normal" or "long_running"
+        "extra_vars": {"var1": "value"},       // Optional: extra vars for playbook
+        "submitted_by": "user@example.com"     // Optional: who submitted
+    }
+
+    Returns:
+    {
+        "job_id": "uuid",
+        "status": "queued",
+        "message": "Job submitted successfully"
+    }
+    """
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+
+    data = request.get_json() or {}
+
+    # Validate required fields
+    playbook = data.get('playbook')
+    if not playbook:
+        return jsonify({'error': 'playbook is required'}), 400
+
+    # Validate playbook exists
+    available_playbooks = get_playbooks()
+    if playbook not in available_playbooks:
+        return jsonify({'error': f'Playbook not found: {playbook}'}), 400
+
+    # Build job object
+    job_id = str(uuid.uuid4())
+    now = datetime.now().isoformat()
+
+    job = {
+        'id': job_id,
+        'playbook': playbook,
+        'target': data.get('target', 'all'),
+        'required_tags': data.get('required_tags', []),
+        'preferred_tags': data.get('preferred_tags', []),
+        'priority': min(100, max(1, data.get('priority', 50))),
+        'job_type': data.get('job_type', 'normal'),
+        'extra_vars': data.get('extra_vars', {}),
+        'status': 'queued',
+        'assigned_worker': None,
+        'submitted_by': data.get('submitted_by', 'api'),
+        'submitted_at': now,
+        'assigned_at': None,
+        'started_at': None,
+        'completed_at': None,
+        'log_file': None,
+        'exit_code': None,
+        'error_message': None
+    }
+
+    # Validate job_type
+    if job['job_type'] not in ('normal', 'long_running'):
+        return jsonify({'error': 'job_type must be "normal" or "long_running"'}), 400
+
+    # Save to storage
+    if not storage_backend.save_job(job):
+        return jsonify({'error': 'Failed to save job'}), 500
+
+    return jsonify({
+        'job_id': job_id,
+        'status': 'queued',
+        'message': 'Job submitted successfully'
+    }), 201
+
+
+@app.route('/api/jobs', methods=['GET'])
+def api_list_jobs():
+    """
+    List jobs with optional filters.
+
+    Query parameters:
+    - status: Filter by status (comma-separated, e.g., 'queued,running')
+    - playbook: Filter by playbook name
+    - worker: Filter by assigned worker ID
+    - limit: Maximum number of results (default: 100)
+    - offset: Skip first N results (default: 0)
+
+    Returns list of job objects.
+    """
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+
+    # Build filters from query params
+    filters = {}
+
+    status_filter = request.args.get('status')
+    if status_filter:
+        filters['status'] = [s.strip() for s in status_filter.split(',')]
+
+    playbook_filter = request.args.get('playbook')
+    if playbook_filter:
+        filters['playbook'] = playbook_filter
+
+    worker_filter = request.args.get('worker')
+    if worker_filter:
+        filters['assigned_worker'] = worker_filter
+
+    # Get jobs from storage
+    jobs = storage_backend.get_all_jobs(filters)
+
+    # Apply limit/offset
+    limit = min(500, max(1, int(request.args.get('limit', 100))))
+    offset = max(0, int(request.args.get('offset', 0)))
+
+    total = len(jobs)
+    jobs = jobs[offset:offset + limit]
+
+    return jsonify({
+        'jobs': jobs,
+        'total': total,
+        'limit': limit,
+        'offset': offset
+    })
+
+
+@app.route('/api/jobs/<job_id>', methods=['GET'])
+def api_get_job(job_id):
+    """Get a single job by ID."""
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+
+    job = storage_backend.get_job(job_id)
+    if not job:
+        return jsonify({'error': 'Job not found'}), 404
+
+    return jsonify(job)
+
+
+@app.route('/api/jobs/<job_id>', methods=['DELETE'])
+def api_cancel_job(job_id):
+    """
+    Cancel a job.
+
+    Only jobs with status 'queued' or 'assigned' can be cancelled.
+    Running jobs will be marked for cancellation (worker must check).
+    """
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+
+    job = storage_backend.get_job(job_id)
+    if not job:
+        return jsonify({'error': 'Job not found'}), 404
+
+    current_status = job.get('status', '')
+
+    if current_status in ('completed', 'failed', 'cancelled'):
+        return jsonify({
+            'error': f'Cannot cancel job with status: {current_status}'
+        }), 400
+
+    # Update job status
+    updates = {
+        'status': 'cancelled',
+        'completed_at': datetime.now().isoformat(),
+        'error_message': 'Job cancelled by user'
+    }
+
+    if not storage_backend.update_job(job_id, updates):
+        return jsonify({'error': 'Failed to update job'}), 500
+
+    return jsonify({
+        'job_id': job_id,
+        'status': 'cancelled',
+        'message': 'Job cancelled successfully'
+    })
+
+
+@app.route('/api/jobs/<job_id>/log', methods=['GET'])
+def api_get_job_log(job_id):
+    """
+    Get job execution log.
+
+    Query parameters:
+    - lines: Number of lines to return (default: all, use negative for tail)
+    - format: 'text' (default) or 'json'
+
+    Returns the job log content.
+    """
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+
+    job = storage_backend.get_job(job_id)
+    if not job:
+        return jsonify({'error': 'Job not found'}), 404
+
+    log_file = job.get('log_file')
+    if not log_file:
+        return jsonify({
+            'job_id': job_id,
+            'status': job.get('status'),
+            'log': None,
+            'message': 'No log file available (job may not have started)'
+        })
+
+    log_path = os.path.join(LOGS_DIR, log_file)
+
+    if not os.path.exists(log_path):
+        return jsonify({
+            'job_id': job_id,
+            'status': job.get('status'),
+            'log': None,
+            'message': 'Log file not found'
+        })
+
+    # Read log file
+    try:
+        with open(log_path, 'r') as f:
+            log_content = f.read()
+    except IOError as e:
+        return jsonify({'error': f'Failed to read log: {str(e)}'}), 500
+
+    # Apply line limit if requested
+    lines_param = request.args.get('lines')
+    if lines_param:
+        try:
+            num_lines = int(lines_param)
+            log_lines = log_content.splitlines()
+            if num_lines < 0:
+                # Tail: last N lines
+                log_lines = log_lines[num_lines:]
+            else:
+                # Head: first N lines
+                log_lines = log_lines[:num_lines]
+            log_content = '\n'.join(log_lines)
+        except ValueError:
+            pass
+
+    # Return format
+    output_format = request.args.get('format', 'text')
+    if output_format == 'json':
+        return jsonify({
+            'job_id': job_id,
+            'status': job.get('status'),
+            'log_file': log_file,
+            'log': log_content,
+            'lines': len(log_content.splitlines())
+        })
+    else:
+        return log_content, 200, {'Content-Type': 'text/plain'}
+
+
+@app.route('/api/jobs/pending', methods=['GET'])
+def api_get_pending_jobs():
+    """
+    Get pending jobs awaiting assignment.
+
+    Used by workers to poll for available jobs.
+    Returns jobs sorted by priority (highest first).
+    """
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+
+    jobs = storage_backend.get_pending_jobs()
+    return jsonify({'jobs': jobs})
+
+
+@app.route('/api/jobs/<job_id>/assign', methods=['POST'])
+def api_assign_job(job_id):
+    """
+    Assign a job to a worker.
+
+    Expected JSON body:
+    {
+        "worker_id": "worker-uuid"
+    }
+
+    This is typically called by the job router, not directly by workers.
+    """
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+
+    data = request.get_json() or {}
+    worker_id = data.get('worker_id')
+
+    if not worker_id:
+        return jsonify({'error': 'worker_id is required'}), 400
+
+    # Verify worker exists
+    worker = storage_backend.get_worker(worker_id)
+    if not worker:
+        return jsonify({'error': 'Worker not found'}), 404
+
+    # Verify worker is available
+    worker_status = worker.get('status', '')
+    if worker_status not in ('online', 'busy'):
+        return jsonify({
+            'error': f'Worker not available (status: {worker_status})'
+        }), 400
+
+    # Get and verify job
+    job = storage_backend.get_job(job_id)
+    if not job:
+        return jsonify({'error': 'Job not found'}), 404
+
+    if job.get('status') != 'queued':
+        return jsonify({
+            'error': f'Job cannot be assigned (status: {job.get("status")})'
+        }), 400
+
+    # Assign the job
+    updates = {
+        'status': 'assigned',
+        'assigned_worker': worker_id,
+        'assigned_at': datetime.now().isoformat()
+    }
+
+    if not storage_backend.update_job(job_id, updates):
+        return jsonify({'error': 'Failed to assign job'}), 500
+
+    return jsonify({
+        'job_id': job_id,
+        'worker_id': worker_id,
+        'status': 'assigned',
+        'message': 'Job assigned successfully'
+    })
+
+
+@app.route('/api/jobs/<job_id>/start', methods=['POST'])
+def api_start_job(job_id):
+    """
+    Mark a job as started (called by worker when execution begins).
+
+    Expected JSON body:
+    {
+        "worker_id": "worker-uuid",
+        "log_file": "job-uuid-2024-01-01.log"  // Optional
+    }
+    """
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+
+    data = request.get_json() or {}
+    worker_id = data.get('worker_id')
+
+    if not worker_id:
+        return jsonify({'error': 'worker_id is required'}), 400
+
+    job = storage_backend.get_job(job_id)
+    if not job:
+        return jsonify({'error': 'Job not found'}), 404
+
+    if job.get('assigned_worker') != worker_id:
+        return jsonify({'error': 'Job not assigned to this worker'}), 403
+
+    if job.get('status') not in ('assigned', 'running'):
+        return jsonify({
+            'error': f'Job cannot be started (status: {job.get("status")})'
+        }), 400
+
+    updates = {
+        'status': 'running',
+        'started_at': datetime.now().isoformat()
+    }
+
+    if data.get('log_file'):
+        updates['log_file'] = data['log_file']
+
+    if not storage_backend.update_job(job_id, updates):
+        return jsonify({'error': 'Failed to update job'}), 500
+
+    return jsonify({
+        'job_id': job_id,
+        'status': 'running',
+        'message': 'Job started'
+    })
+
+
+@app.route('/api/jobs/<job_id>/complete', methods=['POST'])
+def api_complete_job(job_id):
+    """
+    Mark a job as completed (called by worker when execution finishes).
+
+    Expected JSON body:
+    {
+        "worker_id": "worker-uuid",
+        "exit_code": 0,
+        "log_file": "job-uuid-2024-01-01.log",
+        "error_message": null  // Optional: error details if failed
+    }
+    """
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+
+    data = request.get_json() or {}
+    worker_id = data.get('worker_id')
+
+    if not worker_id:
+        return jsonify({'error': 'worker_id is required'}), 400
+
+    job = storage_backend.get_job(job_id)
+    if not job:
+        return jsonify({'error': 'Job not found'}), 404
+
+    if job.get('assigned_worker') != worker_id:
+        return jsonify({'error': 'Job not assigned to this worker'}), 403
+
+    exit_code = data.get('exit_code', 0)
+    status = 'completed' if exit_code == 0 else 'failed'
+
+    updates = {
+        'status': status,
+        'exit_code': exit_code,
+        'completed_at': datetime.now().isoformat()
+    }
+
+    if data.get('log_file'):
+        updates['log_file'] = data['log_file']
+
+    if data.get('error_message'):
+        updates['error_message'] = data['error_message']
+
+    if not storage_backend.update_job(job_id, updates):
+        return jsonify({'error': 'Failed to update job'}), 500
+
+    return jsonify({
+        'job_id': job_id,
+        'status': status,
+        'exit_code': exit_code,
+        'message': f'Job {status}'
+    })
+
+
+# =============================================================================
 # Content Sync API (Cluster Support)
 # =============================================================================
 

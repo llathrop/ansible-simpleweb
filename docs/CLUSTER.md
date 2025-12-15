@@ -277,7 +277,7 @@ SYNC_INTERVAL=300                  # Content sync check interval
 - [ ] Feature 9: Worker Check-in System
 
 ### Job Management
-- [ ] Feature 6: Job Submission & Queue API
+- [x] Feature 6: Job Submission & Queue API
 - [ ] Feature 7: Job Priority & Assignment
 - [ ] Feature 10: Job Completion & Results
 

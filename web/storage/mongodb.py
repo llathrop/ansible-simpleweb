@@ -772,7 +772,14 @@ class MongoDBStorage(StorageBackend):
     def get_all_jobs(self, filters: Dict = None) -> List[Dict]:
         """Get all jobs from the queue, optionally filtered."""
         try:
-            query = filters if filters else {}
+            query = {}
+            if filters:
+                for key, value in filters.items():
+                    # Convert list filters to MongoDB $in queries
+                    if isinstance(value, list):
+                        query[key] = {'$in': value}
+                    else:
+                        query[key] = value
             jobs = []
             cursor = self.job_queue_collection.find(query).sort('submitted_at', DESCENDING)
             for doc in cursor:

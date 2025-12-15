@@ -827,7 +827,13 @@ class FlatFileStorage(StorageBackend):
                 for job in jobs:
                     match = True
                     for key, value in filters.items():
-                        if job.get(key) != value:
+                        job_value = job.get(key)
+                        # Support list-based filtering (e.g., status: ['queued', 'running'])
+                        if isinstance(value, list):
+                            if job_value not in value:
+                                match = False
+                                break
+                        elif job_value != value:
                             match = False
                             break
                     if match:
