@@ -2947,6 +2947,254 @@ def api_cluster_status():
     })
 
 
+# =============================================================================
+# Content Sync API (Cluster Support)
+# =============================================================================
+
+@app.route('/api/sync/status', methods=['GET'])
+def api_sync_status():
+    """
+    Get content repository status.
+
+    Returns:
+    {
+        "initialized": true,
+        "revision": "abc123...",
+        "short_revision": "abc123",
+        "has_uncommitted_changes": false,
+        "tracked_files": 15,
+        "tracked_dirs": ["playbooks", "inventory", ...]
+    }
+    """
+    repo = get_content_repo(CONTENT_DIR)
+
+    if not repo.is_initialized():
+        return jsonify({
+            'initialized': False,
+            'error': 'Content repository not initialized'
+        })
+
+    return jsonify(repo.get_status())
+
+
+@app.route('/api/sync/revision', methods=['GET'])
+def api_sync_revision():
+    """
+    Get current content revision (HEAD SHA).
+
+    Used by workers to check if they need to sync.
+
+    Returns:
+    {
+        "revision": "abc123def456...",
+        "short_revision": "abc123"
+    }
+    """
+    repo = get_content_repo(CONTENT_DIR)
+
+    if not repo.is_initialized():
+        return jsonify({'error': 'Content repository not initialized'}), 500
+
+    revision = repo.get_current_revision()
+    return jsonify({
+        'revision': revision,
+        'short_revision': revision[:7] if revision else None
+    })
+
+
+@app.route('/api/sync/manifest', methods=['GET'])
+def api_sync_manifest():
+    """
+    Get file manifest with checksums.
+
+    Used by workers to verify sync state and identify changed files.
+
+    Returns:
+    {
+        "revision": "abc123...",
+        "files": {
+            "playbooks/test.yml": {
+                "size": 1234,
+                "sha256": "...",
+                "mtime": "2024-01-01T12:00:00"
+            },
+            ...
+        }
+    }
+    """
+    repo = get_content_repo(CONTENT_DIR)
+
+    if not repo.is_initialized():
+        return jsonify({'error': 'Content repository not initialized'}), 500
+
+    return jsonify({
+        'revision': repo.get_current_revision(),
+        'files': repo.get_file_manifest()
+    })
+
+
+@app.route('/api/sync/archive', methods=['GET'])
+def api_sync_archive():
+    """
+    Download content archive (tar.gz).
+
+    Used by workers for initial sync or full re-sync.
+
+    Returns:
+        tar.gz file of all tracked content
+    """
+    repo = get_content_repo(CONTENT_DIR)
+
+    if not repo.is_initialized():
+        return jsonify({'error': 'Content repository not initialized'}), 500
+
+    archive_path = repo.create_archive()
+    if not archive_path:
+        return jsonify({'error': 'Failed to create archive'}), 500
+
+    try:
+        return send_file(
+            archive_path,
+            mimetype='application/gzip',
+            as_attachment=True,
+            download_name=f'ansible-content-{repo.get_short_revision()}.tar.gz'
+        )
+    finally:
+        # Clean up temp archive after sending
+        if os.path.exists(archive_path):
+            os.remove(archive_path)
+
+
+@app.route('/api/sync/file/<path:filepath>', methods=['GET'])
+def api_sync_file(filepath):
+    """
+    Download a single file from the content repository.
+
+    Used by workers for incremental sync of changed files.
+
+    Args:
+        filepath: Relative path within content dir (e.g., "playbooks/test.yml")
+
+    Returns:
+        File content with appropriate mime type
+    """
+    repo = get_content_repo(CONTENT_DIR)
+
+    if not repo.is_initialized():
+        return jsonify({'error': 'Content repository not initialized'}), 500
+
+    # Security: Validate path is within tracked directories
+    allowed_prefixes = repo.TRACKED_DIRS + repo.TRACKED_FILES
+    path_ok = False
+    for prefix in allowed_prefixes:
+        if filepath == prefix or filepath.startswith(prefix + '/'):
+            path_ok = True
+            break
+
+    if not path_ok:
+        return jsonify({'error': 'File not in tracked content'}), 403
+
+    # Resolve full path and check for traversal attacks
+    full_path = os.path.normpath(os.path.join(CONTENT_DIR, filepath))
+    if not full_path.startswith(os.path.normpath(CONTENT_DIR)):
+        return jsonify({'error': 'Invalid path'}), 403
+
+    if not os.path.isfile(full_path):
+        return jsonify({'error': 'File not found'}), 404
+
+    # Determine mime type
+    if filepath.endswith('.yml') or filepath.endswith('.yaml'):
+        mimetype = 'text/yaml'
+    elif filepath.endswith('.py'):
+        mimetype = 'text/x-python'
+    elif filepath.endswith('.cfg') or filepath.endswith('.ini'):
+        mimetype = 'text/plain'
+    else:
+        mimetype = 'application/octet-stream'
+
+    return send_file(full_path, mimetype=mimetype)
+
+
+@app.route('/api/sync/history', methods=['GET'])
+def api_sync_history():
+    """
+    Get content commit history.
+
+    Query parameters:
+    - limit: Maximum number of entries (default 10)
+
+    Returns:
+    {
+        "commits": [
+            {
+                "sha": "abc123...",
+                "message": "Updated playbook",
+                "date": "2024-01-01 12:00:00 +0000",
+                "author": "Ansible SimpleWeb"
+            },
+            ...
+        ]
+    }
+    """
+    repo = get_content_repo(CONTENT_DIR)
+
+    if not repo.is_initialized():
+        return jsonify({'error': 'Content repository not initialized'}), 500
+
+    limit = request.args.get('limit', 10, type=int)
+    commits = repo.get_commit_log(limit=limit)
+
+    return jsonify({'commits': commits})
+
+
+@app.route('/api/sync/commit', methods=['POST'])
+def api_sync_commit():
+    """
+    Manually commit current content state.
+
+    Used to explicitly commit after file uploads/changes.
+
+    Request body (optional):
+    {
+        "message": "Custom commit message"
+    }
+
+    Returns:
+    {
+        "revision": "abc123...",
+        "message": "Content committed successfully"
+    }
+    """
+    repo = get_content_repo(CONTENT_DIR)
+
+    if not repo.is_initialized():
+        return jsonify({'error': 'Content repository not initialized'}), 500
+
+    data = request.get_json() or {}
+    message = data.get('message')
+
+    if not repo.has_changes():
+        return jsonify({
+            'revision': repo.get_current_revision(),
+            'message': 'No changes to commit'
+        })
+
+    new_revision = repo.commit_changes(message)
+    if not new_revision:
+        return jsonify({'error': 'Failed to commit changes'}), 500
+
+    # Notify workers of new content
+    socketio.emit('sync_available', {
+        'revision': new_revision,
+        'short_revision': new_revision[:7]
+    }, room='workers')
+
+    return jsonify({
+        'revision': new_revision,
+        'message': 'Content committed successfully'
+    })
+
+
 # WebSocket handlers for cluster events
 @socketio.on('join_workers')
 def handle_join_workers():
