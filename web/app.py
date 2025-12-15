@@ -2898,6 +2898,16 @@ def api_worker_checkin(worker_id):
     })
 
 
+# =============================================================================
+# Cluster Dashboard Routes
+# =============================================================================
+
+@app.route('/cluster')
+def cluster_page():
+    """Cluster dashboard page showing workers, jobs, and sync status."""
+    return render_template('cluster.html')
+
+
 @app.route('/api/cluster/status', methods=['GET'])
 def api_cluster_status():
     """
@@ -2949,11 +2959,19 @@ def api_cluster_status():
         'checkin_interval': CHECKIN_INTERVAL,
         'workers': {
             'total': len(workers),
+            'online': worker_counts.get('online', 0),
+            'offline': worker_counts.get('offline', 0),
+            'busy': worker_counts.get('busy', 0),
             'by_status': worker_counts,
             'stale': stale_workers
         },
         'jobs': {
             'total': len(jobs),
+            'queued': job_counts.get('queued', 0),
+            'assigned': job_counts.get('assigned', 0),
+            'running': job_counts.get('running', 0),
+            'completed': job_counts.get('completed', 0),
+            'failed': job_counts.get('failed', 0),
             'by_status': job_counts
         }
     })

@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cluster Dashboard - Ansible Web Interface</title>
+    <link rel="stylesheet" href="/static/css/base.css">
+    <script>
+        // Immediately apply cached theme
+        (function() {
+            try {
+                var cached = localStorage.getItem('ansible-web-theme-vars');
+                if (cached) {
+                    var vars = JSON.parse(cached);
+                    var root = document.documentElement;
+                    for (var key in vars) {
+                        if (vars[key]) root.style.setProperty(key, vars[key]);
+                    }
+                }
+            } catch (e) {}
+        })();
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.0/socket.io.min.js"></script>
+    <script src="/static/js/theme.js"></script>
+    <style>
+        body { padding: 20px; }
+
+        .cluster-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: var(--card-bg, #1e1e1e);
+            border: 1px solid var(--border-color, #333);
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+        }
+
+        .stat-card .stat-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: var(--accent-color, #4a9eff);
+        }
+
+        .stat-card .stat-label {
+            font-size: 0.9em;
+            color: var(--muted-color, #888);
+            margin-top: 5px;
+        }
+
+        .stat-card.workers .stat-value { color: #4a9eff; }
+        .stat-card.online .stat-value { color: #4caf50; }
+        .stat-card.busy .stat-value { color: #ff9800; }
+        .stat-card.jobs .stat-value { color: #9c27b0; }
+        .stat-card.queued .stat-value { color: #2196f3; }
+        .stat-card.running .stat-value { color: #ff9800; }
+
+        .section {
+            background: var(--card-bg, #1e1e1e);
+            border: 1px solid var(--border-color, #333);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .section h2 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            border-bottom: 1px solid var(--border-color, #333);
+            padding-bottom: 10px;
+        }
+
+        .worker-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 15px;
+        }
+
+        .worker-card {
+            background: var(--bg-color, #121212);
+            border: 1px solid var(--border-color, #333);
+            border-radius: 6px;
+            padding: 15px;
+        }
+
+        .worker-card.online { border-left: 4px solid #4caf50; }
+        .worker-card.busy { border-left: 4px solid #ff9800; }
+        .worker-card.offline { border-left: 4px solid #f44336; }
+        .worker-card.stale { border-left: 4px solid #9e9e9e; }
+        .worker-card.local { border-left: 4px solid #9c27b0; }
+
+        .worker-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .worker-name {
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+
+        .worker-status {
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            text-transform: uppercase;
+        }
+
+        .worker-status.online { background: #4caf50; color: white; }
+        .worker-status.busy { background: #ff9800; color: white; }
+        .worker-status.offline { background: #f44336; color: white; }
+        .worker-status.stale { background: #9e9e9e; color: white; }
+
+        .worker-details {
+            font-size: 0.9em;
+            color: var(--muted-color, #888);
+        }
+
+        .worker-details div {
+            margin: 5px 0;
+        }
+
+        .worker-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-top: 10px;
+        }
+
+        .tag {
+            background: var(--accent-color, #4a9eff);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 0.8em;
+        }
+
+        .tag.local { background: #9c27b0; }
+
+        .job-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .job-table th, .job-table td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color, #333);
+        }
+
+        .job-table th {
+            background: var(--bg-color, #121212);
+            font-weight: bold;
+        }
+
+        .job-status {
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+        }
+
+        .job-status.queued { background: #2196f3; color: white; }
+        .job-status.assigned { background: #00bcd4; color: white; }
+        .job-status.running { background: #ff9800; color: white; }
+        .job-status.completed { background: #4caf50; color: white; }
+        .job-status.failed { background: #f44336; color: white; }
+
+        .sync-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .sync-item {
+            padding: 10px;
+            background: var(--bg-color, #121212);
+            border-radius: 4px;
+        }
+
+        .sync-item .label {
+            font-size: 0.9em;
+            color: var(--muted-color, #888);
+        }
+
+        .sync-item .value {
+            font-size: 1.1em;
+            font-family: monospace;
+            margin-top: 5px;
+        }
+
+        .empty-message {
+            color: var(--muted-color, #888);
+            font-style: italic;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .refresh-btn {
+            background: var(--accent-color, #4a9eff);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-left: 10px;
+        }
+
+        .refresh-btn:hover {
+            opacity: 0.9;
+        }
+
+        .last-updated {
+            color: var(--muted-color, #888);
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Cluster Dashboard</h1>
+        <p class="subtitle">Monitor workers, jobs, and sync status</p>
+
+        <div class="nav-links">
+            <a href="/">Batch Execution</a>
+            <a href="/playbooks">Playbooks</a>
+            <a href="/schedules">Schedules</a>
+            <a href="/cmdb">CMDB</a>
+            <a href="/inventory">Inventory</a>
+            <a href="/storage">Storage</a>
+            <a href="/logs">All Logs</a>
+            <a href="/cluster" style="font-weight: bold;">Cluster</a>
+            <span class="connection-indicator">
+                <span class="connection-dot" id="connectionDot"></span>
+                <span id="connectionText">Connecting...</span>
+            </span>
+        </div>
+
+        <!-- Cluster Statistics -->
+        <div class="cluster-stats" id="clusterStats">
+            <div class="stat-card workers">
+                <div class="stat-value" id="totalWorkers">-</div>
+                <div class="stat-label">Total Workers</div>
+            </div>
+            <div class="stat-card online">
+                <div class="stat-value" id="onlineWorkers">-</div>
+                <div class="stat-label">Online</div>
+            </div>
+            <div class="stat-card busy">
+                <div class="stat-value" id="busyWorkers">-</div>
+                <div class="stat-label">Busy</div>
+            </div>
+            <div class="stat-card jobs">
+                <div class="stat-value" id="totalJobs">-</div>
+                <div class="stat-label">Total Jobs</div>
+            </div>
+            <div class="stat-card queued">
+                <div class="stat-value" id="queuedJobs">-</div>
+                <div class="stat-label">Queued</div>
+            </div>
+            <div class="stat-card running">
+                <div class="stat-value" id="runningJobs">-</div>
+                <div class="stat-label">Running</div>
+            </div>
+        </div>
+
+        <!-- Workers Section -->
+        <div class="section">
+            <h2>
+                Workers
+                <button class="refresh-btn" onclick="refreshData()">Refresh</button>
+                <span class="last-updated" id="lastUpdated"></span>
+            </h2>
+            <div class="worker-grid" id="workerGrid">
+                <div class="empty-message">Loading workers...</div>
+            </div>
+        </div>
+
+        <!-- Job Queue Section -->
+        <div class="section">
+            <h2>Job Queue</h2>
+            <table class="job-table">
+                <thead>
+                    <tr>
+                        <th>Job ID</th>
+                        <th>Playbook</th>
+                        <th>Target</th>
+                        <th>Status</th>
+                        <th>Worker</th>
+                        <th>Submitted</th>
+                    </tr>
+                </thead>
+                <tbody id="jobTableBody">
+                    <tr><td colspan="6" class="empty-message">Loading jobs...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Sync Status Section -->
+        <div class="section">
+            <h2>Sync Status</h2>
+            <div class="sync-info" id="syncInfo">
+                <div class="sync-item">
+                    <div class="label">Current Revision</div>
+                    <div class="value" id="syncRevision">-</div>
+                </div>
+                <div class="sync-item">
+                    <div class="label">Repository Status</div>
+                    <div class="value" id="syncStatus">-</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let lastUpdate = null;
+
+        // Connection status
+        socket.on('connect', function() {
+            document.getElementById('connectionDot').classList.add('connected');
+            document.getElementById('connectionText').textContent = 'Connected';
+            socket.emit('join_workers');
+            refreshData();
+        });
+
+        socket.on('disconnect', function() {
+            document.getElementById('connectionDot').classList.remove('connected');
+            document.getElementById('connectionText').textContent = 'Disconnected';
+        });
+
+        // Real-time updates
+        socket.on('worker_registered', function(data) {
+            console.log('Worker registered:', data);
+            refreshData();
+        });
+
+        socket.on('worker_checkin', function(data) {
+            console.log('Worker checkin:', data);
+            refreshData();
+        });
+
+        socket.on('job_queued', function(data) {
+            console.log('Job queued:', data);
+            refreshData();
+        });
+
+        socket.on('job_started', function(data) {
+            console.log('Job started:', data);
+            refreshData();
+        });
+
+        socket.on('job_completed', function(data) {
+            console.log('Job completed:', data);
+            refreshData();
+        });
+
+        socket.on('sync_available', function(data) {
+            console.log('Sync available:', data);
+            document.getElementById('syncRevision').textContent = data.short_revision || data.revision || '-';
+        });
+
+        function refreshData() {
+            fetchClusterStatus();
+            fetchWorkers();
+            fetchJobs();
+            fetchSyncStatus();
+            lastUpdate = new Date();
+            document.getElementById('lastUpdated').textContent = 'Updated: ' + lastUpdate.toLocaleTimeString();
+        }
+
+        function fetchClusterStatus() {
+            fetch('/api/cluster/status')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('totalWorkers').textContent = data.workers?.total || 0;
+                    document.getElementById('onlineWorkers').textContent = data.workers?.online || 0;
+                    document.getElementById('busyWorkers').textContent = data.workers?.busy || 0;
+                    document.getElementById('totalJobs').textContent = data.jobs?.total || 0;
+                    document.getElementById('queuedJobs').textContent = data.jobs?.queued || 0;
+                    document.getElementById('runningJobs').textContent = data.jobs?.running || 0;
+                })
+                .catch(err => console.error('Error fetching cluster status:', err));
+        }
+
+        function fetchWorkers() {
+            fetch('/api/workers')
+                .then(response => response.json())
+                .then(data => {
+                    const workers = data.workers || data || [];
+                    const grid = document.getElementById('workerGrid');
+
+                    if (workers.length === 0) {
+                        grid.innerHTML = '<div class="empty-message">No workers registered</div>';
+                        return;
+                    }
+
+                    grid.innerHTML = workers.map(worker => {
+                        const isLocal = worker.is_local || worker.id === '__local__';
+                        const statusClass = isLocal ? 'local' : (worker.status || 'offline');
+                        const tags = worker.tags || [];
+                        const stats = worker.stats || worker.system_stats || {};
+
+                        return `
+                            <div class="worker-card ${statusClass}">
+                                <div class="worker-header">
+                                    <span class="worker-name">${worker.name || worker.id}</span>
+                                    <span class="worker-status ${worker.status || 'offline'}">${worker.status || 'offline'}</span>
+                                </div>
+                                <div class="worker-details">
+                                    <div>ID: <code>${worker.id}</code></div>
+                                    ${isLocal ? '<div><em>Local Executor (lowest priority)</em></div>' : ''}
+                                    ${stats.load_1m !== undefined ? `<div>Load: ${stats.load_1m.toFixed(2)}</div>` : ''}
+                                    ${stats.memory_percent !== undefined ? `<div>Memory: ${stats.memory_percent.toFixed(1)}%</div>` : ''}
+                                    ${worker.last_checkin ? `<div>Last checkin: ${formatTime(worker.last_checkin)}</div>` : ''}
+                                    ${stats.jobs_completed !== undefined ? `<div>Jobs: ${stats.jobs_completed} completed, ${stats.jobs_failed || 0} failed</div>` : ''}
+                                </div>
+                                <div class="worker-tags">
+                                    ${isLocal ? '<span class="tag local">local</span>' : ''}
+                                    ${tags.map(t => `<span class="tag">${t}</span>`).join('')}
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                })
+                .catch(err => {
+                    console.error('Error fetching workers:', err);
+                    document.getElementById('workerGrid').innerHTML = '<div class="empty-message">Error loading workers</div>';
+                });
+        }
+
+        function fetchJobs() {
+            fetch('/api/jobs?limit=20')
+                .then(response => response.json())
+                .then(data => {
+                    const jobs = data.jobs || data || [];
+                    const tbody = document.getElementById('jobTableBody');
+
+                    if (jobs.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="6" class="empty-message">No jobs in queue</td></tr>';
+                        return;
+                    }
+
+                    // Sort by status priority and then by time
+                    const statusPriority = {running: 0, assigned: 1, queued: 2, completed: 3, failed: 4};
+                    jobs.sort((a, b) => {
+                        const pa = statusPriority[a.status] ?? 5;
+                        const pb = statusPriority[b.status] ?? 5;
+                        if (pa !== pb) return pa - pb;
+                        return new Date(b.submitted_at || 0) - new Date(a.submitted_at || 0);
+                    });
+
+                    tbody.innerHTML = jobs.slice(0, 20).map(job => `
+                        <tr>
+                            <td><code>${(job.id || '').substring(0, 8)}</code></td>
+                            <td>${job.playbook || '-'}</td>
+                            <td>${job.target || 'all'}</td>
+                            <td><span class="job-status ${job.status || ''}">${job.status || '-'}</span></td>
+                            <td>${job.assigned_worker ? (job.assigned_worker === '__local__' ? '<em>local</em>' : job.assigned_worker.substring(0, 8)) : '-'}</td>
+                            <td>${job.submitted_at ? formatTime(job.submitted_at) : '-'}</td>
+                        </tr>
+                    `).join('');
+                })
+                .catch(err => {
+                    console.error('Error fetching jobs:', err);
+                    document.getElementById('jobTableBody').innerHTML = '<tr><td colspan="6" class="empty-message">Error loading jobs</td></tr>';
+                });
+        }
+
+        function fetchSyncStatus() {
+            fetch('/api/sync/status')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('syncRevision').textContent = data.short_revision || data.revision || '-';
+                    document.getElementById('syncStatus').textContent = data.initialized ? 'Initialized' : 'Not initialized';
+                })
+                .catch(err => {
+                    console.error('Error fetching sync status:', err);
+                    document.getElementById('syncStatus').textContent = 'Error';
+                });
+        }
+
+        function formatTime(isoString) {
+            if (!isoString) return '-';
+            try {
+                const date = new Date(isoString);
+                const now = new Date();
+                const diffMs = now - date;
+                const diffMins = Math.floor(diffMs / 60000);
+
+                if (diffMins < 1) return 'just now';
+                if (diffMins < 60) return `${diffMins}m ago`;
+                if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
+                return date.toLocaleDateString();
+            } catch (e) {
+                return isoString.substring(0, 19);
+            }
+        }
+
+        // Initial load
+        refreshData();
+
+        // Auto-refresh every 30 seconds
+        setInterval(refreshData, 30000);
+    </script>
+</body>
+</html>
