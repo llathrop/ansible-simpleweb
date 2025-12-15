@@ -341,6 +341,7 @@ SYNC_INTERVAL=300                  # Content sync check interval
 - [x] Feature 11: Sync Notification System
 - [x] Feature 12: Local Executor as Lowest-Priority Worker
 - [x] Feature 13: Cluster UI Dashboard
+- [x] Feature 14: Batch Log Streaming
 
 ## Feature Details
 
@@ -422,8 +423,9 @@ Automatic job routing based on:
 Worker-side job handling:
 - Poll for assigned jobs
 - Execute via ansible-playbook
-- Capture logs and exit codes
-- Report completion to primary
+- Stream logs in real-time to primary via `/api/jobs/{id}/log/stream`
+- Worker name included in log headers for identification
+- Report completion to primary with full log upload
 
 ### Feature 9: Worker Check-in System
 
@@ -465,3 +467,12 @@ Web interface additions:
 - Job queue visualization
 - Sync status display
 - Real-time WebSocket updates
+
+### Feature 14: Batch Log Streaming
+
+Real-time log streaming for batch jobs:
+- Workers stream logs during execution to primary
+- Primary broadcasts to connected clients via WebSocket
+- Late-joining clients receive log catchup for completed/running playbooks
+- Worker name displayed in log headers: "Worker: {name} ({id})"
+- Partial log files stored during execution, final logs on completion
