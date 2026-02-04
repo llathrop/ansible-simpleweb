@@ -1,0 +1,78 @@
+---
+# Collect statistics for MikroTik RouterOS devices
+- name: Collect MikroTik RouterOS Statistics
+  hosts: routers
+  gather_facts: no
+  tasks:
+    - name: Get MikroTik system information
+      community.routeros.command:
+        commands:
+          - /system resource print
+          - /interface print stats
+          - /system health print
+          - /ip route print count-only
+          - /interface bridge host print count-only
+      register: routeros_stats
+
+    - name: Get wireless statistics if applicable
+      community.routeros.command:
+        commands:
+          - /interface wireless print
+          - /interface wireless registration-table print
+      register: wireless_stats
+      ignore_errors: yes
+
+    - name: Parse system resources
+      set_fact:
+        cpu_usage: "{{ routeros_stats.stdout[0] | regex_search('cpu-load: (\\d+)%', '\\1') | first | default('0') }}"
+        memory_usage: "{{ (routeros_stats.stdout[0] | regex_search('free-memory: ([0-9.]+)([KMG]iB)', '\\1') | first | float / routeros_stats.stdout[0] | regex_search('total-memory: ([0-9.]+)([KMG]iB)', '\\1') | first | float * 100) | round(2) if routeros_stats.stdout[0] | regex_search('free-memory: ([0-9.]+)([KMG]iB)') else 'N/A' }}"
+
+    - name: Parse interface statistics  
+      set_fact:
+        interface_stats_raw: "{{ routeros_stats.stdout[1] }}"
+        interface_count: "{{ routeros_stats.stdout[1] | regex_findall('\\d+\\s+R') | length }}"
+
+    - name: Calculate traffic totals
+      set_fact:
+        total_rx_bytes: "{{ routeros_stats.stdout[1] | regex_findall('rx-byte=([0-9]+)') | map('int') | sum }}"
+        total_tx_bytes: "{{ routeros_stats.stdout[1] | regex_findall('tx-byte=([0-9]+)') | map('int') | sum }}"
+        total_errors: "{{ routeros_stats.stdout[1] | regex_findall('rx-error=([0-9]+)') | map('int') | sum + routeros_stats.stdout[1] | regex_findall('tx-error=([0-9]+)') | map('int') | sum }}"
+        total_drops: "{{ routeros_stats.stdout[1] | regex_findall('rx-drop=([0-9]+)') | map('int') | sum + routeros_stats.stdout[1] | regex_findall('tx-drop=([0-9]+)') | map('int') | sum }}"
+
+    - name: Set device info
+      set_fact:
+        device_info:
+          hostname: "{{ inventory_hostname }}"
+          version: "{{ routeros_stats.stdout[0] | regex_search('version: ([^\\n]+)', '\\1') | first | default('Unknown') }}"
+          uptime: "{{ routeros_stats.stdout[0] | regex_search('uptime: ([^\\n]+)', '\\1') | first | default('Unknown') }}"
+          architecture: "{{ routeros_stats.stdout[0] | regex_search('architecture-name: ([^\\n]+)', '\\1') | first | default('Unknown') }}"
+
+    - name: Set system stats
+      set_fact:
+        system_stats:
+          cpu_usage: "{{ cpu_usage }}%"
+          memory_usage: "{{ memory_usage }}%"
+          total_routes: "{{ routeros_stats.stdout[3] | regex_search('(\\d+)', '\\1') | first | default('0') }}"
+          bridge_hosts: "{{ routeros_stats.stdout[4] | regex_search('(\\d+)', '\\1') | first | default('0') }}"
+
+    - name: Set network performance stats
+      set_fact:
+        network_performance:
+          total_interfaces: "{{ interface_count }}"
+          total_rx_bytes: "{{ total_rx_bytes }}"
+          total_tx_bytes: "{{ total_tx_bytes }}"
+          total_errors: "{{ total_errors }}"
+          total_drops: "{{ total_drops }}"
+
+    - name: Set wireless stats if available
+      set_fact:
+        additional_metrics:
+          wireless_interfaces: "{{ wireless_stats.stdout[0] | regex_findall('\\d+\\s+R') | length if wireless_stats.stdout is defined else 0 }}"
+          wireless_clients: "{{ wireless_stats.stdout[1] | regex_findall('\\d+\\s') | length if wireless_stats.stdout is defined and wireless_stats.stdout | length > 1 else 0 }}"
+      when: wireless_stats.stdout is defined
+
+    - name: Display Stats
+      debug:
+        msg: 
+          - "System Stats: {{ system_stats }}"
+          - "Network Stats: {{ network_performance }}"

@@ -1,0 +1,19 @@
+---
+# Get configuration for MikroTik RouterOS devices
+- name: Get MikroTik RouterOS export configuration
+  hosts: routers
+  gather_facts: no
+  tasks:
+    - name: Get MikroTik RouterOS export configuration
+      community.routeros.command:
+        commands:
+          - /export compact
+      register: routeros_config
+
+    - name: Set current_config variable
+      set_fact:
+        current_config: "{{ routeros_config.stdout[0] }}"
+
+    - name: Display config (first 500 chars)
+      debug:
+        msg: "{{ current_config[:500] }}..."

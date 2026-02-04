@@ -1,0 +1,36 @@
+---
+- name: MikroTik Router Health Check
+  hosts: routers
+  gather_facts: no
+  vars:
+    ansible_command_timeout: 30
+  tasks:
+    - name: Check system resources
+      community.routeros.command:
+        commands:
+          - /system resource print
+          - /interface print
+          - /system package print
+          - /ip address print
+          - /ip dns print
+          - /ip firewall connection print count-only
+          - /ip firewall filter print count-only
+      register: mikrotik_data
+
+    - name: Parse and Display Report
+      set_fact:
+        mikrotik_report:
+          hostname: "{{ inventory_hostname }}"
+          timestamp: "{{ ansible_date_time.iso8601 | default(now(fmt='%Y-%m-%dT%H:%M:%S')) }}"
+          system_resources: "{{ mikrotik_data.stdout[0] }}"
+          interfaces: "{{ mikrotik_data.stdout[1] }}"
+          packages: "{{ mikrotik_data.stdout[2] }}"
+          ip_addresses: "{{ mikrotik_data.stdout[3] }}"
+          dns_settings: "{{ mikrotik_data.stdout[4] }}"
+          connection_count: "{{ mikrotik_data.stdout[5] }}"
+          firewall_rule_count: "{{ mikrotik_data.stdout[6] }}"
+
+    - name: Display MikroTik check results
+      debug:
+        var: mikrotik_report
+
