@@ -77,43 +77,52 @@ def get_inventory_targets():
     seen_hosts = set()  # Track hosts to avoid duplicates
     seen_groups = set()
 
-    # --- Source 1: Ansible INI inventory file ---
-    if os.path.exists(INVENTORY_FILE):
-        try:
-            with open(INVENTORY_FILE, 'r') as f:
-                current_group = None
-                for line in f:
-                    line = line.strip()
+    # --- Source 1: Ansible INI inventory directory ---
+    inventory_dir = os.path.dirname(INVENTORY_FILE)
+    if os.path.exists(inventory_dir):
+        inventory_files = glob.glob(os.path.join(inventory_dir, '*'))
+        for inv_file in inventory_files:
+            # Skip non-inventory files
+            if inv_file.endswith('.example') or inv_file.endswith('.sample') or inv_file.endswith('.md'):
+                continue
+            if os.path.isdir(inv_file):
+                continue
 
-                    # Skip empty lines and comments
-                    if not line or line.startswith('#'):
-                        continue
+            try:
+                with open(inv_file, 'r') as f:
+                    current_group = None
+                    for line in f:
+                        line = line.strip()
 
-                    # Group header [groupname]
-                    if line.startswith('[') and line.endswith(']'):
-                        group_name = line[1:-1]
-                        # Skip :children groups for now, just track regular groups
-                        if ':children' not in group_name and group_name not in seen_groups:
-                            current_group = group_name
-                            seen_groups.add(group_name)
-                            targets.append({
-                                'value': group_name,
-                                'label': f'{group_name} (group)',
-                                'type': 'group'
-                            })
-                    # Individual host line
-                    elif current_group and not line.startswith('['):
-                        # Extract hostname (first part before space)
-                        hostname = line.split()[0]
-                        if hostname and not hostname.startswith('#') and hostname not in seen_hosts:
-                            seen_hosts.add(hostname)
-                            targets.append({
-                                'value': hostname,
-                                'label': f'{hostname}',
-                                'type': 'host'
-                            })
-        except Exception as e:
-            print(f"Error parsing INI inventory: {e}")
+                        # Skip empty lines and comments
+                        if not line or line.startswith('#'):
+                            continue
+
+                        # Group header [groupname]
+                        if line.startswith('[') and line.endswith(']'):
+                            group_name = line[1:-1]
+                            # Skip :children groups for now, just track regular groups
+                            if ':children' not in group_name and group_name not in seen_groups:
+                                current_group = group_name
+                                seen_groups.add(group_name)
+                                targets.append({
+                                    'value': group_name,
+                                    'label': f'{group_name} (group)',
+                                    'type': 'group'
+                                })
+                        # Individual host line
+                        elif current_group and not line.startswith('['):
+                            # Extract hostname (first part before space)
+                            hostname = line.split()[0]
+                            if hostname and not hostname.startswith('#') and hostname not in seen_hosts:
+                                seen_hosts.add(hostname)
+                                targets.append({
+                                    'value': hostname,
+                                    'label': f'{hostname}',
+                                    'type': 'host'
+                                })
+            except Exception as e:
+                print(f"Error parsing INI inventory file {inv_file}: {e}")
 
     # --- Source 2: Managed inventory from storage backend ---
     try:
@@ -251,45 +260,56 @@ def generate_batch_inventory(targets):
     hosts_data = {}
     groups_to_include = set()
 
-    # Parse the INI inventory file to get hosts and groups
+    # Parse the INI inventory files to get hosts and groups
     ini_hosts = {}  # {hostname: {'groups': [list], 'variables': {}}}
     ini_groups = {}  # {groupname: [list of hostnames]}
 
-    if os.path.exists(INVENTORY_FILE):
-        try:
-            with open(INVENTORY_FILE, 'r') as f:
-                current_group = None
-                for line in f:
-                    line = line.strip()
-                    if not line or line.startswith('#'):
-                        continue
+    inventory_dir = os.path.dirname(INVENTORY_FILE)
+    if os.path.exists(inventory_dir):
+        inventory_files = glob.glob(os.path.join(inventory_dir, '*'))
+        for inv_file in inventory_files:
+            # Skip non-inventory files
+            if inv_file.endswith('.example') or inv_file.endswith('.sample') or inv_file.endswith('.md'):
+                continue
+            if os.path.isdir(inv_file):
+                continue
+            
+            try:
+                with open(inv_file, 'r') as f:
+                    current_group = None
+                    for line in f:
+                        line = line.strip()
+                        if not line or line.startswith('#'):
+                            continue
 
-                    if line.startswith('[') and line.endswith(']'):
-                        group_name = line[1:-1]
-                        if ':children' not in group_name:
-                            current_group = group_name
-                            if current_group not in ini_groups:
-                                ini_groups[current_group] = []
-                    elif current_group and not line.startswith('['):
-                        parts = line.split()
-                        if parts:
-                            hostname = parts[0]
-                            # Parse variables from the line
-                            variables = {}
-                            for part in parts[1:]:
-                                if '=' in part:
-                                    key, value = part.split('=', 1)
-                                    # Remove quotes if present
-                                    value = value.strip('"\'')
-                                    variables[key] = value
+                        if line.startswith('[') and line.endswith(']'):
+                            group_name = line[1:-1]
+                            if ':children' not in group_name:
+                                current_group = group_name
+                                if current_group not in ini_groups:
+                                    ini_groups[current_group] = []
+                        elif current_group and not line.startswith('['):
+                            parts = line.split()
+                            if parts:
+                                hostname = parts[0]
+                                # Parse variables from the line
+                                variables = {}
+                                for part in parts[1:]:
+                                    if '=' in part:
+                                        key, value = part.split('=', 1)
+                                        # Remove quotes if present
+                                        value = value.strip('"\'')
+                                        variables[key] = value
 
-                            if hostname not in ini_hosts:
-                                ini_hosts[hostname] = {'groups': [], 'variables': variables}
-                            ini_hosts[hostname]['groups'].append(current_group)
+                                if hostname not in ini_hosts:
+                                    ini_hosts[hostname] = {'groups': [], 'variables': variables}
+                                if current_group not in ini_hosts[hostname]['groups']:
+                                    ini_hosts[hostname]['groups'].append(current_group)
 
-                            ini_groups[current_group].append(hostname)
-        except Exception as e:
-            print(f"Error parsing INI inventory: {e}")
+                                if hostname not in ini_groups[current_group]:
+                                    ini_groups[current_group].append(hostname)
+            except Exception as e:
+                print(f"Error parsing INI inventory file {inv_file}: {e}")
 
     # Get managed inventory
     managed_hosts = {}
