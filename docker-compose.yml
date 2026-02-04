@@ -79,6 +79,8 @@ services:
       # SSH keys for target authentication
       - ./ssh-keys:/app/ssh-keys:ro
       - ~/.ssh:/root/.ssh:ro
+      # Mount worker code for development
+      - ./worker:/app/worker
     # For host network mode, change SERVER_URL to http://localhost:3001
     depends_on:
       - ansible-web
@@ -105,6 +107,8 @@ services:
     volumes:
       - ./ssh-keys:/app/ssh-keys:ro
       - ~/.ssh:/root/.ssh:ro
+      # Mount worker code for development
+      - ./worker:/app/worker
     depends_on:
       - ansible-web
     restart: unless-stopped
@@ -127,6 +131,8 @@ services:
     volumes:
       - ./ssh-keys:/app/ssh-keys:ro
       - ~/.ssh:/root/.ssh:ro
+      # Mount worker code for development
+      - ./worker:/app/worker
     depends_on:
       - ansible-web
     restart: unless-stopped

@@ -21,7 +21,7 @@ RUN pip3 install --no-cache-dir ansible
 WORKDIR /app
 
 # Install Python dependencies for worker
-RUN pip3 install --no-cache-dir requests psutil python-socketio[client] websocket-client
+RUN pip3 install --no-cache-dir requests psutil python-socketio[client] websocket-client paramiko
 
 # Copy worker service
 COPY worker/ ./worker/
