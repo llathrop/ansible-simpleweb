@@ -149,7 +149,12 @@ class JobExecutor:
 
         # Resolve playbook path with extension handling
         playbook_path = self._resolve_playbook_path(playbook)
-        inventory_path = os.path.join(self.content_dir, 'inventory', 'hosts')
+        
+        # Use inventory directory instead of specific file to support multiple INI files
+        inventory_path = os.path.join(self.content_dir, 'inventory')
+        if not os.path.exists(inventory_path):
+             # Fallback to legacy path if directory structure is different
+             inventory_path = os.path.join(self.content_dir, 'inventory', 'hosts')
 
         cmd = [
             'ansible-playbook',
