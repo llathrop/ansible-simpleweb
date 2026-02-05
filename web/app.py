@@ -2035,6 +2035,256 @@ def api_theme(theme_name):
 
 
 # =============================================================================
+# Config API Endpoints
+# Application config (app_config.yaml): view, edit, backup, restore
+# =============================================================================
+
+@app.route('/api/config', methods=['GET'])
+def api_config_get():
+    """
+    Get current application configuration (from app_config.yaml or defaults).
+    """
+    try:
+        from config_manager import load_config, config_file_exists, get_config_path
+        cfg = load_config()
+        return jsonify({
+            'config': cfg,
+            'config_file_exists': config_file_exists(),
+            'config_path': get_config_path(),
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/config', methods=['PUT'])
+def api_config_put():
+    """
+    Update application configuration. Expects JSON body with config keys to merge.
+    Validates and writes to app_config.yaml.
+    """
+    try:
+        from config_manager import load_config, save_config, validate_config
+        data = request.get_json()
+        if not isinstance(data, dict):
+            return jsonify({'error': 'JSON body must be a dict'}), 400
+        current = load_config()
+        merged = {**current, **data}
+        success, err = save_config(merged)
+        if not success:
+            return jsonify({'error': err}), 400
+        return jsonify({'ok': True, 'message': 'Config saved'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/config/backup', methods=['GET'])
+def api_config_backup():
+    """
+    Return current config as a downloadable YAML file (config backup).
+    """
+    try:
+        from config_manager import load_config
+        import yaml
+        from io import BytesIO
+        cfg = load_config()
+        content = yaml.dump(cfg, default_flow_style=False, allow_unicode=True, sort_keys=False)
+        buf = BytesIO(content.encode('utf-8'))
+        return send_file(
+            buf,
+            as_attachment=True,
+            download_name=f'app_config_backup_{datetime.now().strftime("%Y%m%d_%H%M%S")}.yaml',
+            mimetype='application/x-yaml',
+        )
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/config/restore', methods=['POST'])
+def api_config_restore():
+    """
+    Restore config from uploaded YAML file. Expects multipart file or raw YAML body.
+    """
+    try:
+        from config_manager import save_config, validate_config
+        import yaml
+        content = None
+        if request.content_type and 'multipart/form-data' in request.content_type:
+            f = request.files.get('file')
+            if not f:
+                return jsonify({'error': 'No file in multipart request'}), 400
+            content = f.read().decode('utf-8')
+        else:
+            content = request.get_data(as_text=True)
+        if not content or not content.strip():
+            return jsonify({'error': 'No YAML content provided'}), 400
+        data = yaml.safe_load(content)
+        if not isinstance(data, dict):
+            return jsonify({'error': 'YAML must define a dict'}), 400
+        success, err = save_config(data)
+        if not success:
+            return jsonify({'error': err}), 400
+        return jsonify({'ok': True, 'message': 'Config restored'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# =============================================================================
+# Data backup/restore (schedules, inventory, history, etc. — separate from config)
+# =============================================================================
+
+# Data file names used by flatfile storage (relative to config_dir)
+FLATFILE_DATA_FILES = [
+    'schedules.json', 'schedule_history.json', 'inventory.json',
+    'host_facts.json', 'batch_jobs.json', 'workers.json', 'job_queue.json',
+]
+
+
+def _json_serial(obj):
+    """JSON serializer for objects not serializable by default (e.g. datetime)."""
+    if hasattr(obj, 'isoformat'):
+        return obj.isoformat()
+    raise TypeError(f'Object of type {type(obj).__name__} is not JSON serializable')
+
+
+@app.route('/api/data/backup', methods=['GET'])
+def api_data_backup():
+    """
+    Download a zip of data files. Flatfile: copies JSON files. MongoDB: exports collections to same JSON structure and zips (so backup panel works for DB too).
+    """
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+    try:
+        from io import BytesIO
+        import zipfile
+        import json as json_mod
+        buf = BytesIO()
+        with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+            if storage_backend.get_backend_type() == 'flatfile':
+                config_dir = getattr(storage_backend, 'config_dir', os.environ.get('CONFIG_DIR', '/app/config'))
+                for name in FLATFILE_DATA_FILES:
+                    path = os.path.join(config_dir, name)
+                    if os.path.isfile(path):
+                        zf.write(path, name)
+            else:
+                # MongoDB: export to same filenames/structure as flatfile for consistency
+                schedules = storage_backend.get_all_schedules()
+                zf.writestr('schedules.json', json_mod.dumps({'schedules': schedules}, indent=2, default=_json_serial))
+                history = storage_backend.get_history(limit=100000)
+                zf.writestr('schedule_history.json', json_mod.dumps({'version': '1.0', 'history': history}, indent=2, default=_json_serial))
+                inventory = storage_backend.get_all_inventory()
+                zf.writestr('inventory.json', json_mod.dumps({'inventory': inventory}, indent=2, default=_json_serial))
+                # host_facts: build {hosts: {host: doc}} from MongoDB
+                try:
+                    hosts = {}
+                    for doc in storage_backend.host_facts_collection.find():
+                        h = doc.get('host')
+                        if h:
+                            hosts[h] = {k: v for k, v in doc.items() if k != '_id'}
+                    zf.writestr('host_facts.json', json_mod.dumps({'version': '1.0', 'hosts': hosts}, indent=2, default=_json_serial))
+                except Exception:
+                    zf.writestr('host_facts.json', json_mod.dumps({'version': '1.0', 'hosts': {}}))
+                batch_jobs = storage_backend.get_all_batch_jobs()
+                zf.writestr('batch_jobs.json', json_mod.dumps({'version': '1.0', 'batch_jobs': batch_jobs}, indent=2, default=_json_serial))
+                workers = storage_backend.get_all_workers()
+                zf.writestr('workers.json', json_mod.dumps({'version': '1.0', 'workers': workers}, indent=2, default=_json_serial))
+                jobs = storage_backend.get_all_jobs() if hasattr(storage_backend, 'get_all_jobs') else []
+                zf.writestr('job_queue.json', json_mod.dumps({'version': '1.0', 'jobs': jobs}, indent=2, default=_json_serial))
+        buf.seek(0)
+        return send_file(
+            buf,
+            as_attachment=True,
+            download_name=f'ansible_simpleweb_data_backup_{datetime.now().strftime("%Y%m%d_%H%M%S")}.zip',
+            mimetype='application/zip',
+        )
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/data/restore', methods=['POST'])
+def api_data_restore():
+    """
+    Restore data from uploaded zip. Flatfile: extract to config dir. MongoDB: import JSON into collections (same zip format as backup).
+    """
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+    f = request.files.get('file')
+    if not f:
+        return jsonify({'error': 'No file provided'}), 400
+    try:
+        from io import BytesIO
+        import zipfile
+        import json as json_mod
+        data = f.read()
+        with zipfile.ZipFile(BytesIO(data), 'r') as zf:
+            if storage_backend.get_backend_type() == 'flatfile':
+                config_dir = getattr(storage_backend, 'config_dir', os.environ.get('CONFIG_DIR', '/app/config'))
+                os.makedirs(config_dir, mode=0o755, exist_ok=True)
+                for name in zf.namelist():
+                    if name != os.path.basename(name) or name not in FLATFILE_DATA_FILES:
+                        continue
+                    path = os.path.join(config_dir, name)
+                    with open(path, 'wb') as out:
+                        out.write(zf.read(name))
+            else:
+                # MongoDB: parse each known file and replace collection data
+                if 'schedules.json' in zf.namelist():
+                    payload = json_mod.loads(zf.read('schedules.json').decode('utf-8'))
+                    schedules = payload.get('schedules', {})
+                    storage_backend.save_all_schedules(schedules)
+                if 'schedule_history.json' in zf.namelist():
+                    payload = json_mod.loads(zf.read('schedule_history.json').decode('utf-8'))
+                    history = payload.get('history', [])
+                    storage_backend.history_collection.delete_many({})
+                    if history:
+                        for entry in history:
+                            entry.pop('_id', None)
+                        storage_backend.history_collection.insert_many(history)
+                if 'inventory.json' in zf.namelist():
+                    payload = json_mod.loads(zf.read('inventory.json').decode('utf-8'))
+                    inventory = payload.get('inventory', [])
+                    storage_backend.inventory_collection.delete_many({})
+                    if inventory:
+                        for item in inventory:
+                            item.pop('_id', None)
+                        storage_backend.inventory_collection.insert_many(inventory)
+                if 'host_facts.json' in zf.namelist():
+                    payload = json_mod.loads(zf.read('host_facts.json').decode('utf-8'))
+                    hosts = payload.get('hosts', {})
+                    for host, host_data in hosts.items():
+                        if host and isinstance(host_data, dict):
+                            storage_backend.import_host_facts(host_data)
+                if 'batch_jobs.json' in zf.namelist():
+                    payload = json_mod.loads(zf.read('batch_jobs.json').decode('utf-8'))
+                    batch_jobs = payload.get('batch_jobs', [])
+                    storage_backend.batch_jobs_collection.delete_many({})
+                    if batch_jobs:
+                        for j in batch_jobs:
+                            j.pop('_id', None)
+                        storage_backend.batch_jobs_collection.insert_many(batch_jobs)
+                if 'workers.json' in zf.namelist():
+                    payload = json_mod.loads(zf.read('workers.json').decode('utf-8'))
+                    workers = payload.get('workers', [])
+                    storage_backend.workers_collection.delete_many({})
+                    if workers:
+                        for w in workers:
+                            w.pop('_id', None)
+                        storage_backend.workers_collection.insert_many(workers)
+                if 'job_queue.json' in zf.namelist():
+                    payload = json_mod.loads(zf.read('job_queue.json').decode('utf-8'))
+                    jobs = payload.get('jobs', [])
+                    storage_backend.job_queue_collection.delete_many({})
+                    if jobs:
+                        for j in jobs:
+                            j.pop('_id', None)
+                        storage_backend.job_queue_collection.insert_many(jobs)
+        return jsonify({'ok': True, 'message': 'Data restored'})
+    except zipfile.BadZipFile:
+        return jsonify({'error': 'Invalid zip file'}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# =============================================================================
 # Storage API Endpoints
 # Information about the active storage backend
 # =============================================================================
@@ -4949,6 +5199,55 @@ def handle_leave_job(data):
 
 AGENT_SERVICE_URL = os.environ.get('AGENT_SERVICE_URL', 'http://agent-service:5000')
 
+
+# =============================================================================
+# Deployment status and bootstrap (Stage 4)
+# =============================================================================
+
+@app.route('/api/deployment/status', methods=['GET'])
+def api_deployment_status():
+    """
+    Return desired vs current services and deployment delta (what needs to be deployed).
+    Used by Config panel and bootstrap logic.
+    """
+    try:
+        from deployment import get_deployment_delta
+        delta = get_deployment_delta(storage_backend=storage_backend)
+        return jsonify({
+            'desired': delta.get('desired', {}),
+            'current': delta.get('current', {}),
+            'deploy_db': delta.get('deploy_db', False),
+            'deploy_agent': delta.get('deploy_agent', False),
+            'deploy_workers': delta.get('deploy_workers', False),
+            'worker_count_to_add': delta.get('worker_count_to_add', 0),
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/deployment/run', methods=['POST'])
+def api_deployment_run():
+    """
+    Run deployment playbook for current delta (bootstrap or expand).
+    Requires ansible-playbook and (for docker) Docker socket in container.
+    """
+    try:
+        from deployment import get_deployment_delta, run_bootstrap
+        delta = get_deployment_delta(storage_backend=storage_backend)
+        success, message = run_bootstrap(delta)
+        if success:
+            return jsonify({'ok': True, 'message': message})
+        return jsonify({'ok': False, 'error': message}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/config')
+def config_page():
+    """Config panel: view/edit app config, backup/restore config and data."""
+    return render_template('config.html')
+
+
 @app.route('/agent')
 def agent_dashboard():
     """Render Agent Dashboard."""
@@ -5105,6 +5404,20 @@ if __name__ == '__main__':
     )
     schedule_manager.start()
     print("Schedule manager initialized and started")
+
+    # Bootstrap: if config requests DB/agent/workers but they are not deployed, run deploy playbook (background)
+    def _bootstrap_if_needed():
+        try:
+            from deployment import get_deployment_delta, run_bootstrap
+            delta = get_deployment_delta(storage_backend=storage_backend)
+            if delta.get('deploy_db') or delta.get('deploy_agent') or delta.get('deploy_workers'):
+                print("Bootstrap: config requests services not yet deployed, running deploy playbook...")
+                ok, msg = run_bootstrap(delta)
+                print(f"Bootstrap: {'OK' if ok else 'Failed'} - {msg}")
+        except Exception as e:
+            print(f"Bootstrap: {e}")
+    _bootstrap_thread = threading.Thread(target=_bootstrap_if_needed, daemon=True)
+    _bootstrap_thread.start()
 
     # Use socketio.run instead of app.run for WebSocket support
     socketio.run(app, host='0.0.0.0', port=3001, debug=True)
