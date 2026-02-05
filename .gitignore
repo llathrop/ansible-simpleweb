@@ -6,6 +6,7 @@ __pycache__/
 .Python
 env/
 venv/
+.venv/
 ENV/
 *.egg-info/
 .eggs/
@@ -55,10 +56,11 @@ logs/
 # Contains schedules, history, inventory data, host_facts
 config/
 
-# Temporary files
+# Temporary files and local backups (do not commit)
 /tmp/
 *.tmp
 *.bak
+ansible-simpleweb-backup-*.tar
 
 # MongoDB data (if running locally outside Docker)
 data/db/

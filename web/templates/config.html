@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Config - Ansible Web Interface</title>
+    <link rel="stylesheet" href="/static/css/base.css">
+    <script>
+        (function() {
+            try {
+                var cached = localStorage.getItem('ansible-web-theme-vars');
+                if (cached) {
+                    var vars = JSON.parse(cached);
+                    var root = document.documentElement;
+                    for (var key in vars) { if (vars[key]) root.style.setProperty(key, vars[key]); }
+                }
+            } catch (e) {}
+        })();
+    </script>
+    <script src="/static/js/theme.js"></script>
+    <style>
+        body { padding: 20px; }
+        .section { background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+        .section h2 { margin-top: 0; margin-bottom: 15px; border-bottom: 1px solid var(--border-primary); padding-bottom: 10px; }
+        .nav-links { margin-bottom: 20px; }
+        .nav-links a { margin-right: 12px; }
+        .quick-config { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px; }
+        .quick-config label { display: block; margin-bottom: 4px; color: var(--text-secondary); font-size: 0.9em; }
+        .quick-config select { padding: 6px 10px; border: 1px solid var(--border-primary); border-radius: 4px; background: var(--bg-primary); color: var(--text-primary); }
+        .btn { padding: 8px 16px; border-radius: 4px; cursor: pointer; border: 1px solid var(--border-primary); }
+        .btn-primary { background: var(--button-primary-bg, #2563eb); color: var(--button-primary-text, #fff); }
+        .btn-secondary { background: var(--bg-tertiary); color: var(--text-primary); }
+        .msg { padding: 10px; border-radius: 4px; margin-top: 10px; }
+        .msg.err { background: var(--status-failed-bg, #fef2f2); color: var(--status-failed-text, #991b1b); }
+        .msg.ok { background: var(--status-completed-bg, #f0fdf4); color: var(--status-completed-text, #166534); }
+        #configJson { width: 100%; min-height: 120px; font-family: monospace; font-size: 12px; padding: 10px; background: var(--bg-tertiary); border: 1px solid var(--border-primary); border-radius: 4px; color: var(--text-primary); }
+        .config-path { font-size: 0.85em; color: var(--text-muted); margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container container-wide">
+        <h1>Config</h1>
+        <p class="subtitle">Application config, backup and restore (config and data)</p>
+
+        <div class="nav-links">
+            <a href="/">Home</a>
+            <a href="/playbooks">Playbooks</a>
+            <a href="/schedules">Schedules</a>
+            <a href="/storage">Storage</a>
+            <a href="/inventory">Inventory</a>
+            <a href="/logs">All Logs</a>
+            <a href="/config" style="font-weight: bold;">Config</a>
+            <a href="/agent">Agent</a>
+        </div>
+
+        <div class="section">
+            <h2>Application config</h2>
+            <p class="config-path" id="configPath">Loading…</p>
+            <div class="quick-config">
+                <div>
+                    <label>Storage backend</label>
+                    <select id="quickStorage">
+                        <option value="flatfile">flatfile</option>
+                        <option value="mongodb">mongodb</option>
+                    </select>
+                </div>
+                <div>
+                    <label>Agent enabled</label>
+                    <select id="quickAgent">
+                        <option value="false">No</option>
+                        <option value="true">Yes</option>
+                    </select>
+                </div>
+                <div>
+                    <label>Workers enabled</label>
+                    <select id="quickWorkers">
+                        <option value="false">No</option>
+                        <option value="true">Yes</option>
+                    </select>
+                </div>
+            </div>
+            <button type="button" class="btn btn-primary" id="btnApplyQuick">Apply quick config</button>
+            <div id="quickMsg" class="msg" style="display:none;"></div>
+            <h3 style="margin-top: 20px;">Full config (YAML-like)</h3>
+            <textarea id="configJson" readonly></textarea>
+            <p style="margin-top: 8px; font-size: 0.9em; color: var(--text-muted);">To edit the full config, use the API (PUT /api/config) or edit the file at the path above if the volume is mounted.</p>
+        </div>
+
+        <div class="section">
+            <h2>Config backup &amp; restore</h2>
+            <p>Backup downloads <code>app_config.yaml</code> as a file. Restore uploads a YAML file to replace config.</p>
+            <button type="button" class="btn btn-secondary" id="btnConfigBackup">Download config backup</button>
+            <span style="margin-left: 12px;">
+                <input type="file" id="configRestoreFile" accept=".yaml,.yml" style="margin-right: 8px;">
+                <button type="button" class="btn btn-secondary" id="btnConfigRestore">Restore config</button>
+            </span>
+            <div id="configBackupRestoreMsg" class="msg" style="display:none; margin-top: 10px;"></div>
+        </div>
+
+        <div class="section">
+            <h2>Deployment (bootstrap / expand)</h2>
+            <p>Desired vs current services. If config requests DB, agent, or workers that are not yet deployed, you can run the deploy playbook (requires Ansible and, for Docker, socket mounted). Bootstrap also runs automatically on startup when needed.</p>
+            <pre id="deploymentStatus">Loading…</pre>
+            <button type="button" class="btn btn-primary" id="btnDeployNow">Deploy now (run playbook for delta)</button>
+            <div id="deployMsg" class="msg" style="display:none; margin-top: 10px;"></div>
+        </div>
+
+        <div class="section">
+            <h2>Data backup &amp; restore</h2>
+            <p>Backup/restore <strong>data</strong> (schedules, inventory, history, host facts, batch jobs, workers, job queue) separately from config. Works for both <strong>flatfile</strong> and <strong>MongoDB</strong> storage: download produces a zip; restore accepts the same zip format.</p>
+            <button type="button" class="btn btn-secondary" id="btnDataBackup">Download data backup</button>
+            <span style="margin-left: 12px;">
+                <input type="file" id="dataRestoreFile" accept=".zip" style="margin-right: 8px;">
+                <button type="button" class="btn btn-secondary" id="btnDataRestore">Restore data</button>
+            </span>
+            <div id="dataBackupRestoreMsg" class="msg" style="display:none; margin-top: 10px;"></div>
+        </div>
+    </div>
+
+    <script>
+        function showMsg(elId, text, isErr) {
+            var el = document.getElementById(elId);
+            el.textContent = text;
+            el.className = 'msg ' + (isErr ? 'err' : 'ok');
+            el.style.display = 'block';
+        }
+
+        function loadConfig() {
+            fetch('/api/config')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.error) {
+                        document.getElementById('configPath').textContent = 'Error: ' + data.error;
+                        document.getElementById('configJson').value = JSON.stringify(data, null, 2);
+                        return;
+                    }
+                    document.getElementById('configPath').textContent = 'Config file: ' + (data.config_path || 'N/A') + (data.config_file_exists ? ' (exists)' : ' (using defaults)');
+                    var c = data.config || {};
+                    document.getElementById('quickStorage').value = (c.storage && c.storage.backend) || 'flatfile';
+                    document.getElementById('quickAgent').value = (c.features && c.features.agent_enabled) ? 'true' : 'false';
+                    document.getElementById('quickWorkers').value = (c.features && c.features.workers_enabled) ? 'true' : 'false';
+                    document.getElementById('configJson').value = JSON.stringify(c, null, 2);
+                })
+                .catch(function(e) {
+                    document.getElementById('configPath').textContent = 'Failed to load: ' + e.message;
+                });
+        }
+
+        document.getElementById('btnApplyQuick').onclick = function() {
+            var payload = {
+                storage: { backend: document.getElementById('quickStorage').value },
+                features: {
+                    agent_enabled: document.getElementById('quickAgent').value === 'true',
+                    workers_enabled: document.getElementById('quickWorkers').value === 'true'
+                }
+            };
+            fetch('/api/config', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+            .then(function(r) { return r.json().then(function(j) { return { status: r.status, json: j }; }); })
+            .then(function(res) {
+                if (res.status === 200 && res.json.ok) {
+                    showMsg('quickMsg', 'Config saved. Some changes may require a restart.', false);
+                    loadConfig();
+                } else {
+                    showMsg('quickMsg', res.json.error || 'Save failed', true);
+                }
+            })
+            .catch(function(e) { showMsg('quickMsg', e.message, true); });
+        };
+
+        document.getElementById('btnConfigBackup').onclick = function() {
+            window.location.href = '/api/config/backup';
+        };
+
+        document.getElementById('btnConfigRestore').onclick = function() {
+            var file = document.getElementById('configRestoreFile').files[0];
+            if (!file) { showMsg('configBackupRestoreMsg', 'Choose a YAML file first', true); return; }
+            var fd = new FormData();
+            fd.append('file', file);
+            fetch('/api/config/restore', { method: 'POST', body: fd })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.ok) {
+                        showMsg('configBackupRestoreMsg', 'Config restored.', false);
+                        loadConfig();
+                    } else {
+                        showMsg('configBackupRestoreMsg', data.error || 'Restore failed', true);
+                    }
+                })
+                .catch(function(e) { showMsg('configBackupRestoreMsg', e.message, true); });
+        };
+
+        document.getElementById('btnDataBackup').onclick = function() {
+            window.location.href = '/api/data/backup';
+        };
+
+        document.getElementById('btnDataRestore').onclick = function() {
+            var file = document.getElementById('dataRestoreFile').files[0];
+            if (!file) { showMsg('dataBackupRestoreMsg', 'Choose a zip file first', true); return; }
+            var fd = new FormData();
+            fd.append('file', file);
+            fetch('/api/data/restore', { method: 'POST', body: fd })
+                .then(function(r) {
+                    if (r.ok) return r.json().then(function(j) { return { ok: true, json: j }; });
+                    return r.json().then(function(j) { return { ok: false, json: j }; });
+                })
+                .then(function(res) {
+                    if (res.ok && res.json && res.json.ok) {
+                        showMsg('dataBackupRestoreMsg', 'Data restored. Refresh the page if needed.', false);
+                    } else {
+                        showMsg('dataBackupRestoreMsg', (res.json && res.json.error) || 'Restore failed', true);
+                    }
+                })
+                .catch(function(e) { showMsg('dataBackupRestoreMsg', e.message, true); });
+        };
+
+        function loadDeploymentStatus() {
+            fetch('/api/deployment/status')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.error) {
+                        document.getElementById('deploymentStatus').textContent = 'Error: ' + data.error;
+                        return;
+                    }
+                    var lines = [
+                        'Desired: db=' + data.desired.db_enabled + ' agent=' + data.desired.agent_enabled + ' workers=' + data.desired.workers_enabled + ' (count ' + (data.desired.worker_count || 0) + ')',
+                        'Current: db=' + data.current.db_reachable + ' agent=' + data.current.agent_reachable + ' workers=' + data.current.worker_count,
+                        'Delta: deploy_db=' + data.deploy_db + ' deploy_agent=' + data.deploy_agent + ' deploy_workers=' + data.deploy_workers + ' worker_count_to_add=' + data.worker_count_to_add
+                    ];
+                    document.getElementById('deploymentStatus').textContent = lines.join('\n');
+                })
+                .catch(function(e) { document.getElementById('deploymentStatus').textContent = 'Failed: ' + e.message; });
+        }
+        document.getElementById('btnDeployNow').onclick = function() {
+            fetch('/api/deployment/run', { method: 'POST' })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.ok) {
+                        showMsg('deployMsg', data.message || 'Deployment started.', false);
+                        loadDeploymentStatus();
+                    } else {
+                        showMsg('deployMsg', data.error || data.message || 'Deploy failed', true);
+                    }
+                })
+                .catch(function(e) { showMsg('deployMsg', e.message, true); });
+        };
+
+        loadConfig();
+        loadDeploymentStatus();
+    </script>
+</body>
+</html>

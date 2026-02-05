@@ -100,3 +100,9 @@ If “Agent analysis” in the UI shows an error or never completes:
    - If status stays `pending`/`running` and agent logs show “Review saved” and “Notified web”, check that the UI is either receiving the `agent_review_ready` event or polling review-status and then fetching the review.
 
 Keeping this section in sync with the code (and any new log destinations) will help users debug agent and trigger issues. See also [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for general issues.
+
+## 7. Single-container and multi-container expansion
+
+- **Single-container (demo)**: The same image can run as one container (primary only, flatfile storage, local executor). Use `docker-compose.single.yml`; see [REBUILD.md](REBUILD.md) § Single-container mode. Validation: `scripts/validate_single_container.py`.
+- **Config**: App config lives in `app_config.yaml` (CONFIG_DIR, default `/app/config`). The **Config** page in the UI lets you view/edit options, backup/restore config, and backup/restore data (schedules, inventory, etc.). Storage init and feature flags (DB, agent, workers) are driven by this config.
+- **Bootstrap and expansion**: On startup, if config requests DB/agent/workers but they are not yet deployed, the primary runs the deploy playbook (Ansible) in the background. The same flow can be triggered from the Config page (“Deploy now”) or `POST /api/deployment/run`. Desired vs current state and delta are exposed at `GET /api/deployment/status`. See [PHASE_SINGLE_CONTAINER_BOOTSTRAP.md](PHASE_SINGLE_CONTAINER_BOOTSTRAP.md).

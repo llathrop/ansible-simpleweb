@@ -4,6 +4,7 @@ Complete guide to configuring inventory, SSH access, storage backends, and syste
 
 ## Table of Contents
 
+- [Application Config (app_config.yaml)](#application-config-app_configyaml)
 - [Storage Backend Configuration](#storage-backend-configuration)
 - [Inventory Configuration](#inventory-configuration)
 - [SSH Setup](#ssh-setup)
@@ -12,6 +13,57 @@ Complete guide to configuring inventory, SSH access, storage backends, and syste
 - [Host Groups](#host-groups)
 - [Advanced Configuration](#advanced-configuration)
 - [Custom Themes](#custom-themes)
+
+## Application Config (app_config.yaml)
+
+When running in single-container mode or when you want to drive settings from a file, use **app_config.yaml** in the config directory (`CONFIG_DIR`, default `/app/config`). This file is optional; when present, it overrides environment variables for storage, agent, cluster, features, and deployment placeholders.
+
+**Location:** `CONFIG_DIR/app_config.yaml` (e.g. `/app/config/app_config.yaml` inside the container)
+
+**Format:** YAML. You can edit it directly or use the Config API (see [API.md](API.md) § Config API) to view, update, backup, and restore.
+
+**Schema (all keys optional; defaults shown):**
+
+```yaml
+storage:
+  backend: flatfile   # flatfile | mongodb
+  mongodb:
+    host: mongodb
+    port: 27017
+    database: ansible_simpleweb
+
+agent:
+  enabled: false
+  trigger_enabled: true
+  model: qwen2.5-coder:3b
+
+cluster:
+  mode: standalone   # standalone | primary
+  registration_token: ""
+  checkin_interval: 60
+  local_worker_tags: ["local"]
+
+features:
+  db_enabled: false
+  agent_enabled: false
+  workers_enabled: false
+
+deployment:   # For future: deploy services on remote hosts
+  agent_host: local
+  db_host: local
+  worker_hosts: []
+```
+
+**Backup/restore:** Use the **Config** page in the web UI (or `GET /api/config/backup` and `POST /api/config/restore`) to backup and restore config. **Data** (schedules, inventory, history, etc.) is backed up separately—see [Data backup and restore](#data-backup-and-restore) below.
+
+### Data backup and restore
+
+Data (schedules, inventory, history, host facts, batch jobs, workers, job queue) is separate from application config. On the **Config** page you can back up and restore data for **both flatfile and MongoDB**:
+
+- **Download data backup:** Produces a zip (flatfile: copies JSON files; MongoDB: exports collections to the same JSON structure).
+- **Restore data:** Upload a zip from a previous backup; replaces existing data (flatfile: extracts to config dir; MongoDB: imports into collections).
+
+API: `GET /api/data/backup`, `POST /api/data/restore`. See [API.md](API.md). For MongoDB you can still use `mongodump`/`mongorestore` if you prefer native format; the panel uses application-level export/import for portability.
 
 ## Storage Backend Configuration
 

@@ -1,0 +1,72 @@
+---
+# Deploy optional services (MongoDB, agent+ollama, workers) for Ansible SimpleWeb.
+# Run from host with Docker: ansible-playbook playbooks/deploy/expand.yml -e deploy_db=1 -e deploy_agent=1
+# From primary container (with Docker socket mounted): same with -i inventory/deploy_local.yml (localhost).
+# Variables: deploy_db, deploy_agent, deploy_workers (bool), worker_count_to_add (int), deploy_docker_network (optional).
+- name: Expand deployment (DB, agent, workers)
+  hosts: localhost
+  gather_facts: no
+  vars:
+    deploy_db: false
+    deploy_agent: false
+    deploy_workers: false
+    worker_count_to_add: 1
+    deploy_docker_network: ""
+    agent_image: "ansible-simpleweb-agent-service"
+    worker_image: "ansible-simpleweb-worker-1"
+  tasks:
+    - name: Ensure MongoDB container (when deploy_db)
+      ansible.builtin.shell: |
+        docker run -d --name ansible-simpleweb-mongodb \
+          -p 27017:27017 -v ansible_simpleweb_mongodb_data:/data/db \
+          -e MONGO_INITDB_DATABASE=ansible_simpleweb \
+          {{ '--network ' + deploy_docker_network if deploy_docker_network else '' }} \
+          mongo:7 || docker start ansible-simpleweb-mongodb
+      args:
+        executable: /bin/bash
+      when: deploy_db | default(false) | bool
+      changed_when: true
+      failed_when: false
+
+    - name: Ensure Ollama container (when deploy_agent)
+      ansible.builtin.shell: |
+        docker run -d --name ansible-ollama \
+          -v ansible_simpleweb_ollama_data:/root/.ollama \
+          {{ '--network ' + deploy_docker_network if deploy_docker_network else '' }} \
+          ollama/ollama || docker start ansible-ollama
+      args:
+        executable: /bin/bash
+      when: deploy_agent | default(false) | bool
+      changed_when: true
+      failed_when: false
+
+    - name: Ensure Agent container (when deploy_agent)
+      ansible.builtin.shell: |
+        docker run -d --name ansible-agent \
+          -e SERVER_URL=http://ansible-web:3001 \
+          -e LLM_API_URL=http://ansible-ollama:11434/v1 \
+          -e LLM_MODEL=qwen2.5-coder:3b \
+          -p 5001:5000 \
+          {{ '--network ' + deploy_docker_network if deploy_docker_network else '' }} \
+          {{ agent_image }} || docker start ansible-agent
+      args:
+        executable: /bin/bash
+      when: deploy_agent | default(false) | bool
+      changed_when: true
+      failed_when: false
+
+    - name: Ensure worker container(s) (when deploy_workers)
+      ansible.builtin.shell: |
+        for i in $(seq 1 {{ worker_count_to_add | default(1) | int }}); do
+          docker run -d --name ansible-worker-$i \
+            -e WORKER_NAME=worker-$i \
+            -e SERVER_URL=http://ansible-web:3001 \
+            -e REGISTRATION_TOKEN=cluster-secret-token-change-in-prod \
+            {{ '--network ' + deploy_docker_network if deploy_docker_network else '' }} \
+            {{ worker_image }} || docker start ansible-worker-$i
+        done
+      args:
+        executable: /bin/bash
+      when: (deploy_workers | default(false) | bool) and (worker_count_to_add | default(1) | int > 0)
+      changed_when: true
+      failed_when: false

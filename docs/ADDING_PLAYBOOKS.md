@@ -53,14 +53,14 @@ EOF
 ### Naming Convention
 
 Use lowercase with hyphens:
-- `hardware-inventory.yml` ✅
-- `system-health.yml` ✅
-- `backup-database.yml` ✅
+- `hardware-inventory.yml`
+- `system-health.yml`
+- `backup-database.yml`
 
 Avoid:
-- `HardwareInventory.yml` ❌ (uppercase)
-- `hardware_inventory.yml` ❌ (underscores)
-- `hardware inventory.yml` ❌ (spaces)
+- `HardwareInventory.yml` (uppercase)
+- `hardware_inventory.yml` (underscores)
+- `hardware inventory.yml` (spaces)
 
 ### Display Names
 
