@@ -456,6 +456,99 @@ For production use, implement rate limiting:
 
 ---
 
+## Config API
+
+Application configuration is stored in `app_config.yaml` (see `CONFIG_DIR`, default `/app/config`). When the file exists, it overrides environment variables for storage, agent, cluster, and feature flags. Config can be viewed, updated, backed up, and restored via the API.
+
+### GET /api/config
+
+Get current application configuration (from file or defaults).
+
+**Response:**
+```json
+{
+  "config": {
+    "storage": { "backend": "flatfile", "mongodb": { "host": "mongodb", "port": 27017, "database": "ansible_simpleweb" } },
+    "agent": { "enabled": false, "trigger_enabled": true, "model": "qwen2.5-coder:3b" },
+    "cluster": { "mode": "standalone", "registration_token": "", "checkin_interval": 60, "local_worker_tags": ["local"] },
+    "features": { "db_enabled": false, "agent_enabled": false, "workers_enabled": false },
+    "deployment": { "agent_host": "local", "db_host": "local", "worker_hosts": [] }
+  },
+  "config_file_exists": false,
+  "config_path": "/app/config/app_config.yaml"
+}
+```
+
+### PUT /api/config
+
+Update configuration. Send a JSON body with keys to merge (partial update). Config is validated and written to `app_config.yaml`. Requires a restart for storage/cluster changes to take effect in some cases.
+
+**Request:**
+```http
+PUT /api/config HTTP/1.1
+Content-Type: application/json
+
+{"storage": {"backend": "flatfile"}}
+```
+
+**Response (success):** `200` with `{"ok": true, "message": "Config saved"}`  
+**Response (validation error):** `400` with `{"error": "..."}`
+
+### GET /api/config/backup
+
+Download current config as a YAML file (config backup). Response is `application/x-yaml` with a filename like `app_config_backup_20250205_120000.yaml`.
+
+### POST /api/config/restore
+
+Restore config from YAML. Send either raw YAML body (`Content-Type: application/x-yaml` or `text/plain`) or multipart form with `file` field. Validates and writes to `app_config.yaml`.
+
+**Response (success):** `200` with `{"ok": true, "message": "Config restored"}`  
+**Response (error):** `400` with `{"error": "..."}`
+
+## Deployment (bootstrap / expand)
+
+When using the single-container image and config requests DB, agent, or workers that are not yet deployed, the system can run a deploy playbook. Bootstrap runs automatically on startup when the delta is non-empty; you can also trigger it from the Config panel or API.
+
+### GET /api/deployment/status
+
+Returns desired vs current services and what needs to be deployed (delta).
+
+**Response:**
+```json
+{
+  "desired": { "db_enabled": true, "agent_enabled": true, "workers_enabled": false, "worker_count": 0 },
+  "current": { "db_reachable": false, "agent_reachable": false, "worker_count": 0 },
+  "deploy_db": true,
+  "deploy_agent": true,
+  "deploy_workers": false,
+  "worker_count_to_add": 0
+}
+```
+
+### POST /api/deployment/run
+
+Runs the deploy playbook for the current delta (starts MongoDB, agent+ollama, or worker containers as needed). Requires `ansible-playbook` and, for Docker-based deploy, the container must have the Docker socket mounted and `DEPLOY_DOCKER_NETWORK` set to the compose network if needed.
+
+**Response (success):** `200` with `{"ok": true, "message": "..."}`  
+**Response (failure):** `400` with `{"ok": false, "error": "..."}`
+
+### GET /api/data/backup
+
+Download a zip archive of data files (schedules, inventory, history, host facts, batch jobs, workers, job queue). Supported for **both flatfile and MongoDB**: flatfile zips the JSON files; MongoDB exports collections into the same JSON structure and zips. Usable from the Config panel “Download data backup”.
+
+**Response:** `200` with `application/zip` body (filename like `ansible_simpleweb_data_backup_YYYYMMDD_HHMMSS.zip`).
+
+### POST /api/data/restore
+
+Restore data from an uploaded zip. **Both flatfile and MongoDB**: same zip format as backup. Flatfile extracts to config dir; MongoDB imports into collections (replaces existing). Usable from the Config panel “Restore data”.
+
+**Request:** `multipart/form-data` with `file` = zip from data backup.
+
+**Response (success):** `200` with `{"ok": true, "message": "Data restored"}`  
+**Response (error):** `400` with `{"error": "..."}`
+
+---
+
 ### GET /api/storage
 
 Get information about the active storage backend.
