@@ -5,42 +5,42 @@ A lightweight, Docker-based web interface for managing and executing Ansible pla
 ## Features
 
 ### Core Features
-- 🚀 **One-Click Execution** - Run any playbook with a single button click
-- 🎯 **Multi-Host Support** - Target individual hosts or groups via dropdown selection
-- 📊 **Real-Time Status** - Live status updates (Ready/Running/Completed/Failed)
-- 📝 **Log Management** - Automatic log capture with timestamped filenames
-- 🔍 **Log Viewer** - Browse and view all execution logs in the browser
-- 🎨 **Theming Support** - Multiple themes including dark mode, low contrast, and colorblind-friendly options
-- 🔌 **REST API** - JSON endpoints for external integrations
-- 🐳 **Fully Containerized** - Rocky Linux 9 with Ansible 8.7.0 pre-configured
-- 🔒 **Localhost First** - Secure by default, ready for authentication later
-- 💾 **Flexible Storage** - Choose between flat file (JSON) or MongoDB for data persistence
-- 📦 **Inventory Management** - API for managing host inventory with full CRUD operations
+- **One-Click Execution** - Run any playbook with a single button click
+- **Multi-Host Support** - Target individual hosts or groups via dropdown selection
+- **Real-Time Status** - Live status updates (Ready/Running/Completed/Failed)
+- **Log Management** - Automatic log capture with timestamped filenames
+- **Log Viewer** - Browse and view all execution logs in the browser
+- **Theming Support** - Multiple themes including dark mode, low contrast, and colorblind-friendly options
+- **REST API** - JSON endpoints for external integrations
+- **Fully Containerized** - Rocky Linux 9 with Ansible 8.7.0 pre-configured
+- **Localhost First** - Secure by default, ready for authentication later
+- **Flexible Storage** - Choose between flat file (JSON) or MongoDB for data persistence
+- **Inventory Management** - API for managing host inventory with full CRUD operations
 
 ### Batch Job Execution
-- 📦 **Batch Jobs** - Select multiple playbooks and hosts, run them sequentially as a named batch
-- 🔄 **Playbook Ordering** - Drag-and-drop or up/down buttons to reorder playbook execution
-- 👁️ **Live Batch Monitoring** - Watch batch progress with automatic log switching between playbooks
-- 📡 **Real-time Log Streaming** - Worker logs stream live to batch view with late-join catchup
-- 📤 **Export Configurations** - Export batch job configs as JSON for version control
-- ⏰ **Batch Scheduling** - Schedule batch jobs with full recurrence options
+- **Batch Jobs** - Select multiple playbooks and hosts, run them sequentially as a named batch
+- **Playbook Ordering** - Drag-and-drop or up/down buttons to reorder playbook execution
+- **Live Batch Monitoring** - Watch batch progress with automatic log switching between playbooks
+- **Real-time Log Streaming** - Worker logs stream live to batch view with late-join catchup
+- **Export Configurations** - Export batch job configs as JSON for version control
+- **Batch Scheduling** - Schedule batch jobs with full recurrence options
 
 ### Schedule Management
-- ⏱️ **Playbook Scheduling** - Schedule single playbooks or batch jobs with cron-like recurrence
-- 📈 **Success Rate Tracking** - Track success/failure rates per schedule (e.g., "8/10 succeeded")
-- 📋 **Execution History** - View detailed history of scheduled runs
+- **Playbook Scheduling** - Schedule single playbooks or batch jobs with cron-like recurrence
+- **Success Rate Tracking** - Track success/failure rates per schedule (e.g., "8/10 succeeded")
+- **Execution History** - View detailed history of scheduled runs
 
 ### Host Configuration Wizard
-- 🧙 **Multi-Step Wizard** - Guided 4-step process for adding/editing hosts
-- 🔑 **SSH Key Management** - Upload and manage SSH private keys securely
-- 🔐 **Multiple Auth Methods** - Support for SSH keys, passwords, or SSH agent
-- 🔍 **Connection Testing** - Test SSH connectivity before saving host configuration
+- **Multi-Step Wizard** - Guided 4-step process for adding/editing hosts
+- **SSH Key Management** - Upload and manage SSH private keys securely
+- **Multiple Auth Methods** - Support for SSH keys, passwords, or SSH agent
+- **Connection Testing** - Test SSH connectivity before saving host configuration
 
 ### AI Agent (Log Review & Assistance)
-- 🤖 **Automatic Log Review** - AI analyzes playbook output after each run
-- 📋 **Structured Analysis** - Summary, status, issues (error/warning/info), suggestions
-- 🔧 **Suggested Fix** - SSH auth failures show step-by-step fix with public key and Copy button
-- 📊 **Agent Dashboard** - Recent reviews, proposals, config reports
+- **Automatic Log Review** - AI analyzes playbook output after each run
+- **Structured Analysis** - Summary, status, issues (error/warning/info), suggestions
+- **Suggested Fix** - SSH auth failures show step-by-step fix with public key and Copy button
+- **Agent Dashboard** - Recent reviews, proposals, config reports
 
 ## Quick Start
 
@@ -77,7 +77,7 @@ You'll see all available playbooks with run buttons and status indicators.
 3. Watch the status change to "Running"
 4. Click "View Log" when complete
 
-Done! 🎉
+Done.
 
 ## Adding Playbooks
 
@@ -204,16 +204,16 @@ Example playbooks included:
 
 ## Development Status
 
-✅ **Step 1:** Docker container with Ansible + Flask
-✅ **Step 2:** 5 working playbooks tested on real hardware
-✅ **Step 3:** Full web interface with real-time updates
-✅ **Step 4:** Multi-host target selection
-✅ **Step 5:** Theming system with dark mode and accessibility themes
-✅ **Step 6:** Pluggable storage backend (flat file / MongoDB)
-✅ **Step 7:** Batch job execution with live monitoring
-✅ **Step 8:** Schedule management with batch support and success tracking
-✅ **Step 9:** Host configuration wizard with SSH key management
-✅ **Step 10:** Cluster mode with distributed workers (13 features implemented)
+- **Step 1:** Docker container with Ansible + Flask
+- **Step 2:** 5 working playbooks tested on real hardware
+- **Step 3:** Full web interface with real-time updates
+- **Step 4:** Multi-host target selection
+- **Step 5:** Theming system with dark mode and accessibility themes
+- **Step 6:** Pluggable storage backend (flat file / MongoDB)
+- **Step 7:** Batch job execution with live monitoring
+- **Step 8:** Schedule management with batch support and success tracking
+- **Step 9:** Host configuration wizard with SSH key management
+- **Step 10:** Cluster mode with distributed workers (13 features implemented)
   - Worker registration and authentication
   - Content repository with revision tracking
   - Sync API for playbook/inventory distribution
@@ -267,14 +267,14 @@ docker-compose exec -T ansible-web ansible-playbook playbooks/your-playbook.yml 
 Distribute Ansible workloads across multiple worker nodes for scalability and fault tolerance.
 
 ### Cluster Features
-- 🔗 **Worker Registration** - Workers auto-register with primary server using tokens
-- 📊 **Worker Dashboard** - Real-time view of all workers with health stats
-- ⚖️ **Smart Job Routing** - Automatic job assignment based on tags, load, and preferences
-- 🔄 **Content Sync** - Playbooks/inventory sync from primary to workers with revision tracking
-- 📡 **Real-time Updates** - WebSocket notifications for sync events
-- 🏷️ **Tag-Based Targeting** - Route jobs to specific workers via required/preferred tags
-- 💓 **Health Monitoring** - Worker check-ins with CPU, memory, and disk stats
-- 🖥️ **Local Executor Fallback** - Built-in local worker as lowest-priority fallback
+- **Worker Registration** - Workers auto-register with primary server using tokens
+- **Worker Dashboard** - Real-time view of all workers with health stats
+- **Smart Job Routing** - Automatic job assignment based on tags, load, and preferences
+- **Content Sync** - Playbooks/inventory sync from primary to workers with revision tracking
+- **Real-time Updates** - WebSocket notifications for sync events
+- **Tag-Based Targeting** - Route jobs to specific workers via required/preferred tags
+- **Health Monitoring** - Worker check-ins with CPU, memory, and disk stats
+- **Local Executor Fallback** - Built-in local worker as lowest-priority fallback
 
 ### Quick Cluster Setup
 
@@ -372,6 +372,18 @@ Internal use only.
 ## Contributing
 
 This project uses git for version control. Each significant change is committed with descriptive messages.
+
+**Pull requests (GitHub):** To create and merge a PR from the command line, use [GitHub CLI](https://cli.github.com/) (`gh`). After pushing your branch:
+
+```bash
+# Create a PR (interactive or with flags)
+gh pr create --base main --head feat/your-branch --title "Title" --body "Description"
+
+# Merge the PR (after review; use --squash or --merge as needed)
+gh pr merge --merge   # or --squash
+```
+
+Install: `https://cli.github.com/`. You must be authenticated (`gh auth login`).
 
 ## Support
 

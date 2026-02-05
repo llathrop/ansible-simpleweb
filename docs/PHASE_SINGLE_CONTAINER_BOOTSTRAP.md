@@ -24,19 +24,19 @@ References: `docs/AGENTIC_OVERVIEW.md` Phase 10, `docs/ARCHITECTURE.md`, `memory
 
 **Test requirements for all stages:** Unit tests must cover new code including edge cases and invalid data. Validation tests must use at least API-level checks (e.g. HTTP client) and must verify **outcomes** where feasible (e.g. after config restore, re-read config and assert content; after data restore, assert storage state), not only that an action returned 200. The plan includes at least basic validation of web functions (e.g. GET `/config` returns 200 and deployment section is available via API). See `tests/TEST_COVERAGE_AUDIT.md` and `tests/README.md`.
 
-### Stage 1: Config framework ✅
+### Stage 1: Config framework (done)
 - **Config file**: `app_config.yaml` in `CONFIG_DIR` (default `/app/config`). Schema: `storage`, `agent`, `cluster`, `features` (db_enabled, agent_enabled, workers_enabled), `deployment` (placeholders: agent_host, db_host, worker_hosts for future).
 - **Loader**: `web/config_manager.py`; config wins when key present.
 - **API**: `GET /api/config`, `PUT /api/config` (validate + save), `GET /api/config/backup`, `POST /api/config/restore`.
 - **Storage init**: `web/storage/__init__.py` uses config when `app_config.yaml` exists.
 - **Tests**: `tests/test_config_manager.py` (unit), `tests/test_config_api.py` (API; require Flask/venv).
 
-### Stage 2: Single-container image (demo / bootstrap entry point) ✅
+### Stage 2: Single-container image (demo / bootstrap entry point) (done)
 - **Dockerfile**: Unchanged as “all-in-one” (web + Ansible); default env: `STORAGE_BACKEND=flatfile`, no `depends_on` for mongodb/agent/workers.
 - **Compose**: `docker-compose.single.yml` — runs only `ansible-web`; used for **demo** or as the **initial container** before bootstrap expands to multi-container. Not the long-term target for typical users.
 - **Validation**: `scripts/validate_single_container.py`; `docs/REBUILD.md` § Single-container mode. **Tests**: `tests/test_deployment_single.py`.
 
-### Stage 3: Config panel UI and data backup/restore ✅
+### Stage 3: Config panel UI and data backup/restore (done)
 - **Config panel**: New page (or section) to view/edit key options, backup config, restore config. Quick-config for most-used options.
 - **Data backup**: API + UI to backup data (flatfile: archive config dir; MongoDB: mongodump or documented procedure). Separate from config backup.
 - **Data restore**: `POST /api/data/restore` (flatfile); UI on Config page. **Tests**: `tests/test_data_backup_restore.py`; docs: API.md, CONFIGURATION.md.
@@ -48,12 +48,12 @@ References: `docs/AGENTIC_OVERVIEW.md` Phase 10, `docs/ARCHITECTURE.md`, `memory
 - **Integration**: Config panel exposes feature toggles and (when implemented) triggers deployment; API may expose “deploy now” or deployment status. Framework must support both bootstrap-on-start and config-change-triggered deployment.
 - **Tests**: Must cover bootstrap flow (primary starts with config requesting DB+Agent → DB and Agent get deployed) and later expansion (enable workers via config → workers deployed). See [Test matrix](#test-matrix).
 
-### Stage 5: Build procedure and distributable image ✅
+### Stage 5: Build procedure and distributable image (done)
 - **Build**: `docker build -t ansible-simpleweb:latest .` from repo root. Documented in `docs/REBUILD.md` § Building the distributable image.
 - **Docs**: `docs/REBUILD.md` covers: run single container (demo); provide initial config for Primary+DB+Agent; how bootstrap deploys missing services; add workers later via config manager; backup/restore config and data. README Quick Start points to REBUILD for single-image/demo.
 - **Tests**: Smoke test = run single container then `python3 scripts/validate_single_container.py`. Bootstrap-with-config (DB+Agent deployed on first start) is manual or via full compose; see test matrix (Stage 6 / T6).
 
-### Stage 6: Deployment and system-size tests (multi-container focus) ✅
+### Stage 6: Deployment and system-size tests (multi-container focus) (done)
 - **Deployment tests**: `tests/test_deployment_matrix.py` covers the [Test matrix](#test-matrix) T1–T9. Real integration tests against a running primary (`PRIMARY_URL`). T1 (single): flatfile, config, deployment status, playbooks. T2–T5: topology-specific checks (MongoDB, agent, workers). T6–T9: deployment status/run API and Config page; full bootstrap/expand documented for manual validation.
 - **System-size tests**: For each topology, validate basic functions (health, run playbook, storage type, agent review when agent enabled, workers when workers enabled). Transitions: after “add workers” via config, verify workers register and can run jobs.
 - **How to run**: Start primary, then `PRIMARY_URL=http://localhost:3001 pytest tests/test_deployment_matrix.py -v`. Topology tests skip unless the running system matches. Full bootstrap/expand (T6–T9) can be run manually per scenarios table.
@@ -139,3 +139,4 @@ deployment:
 
 - **Branch**: `feat/single-container-bootstrap`
 - **Process**: Per `memory.md` § Standard Implementation Process (plan, tests, docs, atomic commits, memory updates). Subagents where parallel; reviewer with loop limit.
+- **PR workflow**: Push branch then create/merge PR via GitHub CLI: `gh pr create`, `gh pr merge`. See README § Contributing.
