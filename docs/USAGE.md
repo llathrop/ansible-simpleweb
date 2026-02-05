@@ -10,6 +10,7 @@ Complete guide to using the Ansible Simple Web Interface.
 - [Target Selection](#target-selection)
 - [Status Indicators](#status-indicators)
 - [Theming](#theming)
+- [Config and deployment](#config-and-deployment)
 - [API Usage](#api-usage)
 
 ## Web Interface Overview
@@ -242,6 +243,19 @@ No container access required; all steps are actionable from the web UI.
 - **Ollama**: Must run in the `ollama` container only (not on the host). Pull model: `docker compose exec -T ollama ollama pull qwen2.5-coder:3b`.
 
 See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for "Agent analysis fails" and "Ollama running on host".
+
+---
+
+## Config and deployment
+
+Navigate to **Config** in the menu to:
+
+- **View and edit app config** – Storage backend (flatfile or MongoDB), agent and feature toggles (DB, agent, workers), deployment options. Changes are saved to `app_config.yaml` in CONFIG_DIR (default `/app/config`). See [CONFIGURATION.md](CONFIGURATION.md) for the full schema.
+- **Backup / restore config** – Download the current config as YAML or restore from a previously backed-up file.
+- **Backup / restore data** – Download a zip of schedules, inventory, and other app data (flatfile or MongoDB export), or restore from a backup zip. Separate from config backup.
+- **Deployment status and “Deploy now”** – When running as a single container or after changing config, the panel shows desired vs current services (DB, agent, workers). If the config requests services that are not yet deployed, click **Deploy now** (or use `POST /api/deployment/run`) to run the deploy playbook. See [REBUILD.md](REBUILD.md) § Single-container and expansion workflow and [PHASE_SINGLE_CONTAINER_BOOTSTRAP.md](PHASE_SINGLE_CONTAINER_BOOTSTRAP.md).
+
+Single-container (demo) mode and building the image are documented in [REBUILD.md](REBUILD.md).
 
 ---
 

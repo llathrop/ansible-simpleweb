@@ -12,6 +12,7 @@ Common issues and their solutions.
 - [Log Issues](#log-issues)
 - [Agent analysis fails / debugging](#agent-analysis-fails--debugging)
 - [Performance Issues](#performance-issues)
+- [Config, deployment, and single-container](#config-deployment-and-single-container)
 
 ## Container Issues
 
@@ -743,6 +744,37 @@ du -sh logs/
 # Clear old logs
 rm logs/*-2024*.log  # Remove old logs
 ```
+
+## Config, deployment, and single-container
+
+### Config changes not applied
+
+**Symptom:** After editing config on the Config page, storage or features do not change.
+
+**Solutions:**
+
+- Config is written to `app_config.yaml` in CONFIG_DIR (default `/app/config`). Ensure the container has that directory writable (e.g. volume mount). Restart the web container so it reloads config on startup; storage is initialized at startup from config.
+- For storage backend (flatfile vs MongoDB), switching to MongoDB requires MongoDB to be reachable; otherwise health check may fail. See [CONFIGURATION.md](CONFIGURATION.md).
+
+### Deployment / "Deploy now" fails
+
+**Symptom:** Clicking "Deploy now" or `POST /api/deployment/run` returns an error or playbook not found.
+
+**Solutions:**
+
+- The deploy playbook is `playbooks/deploy/expand.yml`. It must exist and be readable from the primary container. From repo root: `docker compose exec ansible-web ls -la /app/playbooks/deploy/expand.yml`.
+- Deployment uses `ansible-playbook` inside the container. For Docker-based deployment (adding DB/agent/worker containers), the Docker socket must be available to the primary (e.g. mount `/var/run/docker.sock`). See [REBUILD.md](REBUILD.md) § Single-container and expansion workflow.
+- Check primary logs: `docker compose logs ansible-web 2>&1 | grep -i bootstrap` or `grep -i deploy`.
+
+### Single-container validation fails
+
+**Symptom:** `python3 scripts/validate_single_container.py` fails (e.g. Web UI or /api/status not reachable).
+
+**Solutions:**
+
+- Ensure the primary is running: `docker compose -f docker-compose.single.yml ps` (or your compose file). Access the UI at the URL you pass to the script (default http://localhost:3001).
+- If you use a different port or host, run: `python3 scripts/validate_single_container.py --base-url http://your-host:PORT`.
+- Install requests if missing: `pip install requests`.
 
 ## General Debugging
 

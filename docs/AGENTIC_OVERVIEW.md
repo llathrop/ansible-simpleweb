@@ -122,6 +122,7 @@ This phase addresses critical feedback regarding inventory sync, UI loading stat
 | **Documentation** | Add RouterOS playbooks (collect_stats_routeros, get_config_routeros, mikrotik-router-check, change-user-password) to README "Current Playbooks" section. |
 | **Test Coverage** | Add/verify tests for network playbooks (RouterOS, network-config) in `tests/`. |
 | **Site Review** | Complete manual "Site review: Verify system requirements" in memory.md. |
+| **Agent analysis UX** | Re-run analysis button when analysis fails; surface failure reason (e.g. no connection, timeout, server error) so the user knows why it failed. See memory.md § Known Technical Debt. |
 
 #### Medium-Term Enhancements
 | Item | Description |

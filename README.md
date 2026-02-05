@@ -55,12 +55,14 @@ A lightweight, Docker-based web interface for managing and executing Ansible pla
 # Clone or navigate to project directory
 cd ansible-simpleweb
 
-# Build and start
+# Build and start (full stack: web + optional MongoDB, agent, workers)
 docker-compose up -d
 
 # Verify it's running
 docker-compose ps
 ```
+
+**Single image / demo:** To run only the primary container (no DB, agent, or workers), build the image and use the single-container compose file. See **Single-container (demo) mode** in `docs/REBUILD.md` and the **Single-container and expansion workflow** there for initial config, bootstrap, and adding workers later.
 
 ### 2. Access the Web Interface
 
