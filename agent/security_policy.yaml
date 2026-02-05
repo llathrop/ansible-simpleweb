@@ -1,0 +1,49 @@
+policy:
+  default_action: deny
+  
+  features:
+    playbook_generation:
+      # If strict_mode is true, only actions matching allowed_verbs are permitted.
+      # If false, everything is permitted except denylist (legacy mode, discouraged).
+      strict_mode: true
+      
+      # Verbs that are explicitly allowed. 
+      # Any request NOT containing one of these (or containing a disallowed one) will be blocked if strict_mode is true.
+      allowed_verbs:
+        - install
+        - setup
+        - configure
+        - start
+        - stop
+        - restart
+        - enable
+        - disable
+        - check
+        - verify
+        - list
+        - show
+        - create
+        - add
+        - update
+        - upgrade
+        - patch
+        - backup
+        - restore
+        - monitor
+        - gather
+        - debug
+        - analyze
+        - report
+        
+      # Even if an allowed verb is present, if a restricted verb is ALSO present, it takes precedence and blocks.
+      restricted_verbs:
+        - delete
+        - remove
+        - uninstall
+        - drop
+        - truncate
+        - reboot
+        - shutdown
+        - poweroff
+        - format
+        - wipe

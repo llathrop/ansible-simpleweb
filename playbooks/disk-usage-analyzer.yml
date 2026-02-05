@@ -2,6 +2,9 @@
 - name: Disk Usage Analysis
   hosts: all
   gather_facts: yes
+  module_defaults:
+    ansible.builtin.setup:
+      gather_timeout: 30
   tasks:
     - name: Get detailed disk usage
       shell: df -h

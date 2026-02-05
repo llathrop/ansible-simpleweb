@@ -3,6 +3,9 @@
 - name: Collect MikroTik RouterOS Statistics
   hosts: routers
   gather_facts: no
+  vars:
+    ansible_connection: ansible.netcommon.network_cli
+    ansible_network_os: community.routeros.routeros
   tasks:
     - name: Get MikroTik system information
       community.routeros.command:

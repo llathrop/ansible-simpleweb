@@ -30,11 +30,17 @@ A lightweight, Docker-based web interface for managing and executing Ansible pla
 - 📈 **Success Rate Tracking** - Track success/failure rates per schedule (e.g., "8/10 succeeded")
 - 📋 **Execution History** - View detailed history of scheduled runs
 
-### Host Configuration Wizard (NEW)
+### Host Configuration Wizard
 - 🧙 **Multi-Step Wizard** - Guided 4-step process for adding/editing hosts
 - 🔑 **SSH Key Management** - Upload and manage SSH private keys securely
 - 🔐 **Multiple Auth Methods** - Support for SSH keys, passwords, or SSH agent
 - 🔍 **Connection Testing** - Test SSH connectivity before saving host configuration
+
+### AI Agent (Log Review & Assistance)
+- 🤖 **Automatic Log Review** - AI analyzes playbook output after each run
+- 📋 **Structured Analysis** - Summary, status, issues (error/warning/info), suggestions
+- 🔧 **Suggested Fix** - SSH auth failures show step-by-step fix with public key and Copy button
+- 📊 **Agent Dashboard** - Recent reviews, proposals, config reports
 
 ## Quick Start
 
@@ -153,8 +159,14 @@ ansible-simpleweb/
 │   ├── executor.py    # Ansible playbook executor
 │   ├── sync.py        # Content sync from primary
 │   └── sync_notify.py # WebSocket sync notifications
+├── agent/             # AI agent (log review, playbook generation)
+│   ├── service.py     # Flask agent service
+│   ├── llm_client.py  # LLM (Ollama) client
+│   ├── prompts.yaml   # Prompts for log review, playbook gen
+│   └── rag.py         # RAG / vector store for context
 ├── tests/             # Test suite (93+ tests)
 ├── docs/              # Documentation
+│   ├── ARCHITECTURE.md  # Single architecture reference (components, workflows, logs)
 │   └── CLUSTER.md     # Cluster architecture guide
 ├── Dockerfile.worker  # Worker container image
 └── docker-compose.yml # Primary + workers + MongoDB
@@ -162,6 +174,8 @@ ansible-simpleweb/
 
 ## Documentation
 
+- **[Architecture](docs/ARCHITECTURE.md)** - Single reference: components, workflows, logs and debugging (including agent)
+- **Agent (LLM)**: Ollama runs **only in the `ollama` container** (do not run Ollama on the host). Default model is `qwen2.5-coder:3b`; use `1.5b` for lightest, `7b` for best quality. Change via `LLM_MODEL` in agent-service env. Pull: `docker compose exec -T ollama ollama pull qwen2.5-coder:3b`. Verify: `./scripts/verify-ollama.sh`. Logs: `docker compose logs ollama`.
 - **[Usage Guide](docs/USAGE.md)** - Detailed interface walkthrough
 - **[Adding Playbooks](docs/ADDING_PLAYBOOKS.md)** - Complete guide to creating playbooks
 - **[Configuration](docs/CONFIGURATION.md)** - Inventory setup and SSH configuration
@@ -170,13 +184,21 @@ ansible-simpleweb/
 
 ## Current Playbooks
 
-This project includes 5 example playbooks:
+Example playbooks included:
 
+**General (Linux/Unix)**
 - **hardware-inventory** - CPU, memory, disks, GPU detection
 - **software-inventory** - Installed packages with versions
 - **system-health** - Uptime, load, memory, disk usage, errors
 - **service-status** - System services and their status
 - **network-config** - Network interfaces, routing, DNS
+- **disk-usage-analyzer** - Disk space analysis
+- **change-user-password** - Change user password
+
+**MikroTik RouterOS**
+- **mikrotik-router-check** - Basic RouterOS connectivity check
+- **collect_stats_routeros** - Collect stats from RouterOS
+- **get_config_routeros** - Retrieve RouterOS configuration
 
 ## Development Status
 
@@ -278,6 +300,7 @@ curl http://localhost:3001/api/workers | python3 -m json.tool
 │  general      │  │  high-memory  │  │  network      │
 └───────────────┘  └───────────────┘  └───────────────┘
 ```
+See [Architecture](docs/ARCHITECTURE.md) and [CLUSTER.md](docs/CLUSTER.md) for the full system and cluster detail.
 
 ---
 

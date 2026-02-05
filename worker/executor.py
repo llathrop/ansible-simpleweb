@@ -9,10 +9,59 @@ Handles execution of Ansible playbooks for assigned jobs:
 """
 
 import os
-import subprocess
-import threading
+import re
 import json
 from typing import Dict, List, Optional, Callable
+
+# Keys that must not appear in logs (passwords, secrets)
+_SENSITIVE_KEYS = frozenset({'ansible_ssh_pass', 'ansible_password', 'ansible_become_pass'})
+
+# Redact password-like values in log lines (Ansible stdout may echo vars)
+# Handles: ansible_ssh_pass=val, "ansible_ssh_pass": "val", ansible_ssh_pass: val
+_SENSITIVE_PATTERN = re.compile(
+    r'((?:ansible_ssh_pass|ansible_password|ansible_become_pass)\s*["\']?\s*[:=]\s*)(["\']?)[^"\'&\s\n]+(["\']?)',
+    re.IGNORECASE
+)
+
+
+def _sanitize_log_line(line: str) -> str:
+    """Redact sensitive variable values from a log line."""
+    return _SENSITIVE_PATTERN.sub(r'\1***', line)
+
+
+def _recursive_sanitize(obj):
+    """Recursively redact sensitive keys in dicts."""
+    if isinstance(obj, dict):
+        return {k: ('***' if k in _SENSITIVE_KEYS else _recursive_sanitize(v)) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_recursive_sanitize(v) for v in obj]
+    return obj
+
+
+def _sanitize_cmd_for_log(cmd: List[str]) -> str:
+    """Return command string safe for logging (redacts passwords in -e JSON)."""
+    parts = []
+    i = 0
+    while i < len(cmd):
+        part = cmd[i]
+        if part == '-e' and i + 1 < len(cmd):
+            try:
+                data = json.loads(cmd[i + 1])
+                sanitized = _recursive_sanitize(data)
+                parts.append(part)
+                parts.append(json.dumps(sanitized))
+            except (json.JSONDecodeError, TypeError):
+                parts.append(part)
+                parts.append('***')
+            i += 2
+            continue
+        parts.append(part)
+        i += 1
+    return ' '.join(parts)
+
+
+import subprocess
+import threading
 from dataclasses import dataclass
 from datetime import datetime
 from queue import Queue, Empty
@@ -204,7 +253,7 @@ class JobExecutor:
                     f"Playbook: {job.get('playbook')}\n"
                     f"Target: {job.get('target', 'all')}\n"
                     f"Started: {datetime.now().isoformat()}\n"
-                    f"Command: {' '.join(cmd)}\n"
+                    f"Command: {_sanitize_cmd_for_log(cmd)}\n"
                     + "=" * 60 + "\n\n"
                 )
                 log_file.write(header)
@@ -227,14 +276,15 @@ class JobExecutor:
                 stream_buffer = []
                 last_stream_time = time.time()
 
-                # Stream output to log file and primary
+                # Stream output to log file and primary (sanitize to redact passwords)
                 for line in process.stdout:
                     decoded_line = line.decode('utf-8', errors='replace')
-                    log_file.write(decoded_line)
+                    safe_line = _sanitize_log_line(decoded_line)
+                    log_file.write(safe_line)
                     log_file.flush()
 
                     # Add to stream buffer
-                    stream_buffer.append(decoded_line)
+                    stream_buffer.append(safe_line)
 
                     # Stream to primary when buffer is full or time elapsed
                     current_time = time.time()

@@ -2,6 +2,9 @@
 - name: Service Status Check
   hosts: all
   gather_facts: yes
+  module_defaults:
+    ansible.builtin.setup:
+      gather_timeout: 30
   tasks:
     - name: Get list of all systemd services
       shell: systemctl list-units --type=service --all --no-pager --no-legend | awk '{print $1, $2, $3, $4}'

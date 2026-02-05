@@ -407,6 +407,7 @@
             <strong><a href="/inventory">CMDB</a></strong>
             <a href="/storage">Storage Info</a>
             <a href="/logs">All Logs</a>
+            <a href="/agent">Agent</a>
         </div>
 
         <div class="stats-bar">
@@ -537,6 +538,14 @@
                         <div class="form-group">
                             <label for="description">Description</label>
                             <input type="text" id="description" placeholder="Optional description">
+                        </div>
+                        <div class="form-group">
+                            <label for="deviceType">Device Type</label>
+                            <select id="deviceType">
+                                <option value="linux">Standard (Linux/Unix)</option>
+                                <option value="mikrotik">MikroTik RouterOS</option>
+                            </select>
+                            <small style="color: var(--text-muted);">Use MikroTik for routers; enables network_cli connection.</small>
                         </div>
                     </div>
 
@@ -792,6 +801,8 @@
             document.getElementById('keyName').value = '';
             document.getElementById('keyFileStatus').style.display = 'none';
             document.getElementById('selectedKeyPath').value = '';
+            const dt = document.getElementById('deviceType');
+            if (dt) dt.value = 'linux';
             document.getElementById('itemModal').classList.add('active');
         }
 
@@ -807,8 +818,15 @@
             document.getElementById('group').value = item.group || '';
             document.getElementById('description').value = item.description || '';
 
-            // Parse variables for auth settings
             const vars = item.variables || {};
+            const deviceTypeEl = document.getElementById('deviceType');
+            if (deviceTypeEl && (vars.ansible_network_os === 'community.routeros.routeros' || vars.ansible_connection === 'ansible.netcommon.network_cli')) {
+                deviceTypeEl.value = 'mikrotik';
+            } else if (deviceTypeEl) {
+                deviceTypeEl.value = 'linux';
+            }
+
+            // Parse variables for auth settings
             document.getElementById('ansibleUser').value = vars.ansible_user || '';
             document.getElementById('ansiblePort').value = vars.ansible_port || '22';
 
@@ -824,10 +842,11 @@
                 selectAuthMethod('agent');
             }
 
-            // Collect non-auth variables for extra variables field
+            // Collect non-auth variables for extra variables field (exclude device-type vars)
             const extraVars = {};
+            const skipKeys = ['ansible_user', 'ansible_port', 'ansible_ssh_private_key_file', 'ansible_ssh_pass', 'ansible_ssh_common_args', 'ansible_connection', 'ansible_network_os'];
             for (const [k, v] of Object.entries(vars)) {
-                if (!['ansible_user', 'ansible_port', 'ansible_ssh_private_key_file', 'ansible_ssh_pass', 'ansible_ssh_common_args'].includes(k)) {
+                if (!skipKeys.includes(k)) {
                     extraVars[k] = v;
                 }
             }
@@ -1070,6 +1089,15 @@
             } else if (wizardState.authMethod === 'password') {
                 const password = document.getElementById('ansiblePassword').value;
                 if (password) variables.ansible_ssh_pass = password;
+                // Force password auth; skip publickey (avoids trying mounted ~/.ssh keys first)
+                variables.ansible_ssh_common_args = '-o PreferredAuthentications=password -o PubkeyAuthentication=no';
+            }
+
+            // Device type: MikroTik needs network_cli
+            const deviceType = document.getElementById('deviceType') && document.getElementById('deviceType').value;
+            if (deviceType === 'mikrotik') {
+                variables.ansible_connection = 'ansible.netcommon.network_cli';
+                variables.ansible_network_os = 'community.routeros.routeros';
             }
 
             // Extra variables

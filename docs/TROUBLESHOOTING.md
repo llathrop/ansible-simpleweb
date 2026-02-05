@@ -10,6 +10,7 @@ Common issues and their solutions.
 - [SSH Connection Issues](#ssh-connection-issues)
 - [Inventory Issues](#inventory-issues)
 - [Log Issues](#log-issues)
+- [Agent analysis fails / debugging](#agent-analysis-fails--debugging)
 - [Performance Issues](#performance-issues)
 
 ## Container Issues
@@ -243,6 +244,12 @@ docker-compose exec -T ansible-web bash /app/run-playbook.sh hardware-inventory 
 ls -ltr logs/ | tail
 ```
 
+### DEFAULT_GATHER_TIMEOUT deprecation warning
+
+**Symptom:** Ansible prints a deprecation warning about `DEFAULT_GATHER_TIMEOUT`, recommending `module_defaults` instead.
+
+**What we did:** The `[gathering] gather_timeout` setting in `ansible.cfg` triggers this deprecation and has been removed. Playbooks that use `gather_facts: yes` set a 30s timeout via `module_defaults` (e.g. `module_defaults: ansible.builtin.setup: { gather_timeout: 30 }`). If the warning still appears, ensure `ansible.cfg` has no `[gathering]` section and that the primary/workers use the mounted `./ansible.cfg` (see `docker-compose.yml`).
+
 ### Playbook Times Out
 
 **Symptom:** Playbook runs for long time then fails with timeout
@@ -319,30 +326,119 @@ docker-compose exec ansible-web ping -c 3 target-host
 
 ### Permission Denied (publickey)
 
-**Symptom:** SSH authentication fails
+**Symptom:** SSH authentication fails with:
+
+```
+ssh connection failed: Failed to authenticate public key: Access denied for 'publickey'.
+Authentication that can continue: publickey,password
+```
+
+This means the target host rejected public key authentication. Common causes: wrong user, wrong key path, or the public key is not in the target's `authorized_keys`.
 
 **Solutions:**
 
 ```bash
-# Check SSH key exists in container
-docker-compose exec ansible-web ls -la /app/.ssh/
+# 1. Verify inventory configuration
+# Ensure ansible_user and ansible_ssh_private_key_file match your setup:
+# [routers]
+# router1 ansible_host=192.168.1.1 ansible_user=admin ansible_ssh_private_key_file=/app/ssh-keys/your-key
 
-# Check key permissions
+# Check SSH key exists in container (and at the path used in inventory)
+docker-compose exec ansible-web ls -la /app/.ssh/
+docker-compose exec ansible-web ls -la /app/ssh-keys/
+
+# Key permissions must be 600 (owner read/write only)
 docker-compose exec ansible-web ls -la /app/.ssh/svc-ansible-key
 # Should be 600
-
-# Fix permissions if needed
 docker-compose exec ansible-web chmod 600 /app/.ssh/svc-ansible-key
 
-# Verify key is added to target's authorized_keys
+# 2. Verify the public key is on the target
+# The public key (.pub) must be in ~/.ssh/authorized_keys on the target host
+# for the ansible_user you use.
 ssh user@target-host cat ~/.ssh/authorized_keys
 
-# Test SSH connection manually
+# 3. Test SSH connection manually (use same user and key path as inventory)
 docker-compose exec ansible-web ssh -i /app/.ssh/svc-ansible-key user@target-host
 
-# Check SSH verbose output
+# 4. Debug with verbose output
 docker-compose exec ansible-web ssh -vvv -i /app/.ssh/svc-ansible-key user@target-host
 ```
+
+**Inventory checklist:**
+- `ansible_user` must match a user on the target who has your public key in `~/.ssh/authorized_keys`
+- `ansible_ssh_private_key_file` must point to the private key file inside the container (e.g. `/app/ssh-keys/mykey` or `/app/.ssh/svc-ansible-key`)
+- In cluster mode, workers run Ansible; ensure the key exists at the same path on the worker (or use a synced/mounted volume)
+
+**How to fix SSH publickey (step-by-step):**
+
+1. **Choose the SSH user and key**  
+   Decide which user on the target host will run Ansible (e.g. `admin`) and which private key you will use (e.g. `/app/ssh-keys/mykey` or `/app/.ssh/svc-ansible-key`).
+
+2. **Put the key where the app/worker runs**  
+   Copy the private key into the container (or mount it). Example:
+   ```bash
+   # If using docker-compose, add a volume or COPY in Dockerfile, e.g.:
+   # volumes: - ./ssh-keys:/app/ssh-keys:ro
+   docker compose exec ansible-web ls -la /app/ssh-keys/
+   # Permissions must be 600
+   docker compose exec ansible-web chmod 600 /app/ssh-keys/your-key
+   ```
+
+3. **Add the public key to the target host**  
+   On the **target** machine, for the user you chose (e.g. `admin`):
+   ```bash
+   # On your laptop or wherever you have the key:
+   cat /path/to/your-key.pub
+   # On the target (as that user or as root):
+   mkdir -p ~/.ssh
+   echo "paste-the-public-key-line" >> ~/.ssh/authorized_keys
+   chmod 700 ~/.ssh
+   chmod 600 ~/.ssh/authorized_keys
+   ```
+
+4. **Set inventory for that host**  
+   In `inventory/hosts` (or your inventory file), set `ansible_user` and the key path:
+   ```ini
+   [routers]
+   router1 ansible_host=192.168.1.1 ansible_user=admin ansible_ssh_private_key_file=/app/ssh-keys/your-key
+   ```
+   Use the **exact** path as seen inside the container (e.g. `/app/ssh-keys/your-key`).
+
+5. **Test SSH from the container**  
+   From the host:
+   ```bash
+   docker compose exec ansible-web ssh -i /app/ssh-keys/your-key -o StrictHostKeyChecking=no admin@192.168.1.1
+   ```
+   If this works, Ansible should work. If it fails, use `-vvv` to see why (wrong user, key not in authorized_keys, permissions, etc.).
+
+6. **Cluster mode**  
+   If you use workers, the same key path must exist on each worker (e.g. same volume or sync). Run the same `ssh -i ...` test from a worker container if needed.
+
+**For MikroTik RouterOS (key auth):** Add the key via RouterOS CLI. Connect via Winbox or SSH, then run:
+```
+/user ssh-keys add user=YOUR_USER public-key="ssh-rsa AAAA..."
+```
+Replace `YOUR_USER` with your `ansible_user` (e.g. `llathrop`). Paste your full public key (from `cat ~/.ssh/id_rsa.pub` or the **Copy public key** button in the Suggested fix card when SSH fails).
+
+**No container access?** When a playbook fails with SSH publickey, the log view and job status pages show a **Suggested fix** card with steps, your public key (if available), and a **Copy public key** button. Use that to add the key to your target.
+
+### MikroTik RouterOS: password auth (no keys)
+
+**Symptom:** You want to use password auth for MikroTik (e.g. for testing) instead of SSH keys.
+
+**Setup:** This project uses `inventory/group_vars/routers.yml` to force password auth and read the password from `ROUTER_PASSWORD`:
+
+1. Ensure **no SSH keys** are configured for your user on the MikroTik (RouterOS disables password login if keys exist). Remove keys: `/user ssh-keys remove [find where user=llathrop]`.
+
+2. Create a `.env` file in the project root (or export in shell):
+   ```
+   ROUTER_PASSWORD=your_mikrotik_password
+   ```
+   Docker Compose picks up `.env` automatically; workers get `ROUTER_PASSWORD`.
+
+3. Restart workers so they pick up the env: `docker compose up -d worker-1 worker-2 worker-3`.
+
+4. Run the playbook. The inventory uses `ansible_ssh_common_args` to force password auth and skip publickey.
 
 ### Host Key Verification Failed
 
@@ -493,6 +589,95 @@ docker-compose exec -T ansible-web less /app/logs/large-log.log
   register: result
   no_log: true        # Don't log output
 ```
+
+## Agent analysis fails / debugging
+
+**Symptom:** "Agent Analysis" in the log view or job status shows an error, "LLM Server Unreachable", or never completes (stuck on Pending/Running).
+
+**Where to find logs:** The agent does not write a log file. All interaction (trigger received, LLM calls, review saved, errors) is logged to **stderr** and appears only in the **agent container logs**. Full steps are in [ARCHITECTURE.md §6 Logs and debugging](ARCHITECTURE.md#6-logs-and-debugging).
+
+**Quick checks:**
+
+1. **Trigger from web** (did the primary tell the agent to run?):
+   ```bash
+   docker compose logs ansible-web 2>&1 | grep -i agent
+   ```
+   Look for "Agent review triggered for job …" after a job completes. If you see "Failed to trigger agent review …", the web cannot reach the agent (check `AGENT_SERVICE_URL`, network, or that `agent-service` is running).
+
+2. **Agent behavior** (what did the agent do?):
+   ```bash
+   docker compose logs agent-service
+   # or follow live:
+   docker compose logs -f agent-service
+   ```
+   After a job completes, look for: `Received trigger for job …`, `Starting review for job …`, then either success (`Review saved …`, `Notified web …`) or errors (e.g. "Failed to fetch job details", "Log file not found", "LLM Server Unreachable", or a Python traceback).
+
+3. **LLM model:** The default is a **lightweight** model (`qwen2.5-coder:1.5b`). To use a larger model, set `LLM_MODEL` in the agent-service environment (e.g. in `docker-compose.yml`: `LLM_MODEL=qwen2.5-coder:7b`), then restart the agent container. Pull the model in the ollama container: `docker compose exec ollama ollama run <model-name>`.
+
+4. **LLM reachable:** Ollama runs **in the `ollama` container only**. The agent uses `LLM_API_URL=http://ollama:11434/v1`. Ensure the `ollama` container is up: `docker compose ps ollama`. **Verify**: run `./scripts/verify-ollama.sh`. **Logs**: `docker compose logs ollama`. If you see Ollama running on the host, see **"Ollama running on the host"** below.
+
+5. **Review API:** From the host, `curl -s http://localhost:3001/api/agent/review-status/<job_id>` returns `pending` | `running` | `completed` | `error`. If the agent logs show "Review saved" but the UI does not update, check that the UI is receiving the push event or polling this endpoint and then fetching the full review.
+
+### Verify agent is up and responding
+
+If the UI shows "Pending" forever or "Error checking analysis", confirm the agent service is running and reachable:
+
+1. **Agent health (from host):**
+   ```bash
+   # Agent container publishes 5001:5000; from host:
+   curl -s http://localhost:5001/health
+   # Should return JSON with "status": "online", "service": "agent-service"
+
+   # From inside the web container (same network as agent):
+   docker compose exec ansible-web curl -s http://agent-service:5000/health
+   ```
+
+2. **Web → agent URL:** The web app uses `AGENT_SERVICE_URL` (e.g. in `.env` or `docker-compose.yml`). It must be the URL the **web container** uses to reach the agent (e.g. `http://agent-service:5000`). Check:
+   ```bash
+   docker compose exec ansible-web env | grep AGENT
+   ```
+
+3. **Trigger after job completion:** When a job finishes, the web should POST to the agent. In web logs:
+   ```bash
+   docker compose logs ansible-web 2>&1 | grep -i agent
+   ```
+   Look for "Agent review triggered for job …" (success) or "Failed to trigger agent review …" (web cannot reach agent or agent error).
+
+4. **Agent processing:** After a trigger, the agent writes a status file and then a review file. Check agent logs:
+   ```bash
+   docker compose logs agent-service
+   ```
+   Look for "Received trigger for job …", "Starting review for job …", then either "Review saved …" / "Notified web …" or an error/traceback.
+
+If the agent is not running or the web cannot reach it, the UI will stay on "Pending" and the elapsed counter will still run (from when the page started waiting); fix the agent/URL and run another job to test.
+
+### Ollama running on the host (stop it)
+
+**Symptom:** You see an Ollama process running on your host (not in Docker). You should **never** see this—this project does **not** start Ollama on the host.
+
+**Cause:** This project uses only the `ollama` container and does **not** publish port 11434 to the host (to avoid tools connecting and triggering host Ollama). Host Ollama is started by something else:
+- **Cursor IDE**: If Cursor is configured to use a local LLM at localhost:11434, it may start Ollama when you use the AI panel. Go to Cursor Settings → Models and disable local Ollama or point it elsewhere.
+- **Ollama Desktop app**: Quit it or disable "Start Ollama when computer starts".
+- A previous manual install, systemd service, or other tool.
+
+**Fix:** Stop host Ollama and use only the container:
+
+```bash
+# Stop any host Ollama process
+pkill ollama
+
+# If you use systemd (user service):
+systemctl --user stop ollama
+systemctl --user disable ollama   # Prevent auto-start
+
+# Then ensure the container is used:
+docker compose up -d ollama
+docker compose ps ollama   # Should show "Up"
+```
+
+**Never** run `ollama run ...` or `ollama serve` directly on the host. Always use the container: `docker compose exec ollama ollama run <model>`.
+
+**Test:** If host Ollama still starts when you run playbooks, set `AGENT_TRIGGER_ENABLED=false` in the ansible-web environment (docker-compose) and restart. This disables the agent trigger on job completion. If host Ollama stops appearing, the trigger→agent→LLM chain was involved; if it still appears, the cause is elsewhere (e.g. Cursor).
 
 ## Performance Issues
 

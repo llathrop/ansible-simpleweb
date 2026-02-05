@@ -31,14 +31,25 @@ Thumbs.db
 id_rsa*
 .ssh/
 
+# Project context and prompts (local/session use; may contain internal notes)
+memory.md
+Next-prompt.md
+
+# IDE / agent config (local)
+.claude
+.cursor/
+
 # Inventory files with credentials (keep sample, ignore local configs)
 inventory/hosts
 inventory/hosts.local
+inventory/routers
 inventory/*.local
+inventory/group_vars/
 !inventory/hosts.sample
 
-# Logs (execution logs - can be large)
-logs/*.log
+# Logs (execution logs - can be large; may contain local hostnames/IPs)
+logs/
+!logs/.gitkeep
 
 # Runtime configuration (user-specific)
 # Contains schedules, history, inventory data, host_facts

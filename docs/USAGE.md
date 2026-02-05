@@ -210,6 +210,41 @@ The interface supports multiple visual themes for accessibility and user prefere
 
 You can create custom themes by adding JSON files to `config/themes/`. See [CONFIGURATION.md](CONFIGURATION.md#custom-themes) for details.
 
+## Agent Analysis
+
+The AI agent automatically reviews playbook execution logs and provides structured analysis.
+
+### Where It Appears
+
+- **Log View** – When viewing a job log (cluster job or local), an "Agent Analysis" section shows below the log. Displays Summary, Status, Issues (with level badges), and Suggestions.
+- **Job Status** – Same Agent Analysis section with formatted output (no raw JSON).
+- **Agent Dashboard** – Navigate to **Agent** in the menu for recent reviews, proposals, and config reports.
+
+### Agent Flow
+
+1. When a playbook job completes, the web server triggers the agent.
+2. The agent fetches the log, analyzes it with the LLM, and saves the review.
+3. The UI polls or receives a push (Socket.IO `agent_review_ready`) and fetches the full review.
+4. The review is rendered as Summary, Status, Issues, Suggestions (formatted HTML).
+
+### Suggested Fix (SSH Errors)
+
+When a playbook fails with SSH public key or connection errors, the UI shows a **Suggested fix** section with:
+- Step-by-step instructions (including MikroTik `/user ssh-keys add` for RouterOS)
+- The default public key and a Copy button
+- A link to the Inventory page to fix credentials
+
+No container access required; all steps are actionable from the web UI.
+
+### Agent Configuration
+
+- **Model**: Default is `qwen2.5-coder:3b`. Change via `LLM_MODEL` in agent-service env.
+- **Ollama**: Must run in the `ollama` container only (not on the host). Pull model: `docker compose exec -T ollama ollama pull qwen2.5-coder:3b`.
+
+See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for "Agent analysis fails" and "Ollama running on host".
+
+---
+
 ## API Usage
 
 For external integrations or automation, use the REST API endpoints.

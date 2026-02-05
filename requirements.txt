@@ -6,3 +6,4 @@ PyYAML==6.0.1
 APScheduler==3.10.4
 SQLAlchemy==2.0.23
 pymongo==4.6.1
+requests==2.31.0

@@ -2,6 +2,9 @@
 - name: System Health Check
   hosts: all
   gather_facts: yes
+  module_defaults:
+    ansible.builtin.setup:
+      gather_timeout: 30
   tasks:
     - name: Get system uptime
       set_fact:

@@ -57,9 +57,229 @@
             <a href="/">&larr; Back to Playbooks</a>
             <a href="/schedules">Schedules</a>
             <a href="/logs">All Logs</a>
+            <a href="/agent">Agent</a>
         </div>
 
         <div class="log-content">{{ content }}</div>
+
+        <!-- Suggested fix (shown when SSH or other known errors detected; no container access needed) -->
+        <div id="suggested-fix-section" style="display: none; margin-top: 16px; padding: 16px; background: var(--bg-secondary, #f8f9fa); border: 1px solid var(--border-color, #dee2e6); border-radius: 8px;">
+            <h4 style="margin: 0 0 10px 0; color: var(--text-primary, #333);">Suggested fix</h4>
+            <p id="suggested-fix-title" style="margin: 0 0 10px 0; font-weight: 600;"></p>
+            <ol id="suggested-fix-steps" style="margin: 0 0 12px 0; padding-left: 20px;"></ol>
+            <div id="suggested-fix-publickey" style="display: none; margin: 12px 0; padding: 10px; background: var(--card-bg, #fff); border: 1px solid var(--border-color, #dee2e6); border-radius: 4px; font-family: monospace; font-size: 0.85em; word-break: break-all;"></div>
+            <button id="suggested-fix-copy" type="button" style="display: none; margin-bottom: 10px; padding: 6px 12px; cursor: pointer;">Copy public key</button>
+            <a id="suggested-fix-link" href="#" style="display: none;">Open Inventory</a>
+        </div>
+
+        <!-- Agent Review Section -->
+        {% if job_id %}
+        <div id="agent-review-section" style="margin-top: 20px; display: none;">
+            <div class="card" style="border: 1px solid var(--border-color, #ddd);">
+                <div class="card-header" style="background: var(--bg-secondary, #f5f5f5); padding: 10px 15px; border-bottom: 1px solid var(--border-color, #ddd); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                    <h3 style="margin: 0; font-size: 1.1em;">Agent Analysis</h3>
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <span id="agent-timing" style="font-size: 0.85em; color: var(--text-muted, #666);"></span>
+                        <span id="agent-status" class="badge" style="padding: 4px 8px; border-radius: 4px; font-size: 0.9em; background: #6c757d; color: white;">Loading...</span>
+                    </div>
+                </div>
+                <div class="card-body" style="padding: 15px;">
+                    <div id="agent-review-content" style="color: var(--text-primary, #333);"></div>
+                </div>
+            </div>
+        </div>
+
+        <script src="/static/js/agent-review.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.0/socket.io.min.js"></script>
+        <script>
+            document.addEventListener('DOMContentLoaded', async () => {
+                const jobId = "{{ job_id }}";
+                const reviewSection = document.getElementById('agent-review-section');
+                const reviewContent = document.getElementById('agent-review-content');
+                const statusBadge = document.getElementById('agent-status');
+                const timingEl = document.getElementById('agent-timing');
+                let agentPollTimer = null;
+                let agentDone = false;
+                let elapsedInterval = null;
+                let startedAt = null;   // server started_at when running, or client "waiting since" when pending
+                let waitingSince = null;  // client time when we first started waiting (for pending before running)
+                let avgResponseSeconds = 0;
+
+                async function loadAvgStats() {
+                    try {
+                        const r = await fetch('/api/agent/review-stats');
+                        const d = await r.json();
+                        if (d.avg_response_time_seconds != null && d.count > 0) {
+                            avgResponseSeconds = d.avg_response_time_seconds;
+                        }
+                    } catch (e) {}
+                }
+
+                function startElapsedCounter() {
+                    if (elapsedInterval) return;
+                    if (!startedAt && !waitingSince) waitingSince = Date.now() / 1000;
+                    function tick() {
+                        if (agentDone) return;
+                        const ref = startedAt || waitingSince || (Date.now() / 1000);
+                        const sec = Math.max(0, Math.floor((Date.now() / 1000) - ref));
+                        timingEl.textContent = 'Elapsed: ' + sec + 's' + (avgResponseSeconds > 0 ? ' (avg ' + avgResponseSeconds + 's)' : '');
+                    }
+                    tick();
+                    elapsedInterval = setInterval(tick, 1000);
+                }
+
+                function stopElapsedCounter() {
+                    if (elapsedInterval) {
+                        clearInterval(elapsedInterval);
+                        elapsedInterval = null;
+                    }
+                }
+
+                function showSuggestedFix(errorSnippet) {
+                    if (!errorSnippet || errorSnippet.length < 10) return;
+                    fetch('/api/suggested-fix?error=' + encodeURIComponent(errorSnippet.slice(0, 2000)))
+                        .then(r => r.json())
+                        .then(function(d) {
+                            if (!d.detected || !d.steps || !d.steps.length) return;
+                            const section = document.getElementById('suggested-fix-section');
+                            const titleEl = document.getElementById('suggested-fix-title');
+                            const stepsEl = document.getElementById('suggested-fix-steps');
+                            const pubkeyEl = document.getElementById('suggested-fix-publickey');
+                            const copyBtn = document.getElementById('suggested-fix-copy');
+                            const linkEl = document.getElementById('suggested-fix-link');
+                            titleEl.textContent = d.title || 'Suggested fix';
+                            stepsEl.innerHTML = d.steps.map(function(s) {
+                                return '<li style="margin-bottom: 6px;">' + s.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') + '</li>';
+                            }).join('');
+                            if (d.public_key) {
+                                pubkeyEl.textContent = d.public_key;
+                                pubkeyEl.style.display = 'block';
+                                copyBtn.style.display = 'inline-block';
+                                copyBtn.onclick = function() {
+                                    navigator.clipboard.writeText(d.public_key).then(function() {
+                                        copyBtn.textContent = 'Copied!';
+                                        setTimeout(function() { copyBtn.textContent = 'Copy public key'; }, 2000);
+                                    });
+                                };
+                            } else {
+                                pubkeyEl.style.display = 'none';
+                                copyBtn.style.display = 'none';
+                            }
+                            if (d.link && d.link.url) {
+                                linkEl.href = d.link.url;
+                                linkEl.textContent = d.link.label || 'Open Inventory';
+                                linkEl.style.display = 'inline-block';
+                            } else {
+                                linkEl.style.display = 'none';
+                            }
+                            section.style.display = 'block';
+                        })
+                        .catch(function() {});
+                }
+
+                function setReviewFromData(data) {
+                    const review = data.review;
+                    const isFailure = review && typeof review === 'object' && (review.status === 'failure' || review.error)
+                        || data.status === 'failure' || data.error;
+                    const failureMessage = (review && typeof review === 'object' && review.error) || data.error || "An error occurred during analysis.";
+                    if (isFailure) {
+                        var esc = window.escapeHtmlForAgent || function(s){ if(s==null) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
+                        reviewContent.innerHTML = '<p style="margin:0;">' + esc(failureMessage) + '</p>';
+                        statusBadge.textContent = "Error";
+                        statusBadge.style.background = "#dc3545";
+                        if (data.duration_seconds != null) timingEl.textContent = 'Duration: ' + data.duration_seconds + 's';
+                        showSuggestedFix(failureMessage);
+                    } else if (review) {
+                        var formatted = window.formatAgentReviewOrFallback && window.formatAgentReviewOrFallback(review);
+                        if (formatted) reviewContent.innerHTML = formatted;
+                        else reviewContent.textContent = typeof review === 'string' ? review : JSON.stringify(review, null, 2);
+                        statusBadge.textContent = "Completed";
+                        statusBadge.style.background = "#28a745";
+                        if (data.duration_seconds != null) timingEl.textContent = 'Duration: ' + data.duration_seconds + 's';
+                    }
+                }
+
+                async function fetchAndShowReview() {
+                    if (agentDone) return;
+                    try {
+                        const resp = await fetch(`/api/agent/reviews/${jobId}`);
+                        if (resp.ok) {
+                            const data = await resp.json();
+                            setReviewFromData(data);
+                            agentDone = true;
+                            stopElapsedCounter();
+                            if (agentPollTimer) clearInterval(agentPollTimer);
+                        } else if (resp.status === 404) {
+                            if (!waitingSince) waitingSince = Date.now() / 1000;
+                            startedAt = null;
+                            startElapsedCounter();
+                            reviewContent.textContent = "Analysis in progress… (will update when ready)";
+                            statusBadge.textContent = "Pending";
+                            statusBadge.style.background = "#ffc107";
+                            statusBadge.style.color = "black";
+                            if (avgResponseSeconds > 0 && timingEl.textContent.indexOf('Elapsed:') < 0) timingEl.textContent = 'Avg ' + avgResponseSeconds + 's';
+                        } else {
+                            const errBody = await resp.text();
+                            let errMsg = resp.statusText;
+                            try { const j = JSON.parse(errBody); if (j.error) errMsg = j.error; } catch (_) {}
+                            if (!errMsg || errMsg === resp.statusText) errMsg = errBody.slice(0, 300) || resp.statusText;
+                            reviewContent.textContent = 'Error ' + resp.status + ': ' + errMsg;
+                            statusBadge.textContent = "Error";
+                            statusBadge.style.background = "#dc3545";
+                            agentDone = true;
+                            stopElapsedCounter();
+                        }
+                    } catch (e) {
+                        reviewContent.textContent = 'Error: ' + (e.message || String(e));
+                        statusBadge.textContent = "Error";
+                        statusBadge.style.background = "#dc3545";
+                        agentDone = true;
+                        stopElapsedCounter();
+                        if (agentPollTimer) clearInterval(agentPollTimer);
+                    }
+                }
+
+                async function pollReviewStatus() {
+                    if (agentDone) return;
+                    try {
+                        const r = await fetch(`/api/agent/review-status/${jobId}`);
+                        const data = await r.json();
+                        if (data.status === 'completed' || data.status === 'error') {
+                            await fetchAndShowReview();
+                        } else if (data.status === 'running') {
+                            startedAt = data.started_at || (Date.now() / 1000);
+                            startElapsedCounter();
+                            reviewContent.textContent = "Analysis in progress… (will update when ready)";
+                            statusBadge.textContent = "Running";
+                            statusBadge.style.background = "#17a2b8";
+                        } else {
+                            if (!waitingSince) waitingSince = Date.now() / 1000;
+                            startElapsedCounter();
+                            if (avgResponseSeconds > 0 && timingEl.textContent.indexOf('Elapsed:') < 0) timingEl.textContent = 'Avg ' + avgResponseSeconds + 's';
+                        }
+                    } catch (e) {}
+                }
+
+                if (jobId) {
+                    reviewSection.style.display = 'block';
+                    await loadAvgStats();
+                    await fetchAndShowReview();
+                    var logEl = document.querySelector('.log-content');
+                    if (logEl && logEl.textContent) showSuggestedFix(logEl.textContent);
+                    if (!agentDone) {
+                        agentPollTimer = setInterval(pollReviewStatus, 3000);
+                        if (typeof io !== 'undefined') {
+                            const socket = io();
+                            socket.on('connect', function() { socket.emit('join_job', { job_id: jobId }); });
+                            socket.on('agent_review_ready', function(payload) {
+                                if (payload.job_id === jobId) fetchAndShowReview();
+                            });
+                        }
+                    }
+                }
+            });
+        </script>
+        {% endif %}
 
         <div class="footer" style="margin-top: 20px;">
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">

@@ -14,7 +14,7 @@
 [host_machine]
 # Replace with your actual host machine IP address
 # Option 1: SSH Key Authentication (Recommended)
-192.168.1.100 ansible_user=svc-ansible ansible_ssh_private_key_file=/app/.ssh/svc-ansible-key
+# 192.168.1.100 ansible_user=svc-ansible ansible_ssh_private_key_file=/app/.ssh/svc-ansible-key
 
 # Option 2: SSH Password Authentication
 # 192.168.1.100 ansible_user=svc-ansible ansible_ssh_pass=YourPasswordHere

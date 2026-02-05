@@ -2,6 +2,9 @@
 - name: Network Configuration Check
   hosts: all
   gather_facts: yes
+  module_defaults:
+    ansible.builtin.setup:
+      gather_timeout: 30
   tasks:
     - name: Get network interfaces from ip command
       shell: "ip -o link show | awk -F': ' '{print $2}' | grep -v '^lo$'"

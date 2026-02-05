@@ -20,6 +20,7 @@
             } catch (e) {}
         })();
     </script>
+    <script src="/static/js/agent-review.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.0/socket.io.min.js"></script>
     <script src="/static/js/theme.js"></script>
     <style>
@@ -198,6 +199,30 @@
         </div>
         {% endif %}
 
+        <!-- Suggested fix (shown when SSH or other known errors detected; no container access needed) -->
+        <div id="suggestedFixSection" class="job-card" style="display: none; margin-top: 16px; padding: 16px; background: var(--bg-secondary, #f8f9fa); border: 1px solid var(--border-color, #dee2e6); border-radius: 8px;">
+            <h4 style="margin: 0 0 10px 0;">Suggested fix</h4>
+            <p id="suggestedFixTitle" style="margin: 0 0 10px 0; font-weight: 600;"></p>
+            <ol id="suggestedFixSteps" style="margin: 0 0 12px 0; padding-left: 20px;"></ol>
+            <div id="suggestedFixPublickey" style="display: none; margin: 12px 0; padding: 10px; background: var(--card-bg, #fff); border: 1px solid var(--border-color, #dee2e6); border-radius: 4px; font-family: monospace; font-size: 0.85em; word-break: break-all;"></div>
+            <button id="suggestedFixCopy" type="button" style="display: none; margin-bottom: 10px; padding: 6px 12px; cursor: pointer;">Copy public key</button>
+            <a id="suggestedFixLink" href="/inventory" style="display: none;">Open Inventory</a>
+        </div>
+
+        <!-- Agent Analysis Section -->
+        <div id="agentAnalysisSection" class="job-card" style="display: none; border-left: 5px solid #007bff;">
+            <div class="job-header" style="margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
+                <div class="job-title" style="font-size: 1.2em;">Agent Analysis</div>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <span id="agentTiming" style="font-size: 0.85em; color: var(--text-muted, #666);"></span>
+                    <span id="agentStatusBadge" class="status-badge">Checking...</span>
+                </div>
+            </div>
+            <div class="job-info">
+                <div id="agentAnalysisContent" style="background: var(--bg-primary,#fff); padding: 10px; border-radius: 4px; border: 1px solid var(--border-color,#ddd);"></div>
+            </div>
+        </div>
+
         <div class="footer" style="margin-top: 30px;">
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                 <p>Ansible Simple Web Interface | Cluster Mode</p>
@@ -257,6 +282,11 @@
             }
         });
 
+        // Agent pushes when review is ready; refresh analysis section
+        socket.on('agent_review_ready', function(data) {
+            if (data.job_id === jobId) checkAgentAnalysis();
+        });
+
         // Poll for job status updates
         function updateJobStatus() {
             fetch(`/api/jobs/${jobId}`)
@@ -309,9 +339,169 @@
                     // If job completed, do a final log fetch and stop polling
                     if (job.status === 'completed' || job.status === 'failed') {
                         loadLog();
+                        checkAgentAnalysis();
                     }
                 })
                 .catch(err => console.error('Error fetching job status:', err));
+        }
+
+        // Check for agent analysis (full review). Use review-status for lightweight poll.
+        let agentAnalysisDone = false;
+        let agentStartedAt = null;   // server started_at when running, or client "waiting since" when pending
+        let agentWaitingSince = null;
+        let agentElapsedInterval = null;
+        let agentAvgSeconds = 0;
+
+        function loadAgentAvgStats() {
+            fetch('/api/agent/review-stats')
+                .then(r => r.json())
+                .then(d => { if (d.avg_response_time_seconds != null && d.count > 0) agentAvgSeconds = d.avg_response_time_seconds; })
+                .catch(() => {});
+        }
+
+        function showSuggestedFix(errorSnippet) {
+            if (!errorSnippet || errorSnippet.length < 10) return;
+            fetch('/api/suggested-fix?error=' + encodeURIComponent(errorSnippet.slice(0, 2000)))
+                .then(r => r.json())
+                .then(function(d) {
+                    if (!d.detected || !d.steps || !d.steps.length) return;
+                    var section = document.getElementById('suggestedFixSection');
+                    var titleEl = document.getElementById('suggestedFixTitle');
+                    var stepsEl = document.getElementById('suggestedFixSteps');
+                    var pubkeyEl = document.getElementById('suggestedFixPublickey');
+                    var copyBtn = document.getElementById('suggestedFixCopy');
+                    var linkEl = document.getElementById('suggestedFixLink');
+                    titleEl.textContent = d.title || 'Suggested fix';
+                    stepsEl.innerHTML = d.steps.map(function(s) {
+                        return '<li style="margin-bottom: 6px;">' + s.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') + '</li>';
+                    }).join('');
+                    if (d.public_key) {
+                        pubkeyEl.textContent = d.public_key;
+                        pubkeyEl.style.display = 'block';
+                        copyBtn.style.display = 'inline-block';
+                        copyBtn.onclick = function() {
+                            navigator.clipboard.writeText(d.public_key).then(function() {
+                                copyBtn.textContent = 'Copied!';
+                                setTimeout(function() { copyBtn.textContent = 'Copy public key'; }, 2000);
+                            });
+                        };
+                    } else {
+                        pubkeyEl.style.display = 'none';
+                        copyBtn.style.display = 'none';
+                    }
+                    if (d.link && d.link.url) {
+                        linkEl.href = d.link.url;
+                        linkEl.textContent = d.link.label || 'Open Inventory';
+                        linkEl.style.display = 'inline-block';
+                    } else {
+                        linkEl.style.display = 'none';
+                    }
+                    section.style.display = 'block';
+                })
+                .catch(function() {});
+        }
+
+        function startAgentElapsedCounter() {
+            if (agentElapsedInterval) return;
+            agentElapsedInterval = setInterval(function() {
+                if (!agentStartedAt || agentAnalysisDone) return;
+                const el = document.getElementById('agentTiming');
+                if (!el) return;
+                const sec = Math.floor((Date.now() / 1000) - agentStartedAt);
+                el.textContent = 'Elapsed: ' + sec + 's' + (agentAvgSeconds > 0 ? ' (avg ' + agentAvgSeconds + 's)' : '');
+            }, 1000);
+        }
+
+        function stopAgentElapsedCounter() {
+            if (agentElapsedInterval) { clearInterval(agentElapsedInterval); agentElapsedInterval = null; }
+        }
+
+        function checkAgentAnalysis() {
+            const section = document.getElementById('agentAnalysisSection');
+            const content = document.getElementById('agentAnalysisContent');
+            const badge = document.getElementById('agentStatusBadge');
+            const timingEl = document.getElementById('agentTiming');
+
+            fetch(`/api/agent/review-status/${jobId}`)
+                .then(r => r.json())
+                .then(statusData => {
+                    section.style.display = 'block';
+                    if (statusData.status === 'completed' || statusData.status === 'error') {
+                        return fetch(`/api/agent/reviews/${jobId}`).then(async r => {
+                            const body = await r.json().catch(() => ({}));
+                            if (r.ok) return body;
+                            return { status: 'failure', error: body.error || 'HTTP ' + r.status, review: { status: 'failure', error: body.error || 'HTTP ' + r.status } };
+                        });
+                    }
+                    if (statusData.status === 'running') {
+                        agentStartedAt = statusData.started_at || (Date.now() / 1000);
+                        startAgentElapsedCounter();
+                        content.textContent = 'Analysis in progress… (will update when ready)';
+                        badge.textContent = 'Running';
+                        badge.className = 'status-badge';
+                        badge.style.backgroundColor = '#17a2b8';
+                        badge.style.color = 'white';
+                        if (!agentAnalysisDone) setTimeout(checkAgentAnalysis, 3000);
+                        return null;
+                    }
+                    if (!agentWaitingSince) agentWaitingSince = Date.now() / 1000;
+                    startAgentElapsedCounter();
+                    if (agentAvgSeconds > 0 && timingEl && timingEl.textContent.indexOf('Elapsed:') < 0) timingEl.textContent = 'Avg ' + agentAvgSeconds + 's';
+                    content.textContent = 'Analysis pending… (will update when ready)';
+                    badge.textContent = 'Pending';
+                    badge.className = 'status-badge';
+                    badge.style.backgroundColor = '#ffc107';
+                    badge.style.color = 'black';
+                    if (!agentAnalysisDone) setTimeout(checkAgentAnalysis, 3000);
+                    return null;
+                })
+                .then(data => {
+                    if (!data) return;
+                    agentAnalysisDone = true;
+                    stopAgentElapsedCounter();
+                    const review = data.review;
+                    const reviewIsFailure = review && typeof review === 'object' && (review.status === 'failure' || review.error);
+                    const errMsg = (review && typeof review === 'object' && review.error) || data.error || data.message || 'Unknown error';
+
+                    if (reviewIsFailure) {
+                        var esc = window.escapeHtmlForAgent || function(s){ if(s==null) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
+                        content.innerHTML = '<p style="margin:0;">Analysis Failed: ' + esc(errMsg) + '</p>';
+                        badge.textContent = 'Error';
+                        badge.className = 'status-badge status-offline';
+                        badge.style.backgroundColor = '#dc3545';
+                        badge.style.color = 'white';
+                        if (data.duration_seconds != null && timingEl) timingEl.textContent = 'Duration: ' + data.duration_seconds + 's';
+                        showSuggestedFix(errMsg);
+                    } else if (review) {
+                        var formatted = window.formatAgentReviewOrFallback && window.formatAgentReviewOrFallback(review);
+                        if (formatted) content.innerHTML = formatted;
+                        else content.textContent = typeof review === 'string' ? review : JSON.stringify(review, null, 2);
+                        badge.textContent = 'Completed';
+                        badge.className = 'status-badge status-online';
+                        badge.style.backgroundColor = '#28a745';
+                        badge.style.color = 'white';
+                        if (data.duration_seconds != null && timingEl) timingEl.textContent = 'Duration: ' + data.duration_seconds + 's';
+                    } else if (data.status === 'failure' || data.error) {
+                        var esc2 = window.escapeHtmlForAgent || function(s){ if(s==null) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
+                        content.innerHTML = '<p style="margin:0;">Analysis Failed: ' + esc2(errMsg) + '</p>';
+                        badge.textContent = 'Error';
+                        badge.className = 'status-badge status-offline';
+                        badge.style.backgroundColor = '#dc3545';
+                        badge.style.color = 'white';
+                        if (data.duration_seconds != null && timingEl) timingEl.textContent = 'Duration: ' + data.duration_seconds + 's';
+                    }
+                })
+                .catch(err => {
+                    console.error('Agent check failed', err);
+                    if (!agentAnalysisDone) {
+                        section.style.display = 'block';
+                        content.textContent = 'Error checking analysis: ' + (err.message || String(err));
+                        badge.textContent = 'Error';
+                        badge.className = 'status-badge status-offline';
+                        badge.style.backgroundColor = '#dc3545';
+                        badge.style.color = 'white';
+                    }
+                });
         }
 
         // Load log content via API (fallback for when WebSocket misses data)
@@ -322,9 +512,11 @@
                     if (data.log) {
                         logContent.textContent = data.log;
                         logContent.scrollTop = logContent.scrollHeight;
+                        if (statusBadge.textContent === 'failed' && data.log) showSuggestedFix(data.log);
                     } else if (data.content) {
                         logContent.textContent = data.content;
                         logContent.scrollTop = logContent.scrollHeight;
+                        if (statusBadge.textContent === 'failed' && data.content) showSuggestedFix(data.content);
                     }
                 })
                 .catch(() => {
@@ -337,6 +529,9 @@
 
         // Poll for log every 5 seconds as fallback
         setInterval(loadLog, 5000);
+
+        // Load avg response time stats for agent timing display
+        loadAgentAvgStats();
 
         // Initial load
         updateJobStatus();

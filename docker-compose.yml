@@ -19,6 +19,8 @@ services:
       - ./library:/app/library
       # Mount callback plugins for CMDB collection
       - ./callback_plugins:/app/callback_plugins
+      # Mount ansible.cfg for config changes without image rebuild
+      - ./ansible.cfg:/app/ansible.cfg
       # Mount SSH keys for svc-ansible (read-only system keys)
       - ./.ssh:/app/.ssh:ro
       # Mount user SSH keys if they exist
@@ -67,6 +69,16 @@ services:
       dockerfile: Dockerfile.worker
     container_name: ansible-worker-1
     # network_mode: host  # Uncomment for direct host network access to targets
+    volumes:
+      # SSH keys for target authentication
+      - ./ssh-keys:/app/ssh-keys:ro
+      - ~/.ssh:/root/.ssh:ro
+      # Mount ansible.cfg for config changes without image rebuild
+      - ./ansible.cfg:/app/ansible.cfg
+      # Mount worker code for development
+      - ./worker:/app/worker
+      # Mount web code for CMDB collector dependencies
+      - ./web:/app/web:ro
     environment:
       - WORKER_NAME=worker-1
       - SERVER_URL=http://ansible-web:3001
@@ -75,12 +87,8 @@ services:
       - CHECKIN_INTERVAL=60
       - SYNC_INTERVAL=120
       - MAX_CONCURRENT_JOBS=2
-    volumes:
-      # SSH keys for target authentication
-      - ./ssh-keys:/app/ssh-keys:ro
-      - ~/.ssh:/root/.ssh:ro
-      # Mount worker code for development
-      - ./worker:/app/worker
+      # For MikroTik password auth (inventory/group_vars/routers.yml): set in .env
+      - ROUTER_PASSWORD=${ROUTER_PASSWORD:-}
     # For host network mode, change SERVER_URL to http://localhost:3001
     depends_on:
       - ansible-web
@@ -104,11 +112,13 @@ services:
       - CHECKIN_INTERVAL=60
       - SYNC_INTERVAL=120
       - MAX_CONCURRENT_JOBS=2
+      - ROUTER_PASSWORD=${ROUTER_PASSWORD:-}
     volumes:
       - ./ssh-keys:/app/ssh-keys:ro
       - ~/.ssh:/root/.ssh:ro
-      # Mount worker code for development
+      - ./ansible.cfg:/app/ansible.cfg
       - ./worker:/app/worker
+      - ./web:/app/web:ro
     depends_on:
       - ansible-web
     restart: unless-stopped
@@ -128,15 +138,72 @@ services:
       - CHECKIN_INTERVAL=60
       - SYNC_INTERVAL=120
       - MAX_CONCURRENT_JOBS=2
+      - ROUTER_PASSWORD=${ROUTER_PASSWORD:-}
     volumes:
       - ./ssh-keys:/app/ssh-keys:ro
       - ~/.ssh:/root/.ssh:ro
-      # Mount worker code for development
+      - ./ansible.cfg:/app/ansible.cfg
       - ./worker:/app/worker
+      - ./web:/app/web:ro
     depends_on:
       - ansible-web
     restart: unless-stopped
 
+  # Ollama LLM (required for agent log review; part of this project—status and logs are our responsibility)
+  ollama:
+    image: ollama/ollama
+    container_name: ansible-ollama
+    volumes:
+      - ollama_data:/root/.ollama
+    # Do NOT publish 11434 to host - prevents Cursor/IDE/tools from connecting and potentially
+    # starting host Ollama. Agent reaches this via Docker network (ollama:11434).
+    # ports:
+    #   - "11434:11434"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    # Pull model on first run (lightweight): docker compose exec ollama ollama run qwen2.5-coder:1.5b
+    # Logs: docker compose logs ollama
+
+  # Agent Service
+  agent-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    container_name: ansible-agent
+    volumes:
+      # Access to logs for review
+      - ./logs:/app/logs:ro
+      # Access to playbooks for analysis
+      - ./playbooks:/app/playbooks:ro
+      # Access to documentation for RAG
+      - ./docs:/app/docs:ro
+      # Mount agent code
+      - ./agent:/app/agent
+      # Vector database persistence
+      - agent_data:/app/data
+    environment:
+      - SERVER_URL=http://ansible-web:3001
+      - LLM_API_URL=http://ollama:11434/v1
+      - LLM_MODEL=qwen2.5-coder:3b
+      - POLL_INTERVAL=300
+    ports:
+      - "5001:5000"
+    depends_on:
+      ansible-web:
+        condition: service_started
+      ollama:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   mongodb_data:
+    driver: local
+  agent_data:
+    driver: local
+  ollama_data:
     driver: local

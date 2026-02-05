@@ -25,7 +25,7 @@ The following files are mounted into the containers and changes are reflected im
 ### 2. Service Restart
 Required when modifying code in long-running processes that do not support auto-reload.
 
-**Target:** Worker Nodes
+**Target:** Worker Nodes (code only; same image)
 - **Files:** `worker/*.py`
 - **Reason:** The worker service (`python3 -m worker`) loads code once at startup.
 - **Command:**
@@ -34,6 +34,7 @@ Required when modifying code in long-running processes that do not support auto-
   # OR
   ./rebuild.sh --workers
   ```
+- **Note:** This does *not* rebuild the worker image. For `Dockerfile.worker` or `ansible.cfg` changes (e.g. to fix CMDB Collector or ansible-pylibssh warnings), use a full rebuild (see below).
 
 ### 3. Container Rebuild
 Required when changing system dependencies or build configurations.

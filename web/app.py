@@ -1,5 +1,6 @@
 from flask import Flask, render_template, jsonify, request, send_file, redirect, url_for
 from flask_socketio import SocketIO, emit, join_room, leave_room
+import requests
 import os
 import glob
 import json
@@ -1394,6 +1395,14 @@ def run_playbook(playbook_name):
         job_id = str(uuid.uuid4())
         now = datetime.now().isoformat()
 
+        extra_vars = {}
+        if is_managed_host(target) and storage_backend:
+            managed_inventory = storage_backend.get_all_inventory()
+            for item in managed_inventory:
+                if item.get('hostname') == target:
+                    extra_vars = dict(item.get('variables') or {})
+                    break
+
         job = {
             'id': job_id,
             'playbook': playbook_name,
@@ -1402,7 +1411,7 @@ def run_playbook(playbook_name):
             'preferred_tags': [],
             'priority': 50,
             'job_type': 'normal',
-            'extra_vars': {},
+            'extra_vars': extra_vars,
             'status': 'queued',
             'assigned_worker': None,
             'submitted_by': 'web-ui',
@@ -1612,13 +1621,35 @@ def view_log(log_file):
         if st_match:
             started = st_match.group(1).strip()
 
+    # Find Job ID for Agent Review
+    job_id = None
+    if storage_backend:
+        try:
+            # Check recent history for matching log file
+            # Limit 100 to catch recent logs
+            history = storage_backend.get_history(limit=100)
+            for job in history:
+                if job.get('log_file') == log_file:
+                    job_id = job.get('run_id') or job.get('id')
+                    break
+        except Exception as e:
+            print(f"Error finding job_id for log: {e}")
+            
+    # Fallback: Check log header for Job ID (if added in newer logs)
+    if not job_id and first_line and 'Job ID:' in first_line:
+        import re
+        jid_match = re.search(r'Job ID:\s*([a-f0-9-]+)', first_line)
+        if jid_match:
+            job_id = jid_match.group(1).strip()
+
     return render_template('log_view.html',
                           log_file=log_file,
                           content=content,
                           playbook_name=playbook_name,
                           target=target,
                           worker_name=worker_name,
-                          started=started)
+                          started=started,
+                          job_id=job_id)
 
 @app.route('/api/status')
 def api_status():
@@ -2202,6 +2233,79 @@ def api_inventory_search():
 
 
 # =============================================================================
+# Suggested fix API (for errors shown in the UI; no container access required)
+# =============================================================================
+
+def _suggested_fix_for_error(error_text):
+    """Detect known error patterns and return built-in fix steps for the web UI."""
+    if not error_text or not isinstance(error_text, str):
+        return None
+    text = error_text.strip().lower()
+    # SSH public key authentication failed
+    if any(x in text for x in [
+        'failed to authenticate public key',
+        "access denied for 'publickey'",
+        'permission denied (publickey)',
+        'permission denied for \'publickey\'',
+        'no supported authentication methods',
+    ]):
+        steps = [
+            'On the **target machine** (one-time): add your public key to the target user. For Linux/Unix: add the key below to ~/.ssh/authorized_keys (chmod 700 ~/.ssh, chmod 600 ~/.ssh/authorized_keys).',
+            'For **MikroTik RouterOS**: connect via Winbox or SSH, then run: `/user ssh-keys add user=YOUR_USER public-key="PASTE_KEY_BELOW"` (replace YOUR_USER with your ansible_user, e.g. llathrop).',
+            'For hosts in **inventory files** (e.g. inventory/routers): edit the file and add `ansible_ssh_private_key_file=/app/ssh-keys/your-key` to the host line, or set `ansible_password=YOUR_PASSWORD` if using password auth. Upload keys via **Inventory** page.',
+            'For **managed hosts** (Inventory page): set **SSH Username**, **SSH Key** path (/app/ssh-keys/your-key), or **Password**.',
+            'Re-run the playbook.',
+        ]
+        result = {
+            'detected': True,
+            'title': 'SSH public key authentication failed',
+            'steps': steps,
+            'link': {'label': 'Open Inventory', 'url': '/inventory'},
+        }
+        pubkey = _get_default_public_key()
+        if pubkey:
+            result['public_key'] = pubkey
+        return result
+    # Connection refused (SSH not running or wrong port)
+    if 'connection refused' in text and ('ssh' in text or '22' in error_text):
+        return {
+            'detected': True,
+            'title': 'SSH connection refused',
+            'steps': [
+                'The target host refused the connection. On the **target machine**, ensure SSH is running (e.g. sudo systemctl start sshd).',
+                'If SSH runs on a different port, set **SSH Port** for that host in **Inventory** (e.g. 2222).',
+                'Re-run the playbook from the web UI.',
+            ],
+            'link': {'label': 'Open Inventory', 'url': '/inventory'},
+        }
+    # Host unreachable / no route
+    if 'unreachable' in text or 'no route to host' in text:
+        return {
+            'detected': True,
+            'title': 'Host unreachable',
+            'steps': [
+                'Check that the host hostname or IP in **Inventory** is correct and that the host is on the network.',
+                'If you use hostnames, ensure the runner (primary or worker) can resolve them. Re-run the playbook after fixing.',
+            ],
+            'link': {'label': 'Open Inventory', 'url': '/inventory'},
+        }
+    return None
+
+
+@app.route('/api/suggested-fix')
+def api_suggested_fix():
+    """
+    Return a suggested fix for an error message, for display in the web UI.
+    No container access required; fixes are actionable from the UI or target host.
+    """
+    error = request.args.get('error', '') or request.args.get('q', '')
+    suggestion = _suggested_fix_for_error(error)
+    if suggestion:
+        return jsonify(suggestion)
+    return jsonify({'detected': False})
+
+
+# =============================================================================
 # SSH Key Management API
 # =============================================================================
 
@@ -2217,10 +2321,10 @@ def api_ssh_keys_list():
     """
     keys = []
 
-    # Check multiple locations for SSH keys
+    # Check multiple locations for SSH keys (docker-compose mounts ~/.ssh:/root/.ssh)
     key_dirs = [
         SSH_KEYS_DIR,      # Uploaded keys
-        '/app/.ssh',       # Mounted system keys
+        '/root/.ssh',      # Mounted host keys
     ]
 
     for key_dir in key_dirs:
@@ -2236,6 +2340,41 @@ def api_ssh_keys_list():
                     })
 
     return jsonify({'keys': keys})
+
+
+def _get_default_public_key():
+    """Return content of first available SSH public key for display/copy-to-target."""
+    # Check mounted host keys (docker-compose: ~/.ssh:/root/.ssh)
+    for name in ['id_ed25519.pub', 'id_rsa.pub', 'id_ecdsa.pub']:
+        path = os.path.join('/root/.ssh', name)
+        if os.path.isfile(path):
+            try:
+                with open(path, 'r') as f:
+                    return f.read().strip()
+            except (IOError, OSError):
+                pass
+    # Check ssh-keys dir for .pub files (uploaded keys may have companion .pub)
+    if os.path.isdir(SSH_KEYS_DIR):
+        for f in sorted(os.listdir(SSH_KEYS_DIR)):
+            if f.endswith('.pub'):
+                try:
+                    with open(os.path.join(SSH_KEYS_DIR, f), 'r') as fp:
+                        return fp.read().strip()
+                except (IOError, OSError):
+                    pass
+    return None
+
+
+@app.route('/api/ssh-keys/default-public')
+def api_ssh_keys_default_public():
+    """
+    Return the default SSH public key for copy-to-target (e.g. add to MikroTik).
+    Used when SSH publickey auth fails so the user can add the key to the target.
+    """
+    key = _get_default_public_key()
+    if key:
+        return jsonify({'public_key': key})
+    return jsonify({'public_key': None})
 
 
 @app.route('/api/ssh-keys', methods=['POST'])
@@ -4210,6 +4349,25 @@ def api_complete_job(job_id):
         'completed_at': completed_at
     }, room='jobs')
 
+    # Trigger Agent Review (Fire and Forget)
+    # Set AGENT_TRIGGER_ENABLED=false to disable (e.g. if host Ollama keeps starting; helps isolate cause)
+    if AGENT_SERVICE_URL and os.environ.get('AGENT_TRIGGER_ENABLED', 'true').lower() in ('1', 'true', 'yes'):
+        def trigger_agent_async():
+            try:
+                r = requests.post(
+                    f"{AGENT_SERVICE_URL}/trigger/log-review",
+                    json={'job_id': job_id, 'exit_code': exit_code},
+                    timeout=10
+                )
+                if r.status_code == 200:
+                    print(f"Agent review triggered for job {job_id}")
+                else:
+                    print(f"Agent trigger returned {r.status_code} for job {job_id}: {r.text[:200]}")
+            except Exception as e:
+                print(f"Failed to trigger agent review for job {job_id}: {e}")
+        
+        threading.Thread(target=trigger_agent_async, daemon=True).start()
+
     return jsonify({
         'job_id': job_id,
         'status': status,
@@ -4341,6 +4499,7 @@ def api_sync_revision():
     Get current content revision (HEAD SHA).
 
     Used by workers to check if they need to sync.
+    Checks for uncommitted changes and commits them first.
 
     Returns:
     {
@@ -4352,6 +4511,13 @@ def api_sync_revision():
 
     if not repo.is_initialized():
         return jsonify({'error': 'Content repository not initialized'}), 500
+
+    # Auto-commit any changes detected
+    if repo.has_changes():
+        try:
+            repo.commit_changes("Auto-commit from sync check")
+        except Exception as e:
+            print(f"Error auto-committing changes: {e}")
 
     revision = repo.get_current_revision()
     return jsonify({
@@ -4366,6 +4532,7 @@ def api_sync_manifest():
     Get file manifest with checksums.
 
     Used by workers to verify sync state and identify changed files.
+    Checks for uncommitted changes and commits them first.
 
     Returns:
     {
@@ -4384,6 +4551,13 @@ def api_sync_manifest():
 
     if not repo.is_initialized():
         return jsonify({'error': 'Content repository not initialized'}), 500
+
+    # Auto-commit any changes detected
+    if repo.has_changes():
+        try:
+            repo.commit_changes("Auto-commit from sync manifest")
+        except Exception as e:
+            print(f"Error auto-committing changes: {e}")
 
     return jsonify({
         'revision': repo.get_current_revision(),
@@ -4766,6 +4940,127 @@ def handle_leave_job(data):
     job_id = data.get('job_id')
     if job_id:
         leave_room(f'job_{job_id}')
+
+
+
+# -----------------------------------------------------------------------------
+# Agent Integration Routes
+# -----------------------------------------------------------------------------
+
+AGENT_SERVICE_URL = os.environ.get('AGENT_SERVICE_URL', 'http://agent-service:5000')
+
+@app.route('/agent')
+def agent_dashboard():
+    """Render Agent Dashboard."""
+    return render_template('agent.html')
+
+@app.route('/api/agent/overview')
+def agent_overview():
+    """Proxy to get agent health status."""
+    try:
+        resp = requests.get(f"{AGENT_SERVICE_URL}/health", timeout=5)
+        return jsonify(resp.json()), resp.status_code
+    except Exception as e:
+        return jsonify({'error': str(e), 'status': 'offline'}), 503
+
+@app.route('/api/agent/reviews')
+def agent_reviews():
+    """Proxy to get recent log reviews."""
+    try:
+        resp = requests.get(f"{AGENT_SERVICE_URL}/agent/reviews", timeout=5)
+        return jsonify(resp.json()), resp.status_code
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/agent/reviews/<job_id>')
+def agent_get_review(job_id):
+    """Proxy to get specific review."""
+    try:
+        resp = requests.get(f"{AGENT_SERVICE_URL}/reviews/{job_id}", timeout=5)
+        return jsonify(resp.json()), resp.status_code
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/agent/review-status/<job_id>')
+def agent_review_status(job_id):
+    """Proxy to get review status only (pending | running | completed | error) for polling."""
+    try:
+        resp = requests.get(f"{AGENT_SERVICE_URL}/review-status/{job_id}", timeout=5)
+        return jsonify(resp.json()), resp.status_code
+    except Exception as e:
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/agent/review-stats')
+def agent_review_stats():
+    """Proxy to get avg response time for agent reviews."""
+    try:
+        resp = requests.get(f"{AGENT_SERVICE_URL}/review-stats", timeout=5)
+        return jsonify(resp.json()), resp.status_code
+    except Exception as e:
+        return jsonify({'avg_response_time_seconds': 0, 'count': 0, 'error': str(e)}), 200
+
+
+@app.route('/api/agent/review-ready', methods=['POST'])
+def agent_review_ready():
+    """Called by agent when a review is ready; push to UI via socket so clients don't need to poll."""
+    try:
+        data = request.get_json() or {}
+        job_id = data.get('job_id')
+        status = data.get('status', 'completed')
+        if not job_id:
+            return jsonify({'error': 'job_id required'}), 400
+        room = f'job_{job_id}'
+        if socketio:
+            socketio.emit('agent_review_ready', {'job_id': job_id, 'status': status}, room=room)
+        return jsonify({'ok': True, 'room': room})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/agent/proposals')
+def agent_proposals():
+    """Proxy to get recent playbook proposals."""
+    try:
+        resp = requests.get(f"{AGENT_SERVICE_URL}/agent/proposals", timeout=5)
+        return jsonify(resp.json()), resp.status_code
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/agent/reports')
+def agent_reports():
+    """Proxy to get recent config reports."""
+    try:
+        resp = requests.get(f"{AGENT_SERVICE_URL}/agent/reports", timeout=5)
+        return jsonify(resp.json()), resp.status_code
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/agent/generate', methods=['POST'])
+def agent_generate():
+    """Proxy to generate playbook."""
+    try:
+        resp = requests.post(
+            f"{AGENT_SERVICE_URL}/agent/generate", 
+            json=request.get_json(),
+            timeout=60 # LLM can be slow
+        )
+        return jsonify(resp.json()), resp.status_code
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/agent/analyze-config', methods=['POST'])
+def agent_analyze_config():
+    """Proxy to analyze config."""
+    try:
+        resp = requests.post(
+            f"{AGENT_SERVICE_URL}/agent/analyze-config", 
+            json=request.get_json(),
+            timeout=30
+        )
+        return jsonify(resp.json()), resp.status_code
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':

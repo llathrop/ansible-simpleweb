@@ -1054,9 +1054,170 @@ Delete a batch job record (only if not running).
 
 ---
 
+## Agent API
+
+The agent service provides AI-powered log review, playbook generation, and config analysis. All agent endpoints are proxied through the web server to the `agent-service` container. The agent uses a local LLM (Ollama) for inference.
+
+### GET /api/agent/overview
+
+Get agent dashboard summary (health, recent reviews, proposals).
+
+**Response:**
+```json
+{
+  "agent_healthy": true,
+  "model": "qwen2.5-coder:3b",
+  "recent_reviews": [...],
+  "pending_proposals": [...]
+}
+```
+
+---
+
+### GET /api/agent/reviews
+
+Get recent log reviews.
+
+**Response:**
+```json
+[
+  {
+    "job_id": "abc123",
+    "analyzed_at": 1738567890.123,
+    "duration_seconds": 45.2,
+    "review": {
+      "summary": "Playbook completed on host1; tasks A, B ran successfully.",
+      "status": "success",
+      "issues": [{"level": "info", "message": "...", "task": "..."}],
+      "suggestions": ["Consider monitoring disk usage."]
+    }
+  }
+]
+```
+
+---
+
+### GET /api/agent/reviews/{job_id}
+
+Get the full review for a specific job.
+
+**Response (200):**
+```json
+{
+  "job_id": "abc123",
+  "analyzed_at": 1738567890.123,
+  "duration_seconds": 45.2,
+  "review": {
+    "summary": "...",
+    "status": "success|warning|failure",
+    "issues": [...],
+    "suggestions": [...]
+  }
+}
+```
+
+**Response (404):** Review not yet available (still pending or running).
+
+---
+
+### GET /api/agent/review-status/{job_id}
+
+Lightweight status for polling. Use this instead of fetching the full review until status is `completed` or `error`.
+
+**Response:**
+```json
+{
+  "status": "pending|running|completed|error",
+  "started_at": 1738567850.0,
+  "duration_seconds": 45.2
+}
+```
+
+---
+
+### GET /api/agent/review-stats
+
+Get average response time for agent reviews (last 50).
+
+**Response:**
+```json
+{
+  "avg_response_time_seconds": 52.3,
+  "count": 25
+}
+```
+
+---
+
+### POST /api/agent/review-ready
+
+*Internal:* Called by the agent when a review is complete. Emits `agent_review_ready` via Socket.IO to clients. Not for direct client use.
+
+---
+
+### GET /api/agent/proposals
+
+Get recent playbook proposals (agent-generated playbooks pending approval).
+
+---
+
+### POST /api/agent/generate
+
+Generate a playbook from natural language (proxied to agent).
+
+**Request:**
+```http
+POST /api/agent/generate HTTP/1.1
+Content-Type: application/json
+
+{ "request": "Create a playbook to check disk space on all hosts" }
+```
+
+---
+
+### POST /api/agent/analyze-config
+
+Analyze a configuration file for security risks (proxied to agent).
+
+**Request:**
+```http
+POST /api/agent/analyze-config HTTP/1.1
+Content-Type: application/json
+
+{ "content": "RouterOS config text..." }
+```
+
+---
+
+### Agent Configuration
+
+- **LLM Model**: Set `LLM_MODEL` in agent-service env (default: `qwen2.5-coder:3b`). Use `1.5b` for lightest, `7b` for best quality.
+- **Ollama**: Runs in `ollama` container only. Port 11434 is not published to the host.
+- **Trigger**: Agent is triggered automatically when a job completes (cluster or local). No manual trigger needed.
+
+---
+
 ## SSH Key Management API
 
 Manage SSH private keys for host authentication.
+
+### GET /api/suggested-fix
+
+Return a suggested fix for an error message (e.g. SSH auth failure), for display in the web UI. No container access required; steps are actionable from the UI or target host.
+
+**Query parameters:** `error` or `q` – snippet of the error text (e.g. from a failed job log or agent analysis).
+
+**Response (detected):**
+```json
+{
+  "detected": true,
+  "title": "SSH public key authentication failed",
+  "steps": ["In the web UI, go to **Inventory** and edit the host...", "..."],
+  "link": { "label": "Open Inventory", "url": "/inventory" }
+}
+```
+
+**Response (not detected):** `{ "detected": false }`
 
 ### GET /api/ssh-keys
 

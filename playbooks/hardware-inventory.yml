@@ -2,6 +2,9 @@
 - name: Hardware Inventory Collection
   hosts: all
   gather_facts: yes
+  module_defaults:
+    ansible.builtin.setup:
+      gather_timeout: 30
   tasks:
     - name: Gather CPU information
       set_fact:
