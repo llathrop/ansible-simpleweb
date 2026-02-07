@@ -22,14 +22,22 @@
     <p class="subtitle">Application config, backup and restore (config and data)</p>
 
     <div class="section">
-        <h2>Application config</h2>
+        <h2>Quick config</h2>
         <p class="config-path" id="configPath">Loading…</p>
+        <p style="font-size: 0.9em; color: var(--text-muted); margin-bottom: 12px;">Most frequently changed options. Apply saves to app_config.yaml.</p>
         <div class="quick-config">
             <div>
                 <label>Storage backend</label>
                 <select id="quickStorage">
                     <option value="flatfile">flatfile</option>
                     <option value="mongodb">mongodb</option>
+                </select>
+            </div>
+            <div>
+                <label>DB enabled</label>
+                <select id="quickDb">
+                    <option value="false">No</option>
+                    <option value="true">Yes</option>
                 </select>
             </div>
             <div>
@@ -40,10 +48,29 @@
                 </select>
             </div>
             <div>
+                <label>Agent trigger on job</label>
+                <select id="quickAgentTrigger">
+                    <option value="false">No</option>
+                    <option value="true">Yes</option>
+                </select>
+            </div>
+            <div>
                 <label>Workers enabled</label>
                 <select id="quickWorkers">
                     <option value="false">No</option>
                     <option value="true">Yes</option>
+                </select>
+            </div>
+            <div>
+                <label>Worker count</label>
+                <input type="number" id="quickWorkerCount" min="0" max="20" style="width: 80px; padding: 6px 10px; border: 1px solid var(--border-primary); border-radius: 4px; background: var(--bg-primary); color: var(--text-primary);">
+            </div>
+            <div>
+                <label>Agent model</label>
+                <select id="quickAgentModel">
+                    <option value="qwen2.5-coder:1.5b">1.5b (light)</option>
+                    <option value="qwen2.5-coder:3b">3b (default)</option>
+                    <option value="qwen2.5-coder:7b">7b (best)</option>
                 </select>
             </div>
         </div>
@@ -107,8 +134,22 @@ function loadConfig() {
             document.getElementById('configPath').textContent = 'Config file: ' + (data.config_path || 'N/A') + (data.config_file_exists ? ' (exists)' : ' (using defaults)');
             var c = data.config || {};
             document.getElementById('quickStorage').value = (c.storage && c.storage.backend) || 'flatfile';
+            document.getElementById('quickDb').value = (c.features && c.features.db_enabled) ? 'true' : 'false';
             document.getElementById('quickAgent').value = (c.features && c.features.agent_enabled) ? 'true' : 'false';
+            document.getElementById('quickAgentTrigger').value = (c.agent && c.agent.trigger_enabled !== false) ? 'true' : 'false';
             document.getElementById('quickWorkers').value = (c.features && c.features.workers_enabled) ? 'true' : 'false';
+            document.getElementById('quickWorkerCount').value = (c.features && c.features.worker_count != null) ? c.features.worker_count : 0;
+            var model = (c.agent && c.agent.model) || 'qwen2.5-coder:3b';
+            var modelSelect = document.getElementById('quickAgentModel');
+            if (modelSelect.querySelector('option[value="' + model + '"]')) {
+                modelSelect.value = model;
+            } else {
+                var opt = document.createElement('option');
+                opt.value = model;
+                opt.textContent = model;
+                modelSelect.appendChild(opt);
+                modelSelect.value = model;
+            }
             document.getElementById('configJson').value = JSON.stringify(c, null, 2);
         })
         .catch(function(e) {
@@ -117,11 +158,19 @@ function loadConfig() {
 }
 
 document.getElementById('btnApplyQuick').onclick = function() {
+    var wc = parseInt(document.getElementById('quickWorkerCount').value, 10);
+    if (isNaN(wc) || wc < 0) wc = 0;
     var payload = {
         storage: { backend: document.getElementById('quickStorage').value },
+        agent: {
+            trigger_enabled: document.getElementById('quickAgentTrigger').value === 'true',
+            model: document.getElementById('quickAgentModel').value
+        },
         features: {
+            db_enabled: document.getElementById('quickDb').value === 'true',
             agent_enabled: document.getElementById('quickAgent').value === 'true',
-            workers_enabled: document.getElementById('quickWorkers').value === 'true'
+            workers_enabled: document.getElementById('quickWorkers').value === 'true',
+            worker_count: wc
         }
     };
     fetch('/api/config', {

@@ -2,14 +2,16 @@
 Navigation structure for the web UI.
 
 Centralized definition of top tabs and left-side panel links. Pages extending
-base.html receive this via template context. To add a new page:
-  1. Add an entry to NAV_SECTIONS below
-  2. Add the corresponding route in app.py
-  3. Create the template extending base.html
+base.html receive this via template context.
 
-For user-added custom pages, add entries to NAV_SECTIONS (or extend via
-configuration in the future). The structure is the single source of truth;
-all pages pick up changes automatically.
+Adding a new page:
+  1. Add an entry to NAV_SECTIONS below (choose section, add {url, label})
+  2. Add the route in app.py (e.g. @app.route('/mypage'))
+  3. Create the template extending base.html
+  4. All existing pages automatically show the new nav link; no per-page edits.
+
+Custom/user pages: Add entries to NAV_SECTIONS. The structure is the single
+source of truth; all pages pick up changes automatically.
 """
 
 # Top-level sections (tabs) with their left-nav pages.

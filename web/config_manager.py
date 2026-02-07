@@ -21,6 +21,7 @@ CONFIG_FILENAME = 'app_config.yaml'
 CONFIG_PATH = os.path.join(CONFIG_DIR, CONFIG_FILENAME)
 
 # Default configuration (matches plan in docs/PHASE_SINGLE_CONTAINER_BOOTSTRAP.md)
+# Organization: storage, agent, cluster, features, deployment, ui
 DEFAULT_CONFIG = {
     'storage': {
         'backend': 'flatfile',
@@ -34,22 +35,28 @@ DEFAULT_CONFIG = {
         'enabled': False,
         'trigger_enabled': True,
         'model': 'qwen2.5-coder:3b',
+        'url': 'http://agent-service:5000',
     },
     'cluster': {
         'mode': 'standalone',
         'registration_token': '',
         'checkin_interval': 60,
+        'sync_interval': 300,
         'local_worker_tags': ['local'],
     },
     'features': {
         'db_enabled': False,
         'agent_enabled': False,
         'workers_enabled': False,
+        'worker_count': 0,
     },
     'deployment': {
         'agent_host': 'local',
         'db_host': 'local',
         'worker_hosts': [],
+    },
+    'ui': {
+        'default_theme': 'default',
     },
 }
 
@@ -149,6 +156,16 @@ def validate_config(config: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], s
     f = merged.get('features', {})
     if not isinstance(f, dict):
         return None, 'features must be a dict'
+    wc = f.get('worker_count')
+    if wc is not None and not isinstance(wc, (int, type(None))):
+        return None, 'features.worker_count must be an integer'
+    if isinstance(wc, (int, float)) and (wc < 0 or wc > 100):
+        return None, 'features.worker_count must be 0-100'
+
+    # cluster.sync_interval
+    si = merged.get('cluster', {}).get('sync_interval')
+    if si is not None and not isinstance(si, (int, type(None))):
+        return None, 'cluster.sync_interval must be an integer'
 
     # deployment
     d = merged.get('deployment', {})
@@ -178,6 +195,28 @@ def get_effective_mongodb_settings() -> dict:
         'port': int(m.get('port') or os.environ.get('MONGODB_PORT', 27017)),
         'database': m.get('database') or os.environ.get('MONGODB_DATABASE', 'ansible_simpleweb'),
     }
+
+
+def get_effective_agent_url() -> str:
+    """Agent service URL. Config takes precedence over env."""
+    cfg = load_config()
+    return (cfg.get('agent') or {}).get('url') or os.environ.get('AGENT_SERVICE_URL', 'http://agent-service:5000')
+
+
+def get_effective_agent_trigger_enabled() -> bool:
+    """Whether to trigger agent on job completion. Config over env."""
+    cfg = load_config()
+    val = (cfg.get('agent') or {}).get('trigger_enabled')
+    if val is not None:
+        return bool(val)
+    return os.environ.get('AGENT_TRIGGER_ENABLED', 'true').lower() in ('1', 'true', 'yes')
+
+
+def get_effective_worker_count() -> int:
+    """Desired worker count from features. Used by deployment."""
+    cfg = load_config()
+    f = cfg.get('features') or {}
+    return int(f.get('worker_count', 0) or 0)
 
 
 def config_file_exists() -> bool:
