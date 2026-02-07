@@ -61,6 +61,9 @@ config/
 *.tmp
 *.bak
 ansible-simpleweb-backup-*.tar
+validation_backup*/
+*_backup_*.yaml
+*_backup_*.yml
 
 # MongoDB data (if running locally outside Docker)
 data/db/
