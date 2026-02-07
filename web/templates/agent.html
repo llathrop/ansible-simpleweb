@@ -1,357 +1,204 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Agent Dashboard | Ansible Web Interface</title>
-    <link rel="stylesheet" href="/static/css/base.css">
-    <script>
-        (function() {
-            try {
-                var cached = localStorage.getItem('ansible-web-theme-vars');
-                if (cached) {
-                    var vars = JSON.parse(cached);
-                    var root = document.documentElement;
-                    for (var key in vars) {
-                        if (vars[key]) root.style.setProperty(key, vars[key]);
-                    }
-                }
-            } catch (e) {}
-        })();
-    </script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.0/socket.io.min.js"></script>
-    <script src="/static/js/theme.js"></script>
-    <style>
-        body { padding: 20px; }
-        .dashboard-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 20px;
-            margin-top: 20px;
-        }
-        .dashboard-card {
-            background: var(--card-bg, #fff);
-            border: 1px solid var(--border-color, #ddd);
-            border-radius: 8px;
-            padding: 20px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        }
-        .card-title {
-            font-size: 1.2rem;
-            margin-bottom: 15px;
-            color: var(--text-color, #333);
-            border-bottom: 1px solid var(--border-color, #eee);
-            padding-bottom: 10px;
-        }
-        .stat-value {
-            font-size: 2rem;
-            font-weight: bold;
-            color: var(--primary-color, #007bff);
-        }
-        .status-badge {
-            display: inline-block;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 0.85rem;
-            font-weight: bold;
-        }
-        .status-online { background-color: #d4edda; color: #155724; }
-        .status-offline { background-color: #f8d7da; color: #721c24; }
-        
-        .list-group {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
-        .list-item {
-            padding: 10px 0;
-            border-bottom: 1px solid var(--border-color, #eee);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .list-item:last-child { border-bottom: none; }
-        
-        .empty-state {
-            color: var(--text-muted, #888);
-            font-style: italic;
-            text-align: center;
-            padding: 20px;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Agent Dashboard</h1>
-        <p class="subtitle">AI Assistant Overview & Insights</p>
+{% extends "base.html" %}
+{% block title %}Agent Dashboard | Ansible Web Interface{% endblock %}
 
-        <div class="nav-links">
-            <a href="/">Batch Execution</a>
-            <a href="/playbooks">Playbooks</a>
-            <a href="/schedules">Schedules</a>
-            <a href="/cmdb">CMDB</a>
-            <a href="/inventory">Inventory</a>
-            <a href="/storage">Storage</a>
-            <a href="/config">Config</a>
-            <a href="/logs">All Logs</a>
-            <a href="/agent" style="font-weight: bold;">Agent</a>
-            <span class="connection-indicator">
-                <span class="connection-dot" id="connectionDot"></span>
-                <span id="connectionText">Connecting...</span>
-            </span>
-        </div>
+{% block head_extras %}
+<style>
+.dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-top: 20px; }
+.dashboard-card { background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 8px; padding: 20px; }
+.card-title { font-size: 1.2rem; margin-bottom: 15px; border-bottom: 1px solid var(--border-primary); padding-bottom: 10px; }
+.stat-value { font-size: 2rem; font-weight: bold; color: var(--text-link); }
+.status-online { background-color: var(--status-ready-bg); color: var(--status-ready-text); }
+.status-offline { background-color: var(--status-failed-bg); color: var(--status-failed-text); }
+.list-group { list-style: none; padding: 0; margin: 0; }
+.list-item { padding: 10px 0; border-bottom: 1px solid var(--border-primary); display: flex; justify-content: space-between; align-items: center; }
+.list-item:last-child { border-bottom: none; }
+.empty-state { color: var(--text-muted); font-style: italic; text-align: center; padding: 20px; }
+</style>
+{% endblock %}
 
-        <div class="dashboard-grid">
-            <!-- Health & Status -->
-            <div class="dashboard-card">
-                <div class="card-title">System Status</div>
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                    <span>Agent Service</span>
-                    <span id="agentStatus" class="status-badge">Checking...</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                    <span>Model</span>
-                    <span id="agentModel">...</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span>Schedules Checked</span>
-                    <span id="schedCount" style="font-weight: bold;">0</span>
-                </div>
+{% block content %}
+<div class="container">
+    <h1>Agent Dashboard</h1>
+    <p class="subtitle">AI Assistant Overview & Insights</p>
+
+    <div class="dashboard-grid">
+        <div class="dashboard-card">
+            <div class="card-title">System Status</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <span>Agent Service</span>
+                <span id="agentStatus" class="status-badge">Checking...</span>
             </div>
-
-            <!-- Recent Reviews -->
-            <div class="dashboard-card">
-                <div class="card-title">Recent Log Reviews</div>
-                <div id="reviewsList">
-                    <div class="empty-state">Loading reviews...</div>
-                </div>
-                <div style="margin-top: 15px; text-align: right;">
-                    <a href="/logs" class="btn btn-secondary btn-sm">View All Logs</a>
-                </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <span>Model</span>
+                <span id="agentModel">...</span>
             </div>
-
-            <!-- Config Reports -->
-            <div class="dashboard-card">
-                <div class="card-title">Config Analysis Reports</div>
-                <div id="reportsList">
-                    <div class="empty-state">Loading reports...</div>
-                </div>
-            </div>
-
-             <!-- Playbook Proposals -->
-            <div class="dashboard-card">
-                <div class="card-title">Pending Proposals</div>
-                <div id="proposalsList">
-                    <div class="empty-state">Loading proposals...</div>
-                </div>
-                 <div style="margin-top: 15px;">
-                    <button class="btn btn-primary w-100" onclick="showGenerateModal()">Ask Agent to Write Playbook</button>
-                </div>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span>Schedules Checked</span>
+                <span id="schedCount" style="font-weight: bold;">0</span>
             </div>
         </div>
 
-        <div class="footer">
-            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                <p>Ansible Simple Web Interface | Localhost Only</p>
-                <div class="theme-selector">
-                    <label for="themeSelect">Theme:</label>
-                    <select id="themeSelect" class="theme-select"></select>
-                </div>
+        <div class="dashboard-card">
+            <div class="card-title">Recent Log Reviews</div>
+            <div id="reviewsList"><div class="empty-state">Loading reviews...</div></div>
+            <div style="margin-top: 15px; text-align: right;">
+                <a href="/logs" class="btn btn-secondary btn-sm">View All Logs</a>
+            </div>
+        </div>
+
+        <div class="dashboard-card">
+            <div class="card-title">Config Analysis Reports</div>
+            <div id="reportsList"><div class="empty-state">Loading reports...</div></div>
+        </div>
+
+        <div class="dashboard-card">
+            <div class="card-title">Pending Proposals</div>
+            <div id="proposalsList"><div class="empty-state">Loading proposals...</div></div>
+            <div style="margin-top: 15px;">
+                <button class="btn btn-primary w-100" onclick="showGenerateModal()">Ask Agent to Write Playbook</button>
             </div>
         </div>
     </div>
-    
-    <!-- Generate Modal -->
-    <div id="generateModal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
-        <div class="modal-content" style="background: var(--card-bg, #fff); margin: 10% auto; padding: 20px; width: 500px; border-radius: 8px;">
-            <h2>Generate Playbook</h2>
-            <p>Describe what you want the playbook to do.</p>
-            <textarea id="generatePrompt" style="width: 100%; height: 100px; margin-bottom: 10px;" placeholder="e.g. Install nginx and configure firewall on ubuntu"></textarea>
-            <div style="text-align: right;">
-                <button class="btn btn-secondary" onclick="closeGenerateModal()">Cancel</button>
-                <button class="btn btn-primary" onclick="submitGenerate()">Generate</button>
-            </div>
-            <div id="generateStatus" style="margin-top: 10px; display: none;">Generating...</div>
+</div>
+
+<div id="generateModal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
+    <div class="modal-content" style="background: var(--bg-secondary); margin: 10% auto; padding: 20px; width: 500px; border-radius: 8px;">
+        <h2>Generate Playbook</h2>
+        <p>Describe what you want the playbook to do.</p>
+        <textarea id="generatePrompt" style="width: 100%; height: 100px; margin-bottom: 10px;" placeholder="e.g. Install nginx and configure firewall on ubuntu"></textarea>
+        <div style="text-align: right;">
+            <button class="btn btn-secondary" onclick="closeGenerateModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="submitGenerate()">Generate</button>
         </div>
+        <div id="generateStatus" style="margin-top: 10px; display: none;">Generating...</div>
     </div>
+</div>
+{% endblock %}
 
-    <script>
-        const socket = io();
-        const connectionDot = document.getElementById('connectionDot');
-        const connectionText = document.getElementById('connectionText');
+{% block footer_scripts %}
+<script>
+(function() {
+    var DASHBOARD_FETCH_TIMEOUT_MS = 10000;
 
-        socket.on('connect', () => {
-            connectionDot.classList.add('connected');
-            connectionText.textContent = 'Live';
-        });
+    function fetchWithTimeout(url, opts) {
+        var ctrl = new AbortController();
+        var id = setTimeout(function() { ctrl.abort(); }, DASHBOARD_FETCH_TIMEOUT_MS);
+        return fetch(url, Object.assign({}, opts || {}, { signal: ctrl.signal })).finally(function() { clearTimeout(id); });
+    }
 
-        socket.on('disconnect', () => {
-            connectionDot.classList.remove('connected');
-            connectionText.textContent = 'Disconnected';
-        });
-
-        const DASHBOARD_FETCH_TIMEOUT_MS = 10000; // 10s client-side timeout
-
-        function fetchWithTimeout(url, opts) {
-            const ctrl = new AbortController();
-            const id = setTimeout(() => ctrl.abort(), DASHBOARD_FETCH_TIMEOUT_MS);
-            return fetch(url, { ...opts, signal: ctrl.signal }).finally(() => clearTimeout(id));
-        }
-
-        // Load Data
-        async function loadDashboard() {
-            // Overview
-            try {
-                const resp = await fetchWithTimeout('/api/agent/overview');
-                const overview = await resp.json();
-                const statusEl = document.getElementById('agentStatus');
-                if (overview.status === 'online') {
-                    statusEl.textContent = 'Online';
-                    statusEl.className = 'status-badge status-online';
-                    document.getElementById('agentModel').textContent = overview.model || 'Unknown';
-                } else {
-                    statusEl.textContent = overview.error ? 'Error' : 'Offline';
-                    statusEl.className = 'status-badge status-offline';
-                    document.getElementById('agentModel').textContent = overview.error || '—';
-                }
-            } catch (e) {
-                console.error(e);
-                const statusEl = document.getElementById('agentStatus');
-                statusEl.textContent = e.name === 'AbortError' ? 'Timeout' : 'Error';
+    async function loadDashboard() {
+        try {
+            var resp = await fetchWithTimeout('/api/agent/overview');
+            var overview = await resp.json();
+            var statusEl = document.getElementById('agentStatus');
+            if (overview.status === 'online') {
+                statusEl.textContent = 'Online';
+                statusEl.className = 'status-badge status-online';
+                document.getElementById('agentModel').textContent = overview.model || 'Unknown';
+            } else {
+                statusEl.textContent = overview.error ? 'Error' : 'Offline';
                 statusEl.className = 'status-badge status-offline';
-                document.getElementById('agentModel').textContent = '—';
+                document.getElementById('agentModel').textContent = overview.error || '—';
             }
-
-            // Reviews
-            try {
-                const reviewsResp = await fetchWithTimeout('/api/agent/reviews');
-                if (reviewsResp.ok) {
-                    const reviews = await reviewsResp.json();
-                    const list = document.getElementById('reviewsList');
-                    if (!Array.isArray(reviews) || reviews.length === 0) {
-                        list.innerHTML = '<div class="empty-state">No reviews yet</div>';
-                    } else {
-                        list.innerHTML = `<ul class="list-group">
-                            ${reviews.slice(0, 5).map(r => `
-                                <li class="list-item">
-                                    <div>
-                                        <strong>Job #${r.job_id}</strong>
-                                        <div style="font-size: 0.8rem; color: var(--text-muted);">${new Date(r.analyzed_at * 1000).toLocaleString()}</div>
-                                    </div>
-                                    <span class="status-badge status-${r.review?.status === 'success' ? 'online' : 'offline'}">${r.review?.status || 'Unknown'}</span>
-                                </li>
-                            `).join('')}
-                        </ul>`;
-                    }
-                } else {
-                    document.getElementById('reviewsList').innerHTML = '<div class="empty-state" style="color:red">Error loading reviews</div>';
-                }
-            } catch (e) {
-                console.error(e);
-                document.getElementById('reviewsList').innerHTML = '<div class="empty-state" style="color:red">' + (e.name === 'AbortError' ? 'Timeout' : 'Connection error') + '</div>';
-            }
-
-            // Proposals
-            try {
-                const proposalsResp = await fetchWithTimeout('/api/agent/proposals');
-                if (proposalsResp.ok) {
-                    const proposals = await proposalsResp.json();
-                    const list = document.getElementById('proposalsList');
-                    if (!Array.isArray(proposals) || proposals.length === 0) {
-                        list.innerHTML = '<div class="empty-state">No pending proposals</div>';
-                    } else {
-                        list.innerHTML = `<ul class="list-group">
-                            ${proposals.slice(0, 5).map(p => `
-                                <li class="list-item">
-                                    <div>
-                                        <div style="font-weight: bold; max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${p.request}</div>
-                                        <div style="font-size: 0.8rem;">${new Date(p.created_at * 1000).toLocaleDateString()}</div>
-                                    </div>
-                                    <button class="btn btn-sm btn-secondary" onclick="viewProposal('${p.id}')">View</button>
-                                </li>
-                            `).join('')}
-                        </ul>`;
-                    }
-                } else {
-                    document.getElementById('proposalsList').innerHTML = '<div class="empty-state" style="color:red">Error loading proposals</div>';
-                }
-            } catch (e) {
-                console.error(e);
-                document.getElementById('proposalsList').innerHTML = '<div class="empty-state" style="color:red">' + (e.name === 'AbortError' ? 'Timeout' : 'Connection error') + '</div>';
-            }
-
-            // Reports
-            try {
-                const reportsResp = await fetchWithTimeout('/api/agent/reports');
-                if (reportsResp.ok) {
-                    const reports = await reportsResp.json();
-                    const list = document.getElementById('reportsList');
-                    if (!Array.isArray(reports) || reports.length === 0) {
-                        list.innerHTML = '<div class="empty-state">No config reports</div>';
-                    } else {
-                        list.innerHTML = `<ul class="list-group">
-                            ${reports.slice(0, 5).map(r => `
-                                <li class="list-item">
-                                    <div>
-                                        <strong>Report ${r.id.split('_').pop()}</strong>
-                                        <div style="font-size: 0.8rem;">Score: ${r.analysis?.result?.security_score || 'N/A'}</div>
-                                    </div>
-                                    <button class="btn btn-sm btn-secondary">View</button>
-                                </li>
-                            `).join('')}
-                        </ul>`;
-                    }
-                } else {
-                    // Handle error response (e.g. 500)
-                    const error = await reportsResp.json().catch(() => ({}));
-                    document.getElementById('reportsList').innerHTML = `<div class="empty-state" style="color:red">Error: ${error.error || 'Failed to load'}</div>`;
-                }
-            } catch (e) {
-                console.error(e);
-                document.getElementById('reportsList').innerHTML = '<div class="empty-state" style="color:red">' + (e.name === 'AbortError' ? 'Timeout' : 'Connection error') + '</div>';
-            }
+        } catch (e) {
+            var statusEl = document.getElementById('agentStatus');
+            statusEl.textContent = e.name === 'AbortError' ? 'Timeout' : 'Error';
+            statusEl.className = 'status-badge status-offline';
+            document.getElementById('agentModel').textContent = '—';
         }
 
-        // Modal Logic
-        function showGenerateModal() {
-            document.getElementById('generateModal').style.display = 'block';
-        }
-
-        function closeGenerateModal() {
-            document.getElementById('generateModal').style.display = 'none';
-        }
-        
-        async function submitGenerate() {
-            const prompt = document.getElementById('generatePrompt').value;
-            const status = document.getElementById('generateStatus');
-            status.style.display = 'block';
-            status.textContent = 'Generating playbook... please wait.';
-            
-            try {
-                const resp = await fetch('/api/agent/generate', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({request: prompt})
-                });
-                const data = await resp.json();
-                
-                if (data.error) {
-                    status.textContent = 'Error: ' + data.error;
+        try {
+            var reviewsResp = await fetchWithTimeout('/api/agent/reviews');
+            if (reviewsResp.ok) {
+                var reviews = await reviewsResp.json();
+                var list = document.getElementById('reviewsList');
+                if (!Array.isArray(reviews) || reviews.length === 0) {
+                    list.innerHTML = '<div class="empty-state">No reviews yet</div>';
                 } else {
-                    status.textContent = 'Success! Proposal created.';
-                    setTimeout(() => {
-                        closeGenerateModal();
-                        loadDashboard(); // Refresh
-                    }, 1000);
+                    list.innerHTML = '<ul class="list-group">' + reviews.slice(0, 5).map(function(r) {
+                        return '<li class="list-item"><div><strong>Job #' + r.job_id + '</strong><div style="font-size: 0.8rem; color: var(--text-muted);">' + new Date(r.analyzed_at * 1000).toLocaleString() + '</div></div><span class="status-badge status-' + (r.review && r.review.status === 'success' ? 'online' : 'offline') + '">' + (r.review ? r.review.status : 'Unknown') + '</span></li>';
+                    }).join('') + '</ul>';
                 }
-            } catch (e) {
-                status.textContent = 'Network Error';
+            } else {
+                document.getElementById('reviewsList').innerHTML = '<div class="empty-state" style="color:red">Error loading reviews</div>';
             }
+        } catch (e) {
+            document.getElementById('reviewsList').innerHTML = '<div class="empty-state" style="color:red">' + (e.name === 'AbortError' ? 'Timeout' : 'Connection error') + '</div>';
         }
 
-        loadDashboard();
-        // Refresh every 30s
-        setInterval(loadDashboard, 30000);
-    </script>
-</body>
-</html>
+        try {
+            var proposalsResp = await fetchWithTimeout('/api/agent/proposals');
+            if (proposalsResp.ok) {
+                var proposals = await proposalsResp.json();
+                var list = document.getElementById('proposalsList');
+                if (!Array.isArray(proposals) || proposals.length === 0) {
+                    list.innerHTML = '<div class="empty-state">No pending proposals</div>';
+                } else {
+                    list.innerHTML = '<ul class="list-group">' + proposals.slice(0, 5).map(function(p) {
+                        return '<li class="list-item"><div><div style="font-weight: bold; max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">' + p.request + '</div><div style="font-size: 0.8rem;">' + new Date(p.created_at * 1000).toLocaleDateString() + '</div></div><button class="btn btn-sm btn-secondary" onclick="viewProposal(\'' + p.id + '\')">View</button></li>';
+                    }).join('') + '</ul>';
+                }
+            } else {
+                document.getElementById('proposalsList').innerHTML = '<div class="empty-state" style="color:red">Error loading proposals</div>';
+            }
+        } catch (e) {
+            document.getElementById('proposalsList').innerHTML = '<div class="empty-state" style="color:red">' + (e.name === 'AbortError' ? 'Timeout' : 'Connection error') + '</div>';
+        }
+
+        try {
+            var reportsResp = await fetchWithTimeout('/api/agent/reports');
+            if (reportsResp.ok) {
+                var reports = await reportsResp.json();
+                var list = document.getElementById('reportsList');
+                if (!Array.isArray(reports) || reports.length === 0) {
+                    list.innerHTML = '<div class="empty-state">No config reports</div>';
+                } else {
+                    list.innerHTML = '<ul class="list-group">' + reports.slice(0, 5).map(function(r) {
+                        var score = (r.analysis && r.analysis.result && r.analysis.result.security_score) ? r.analysis.result.security_score : 'N/A';
+                        return '<li class="list-item"><div><strong>Report ' + (r.id || '').split('_').pop() + '</strong><div style="font-size: 0.8rem;">Score: ' + score + '</div></div><button class="btn btn-sm btn-secondary">View</button></li>';
+                    }).join('') + '</ul>';
+                }
+            } else {
+                var err = {}; try { reportsResp.clone().json().then(function(j) { err = j; }); } catch(x) {}
+                document.getElementById('reportsList').innerHTML = '<div class="empty-state" style="color:red">Error: ' + (err.error || 'Failed to load') + '</div>';
+            }
+        } catch (e) {
+            document.getElementById('reportsList').innerHTML = '<div class="empty-state" style="color:red">' + (e.name === 'AbortError' ? 'Timeout' : 'Connection error') + '</div>';
+        }
+    }
+
+    window.showGenerateModal = function() { document.getElementById('generateModal').style.display = 'block'; };
+    window.closeGenerateModal = function() { document.getElementById('generateModal').style.display = 'none'; };
+    window.viewProposal = function(id) { window.location.href = '/agent?proposal=' + id; };
+
+    window.submitGenerate = async function() {
+        var prompt = document.getElementById('generatePrompt').value;
+        var status = document.getElementById('generateStatus');
+        status.style.display = 'block';
+        status.textContent = 'Generating playbook... please wait.';
+        try {
+            var resp = await fetch('/api/agent/generate', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({request: prompt})
+            });
+            var data = await resp.json();
+            if (data.error) {
+                status.textContent = 'Error: ' + data.error;
+            } else {
+                status.textContent = 'Success! Proposal created.';
+                setTimeout(function() {
+                    closeGenerateModal();
+                    loadDashboard();
+                }, 1000);
+            }
+        } catch (e) {
+            status.textContent = 'Network Error';
+        }
+    };
+
+    loadDashboard();
+    setInterval(loadDashboard, 30000);
+})();
+</script>
+{% endblock %}

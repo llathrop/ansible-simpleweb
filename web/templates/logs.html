@@ -1,78 +1,33 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>All Logs - Ansible Web Interface</title>
-    <link rel="stylesheet" href="/static/css/base.css">
-    <script>
-        // Immediately apply cached theme to prevent flash of unstyled content
-        (function() {
-            try {
-                var cached = localStorage.getItem('ansible-web-theme-vars');
-                if (cached) {
-                    var vars = JSON.parse(cached);
-                    var root = document.documentElement;
-                    for (var key in vars) {
-                        if (vars[key]) root.style.setProperty(key, vars[key]);
-                    }
-                }
-            } catch (e) {}
-        })();
-    </script>
-    <script src="/static/js/theme.js"></script>
-    <style>
-        /* Page-specific styles */
-        body {
-            padding: 20px;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>All Logs</h1>
+{% extends "base.html" %}
+{% block title %}All Logs - Ansible Web Interface{% endblock %}
 
-        <div class="nav-links">
-            <a href="/">&larr; Back to Playbooks</a>
-            <a href="/schedules">Schedules</a>
-            <a href="/config">Config</a>
-            <a href="/agent">Agent</a>
-        </div>
+{% block content %}
+<div class="container">
+    <h1>All Logs</h1>
 
-        {% if logs %}
-        <table class="log-table">
-            <thead>
-                <tr>
-                    <th>Log File</th>
-                    <th>Size</th>
-                    <th>Last Modified</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for log in logs %}
-                <tr>
-                    <td>
-                        <a href="/logs/{{ log.name }}" class="log-link">{{ log.name }}</a>
-                    </td>
-                    <td class="log-size">{{ "%.2f"|format(log.size / 1024) }} KB</td>
-                    <td>{{ log.modified }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        {% else %}
-        <p style="color: var(--text-muted); text-align: center; padding: 40px;">No log files found</p>
-        {% endif %}
-
-        <div class="footer">
-            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                <p>Ansible Simple Web Interface | Localhost Only</p>
-                <div class="theme-selector">
-                    <label for="themeSelect">Theme:</label>
-                    <select id="themeSelect" class="theme-select"></select>
-                </div>
-            </div>
-        </div>
-    </div>
-</body>
-</html>
+    {% if logs %}
+    <table class="log-table">
+        <thead>
+            <tr>
+                <th>Log File</th>
+                <th>Size</th>
+                <th>Last Modified</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for log in logs %}
+            <tr>
+                <td>
+                    <a href="/logs/{{ log.name }}" class="log-link">{{ log.name }}</a>
+                </td>
+                <td class="log-size">{{ "%.2f"|format(log.size / 1024) }} KB</td>
+                <td>{{ log.modified }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="color: var(--text-muted); text-align: center; padding: 40px;">No log files found</p>
+    {% endif %}
+</div>
+{% endblock %}

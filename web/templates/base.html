@@ -1,0 +1,91 @@
+{#-
+  Base layout for all pages: top tab bar, left nav panel, content area.
+  Pages extend this and override {% block content %}. Navigation is centralized
+  in nav.py; adding a nav item there updates all pages automatically.
+-#}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Ansible Web Interface{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/base.css">
+    <script>
+        {# Immediately apply cached theme to prevent flash of unstyled content #}
+        (function() {
+            try {
+                var cached = localStorage.getItem('ansible-web-theme-vars');
+                if (cached) {
+                    var vars = JSON.parse(cached);
+                    var root = document.documentElement;
+                    for (var key in vars) {
+                        if (vars[key]) root.style.setProperty(key, vars[key]);
+                    }
+                }
+            } catch (e) {}
+        })();
+    </script>
+    {% block head_scripts %}{% endblock %}
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.0/socket.io.min.js"></script>
+    <script src="/static/js/theme.js"></script>
+    {% block head_extras %}{% endblock %}
+</head>
+<body class="layout-app">
+    <header class="top-bar">
+        <a href="/" class="app-title">Ansible SimpleWeb</a>
+        <nav class="top-tabs">
+            {% for section in nav_sections %}
+            <a href="{{ section.pages[0].url }}" class="top-tab {% if section.id == active_section_id %}active{% endif %}">{{ section.label }}</a>
+            {% endfor %}
+        </nav>
+        <div class="top-bar-right">
+            <span class="connection-indicator">
+                <span class="connection-dot" id="connectionDot"></span>
+                <span id="connectionText">Connecting...</span>
+            </span>
+            <div class="theme-selector-inline">
+                <label for="themeSelect">Theme:</label>
+                <select id="themeSelect" class="theme-select"></select>
+            </div>
+        </div>
+    </header>
+
+    <script>
+        {% block socket_connect %}
+        (function() {
+            var socket = io();
+            window.__socket = socket;
+            var dot = document.getElementById('connectionDot');
+            var text = document.getElementById('connectionText');
+            if (dot && text) {
+                socket.on('connect', function() { dot.classList.add('connected'); text.textContent = 'Live'; });
+                socket.on('disconnect', function() { dot.classList.remove('connected'); text.textContent = 'Disconnected'; });
+            }
+        })();
+        {% endblock %}
+    </script>
+
+    <div class="layout-body">
+        <aside class="left-nav">
+            {% for section in nav_sections %}
+            {% if section.id == active_section_id %}
+            <nav class="left-nav-panel">
+                {% for page in section.pages %}
+                <a href="{{ page.url }}" class="left-nav-link {% if page.url == active_page_url %}active{% endif %}">{{ page.label }}</a>
+                {% endfor %}
+            </nav>
+            {% endif %}
+            {% endfor %}
+        </aside>
+
+        <main class="main-content">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    <footer class="app-footer">
+        <p>Ansible SimpleWeb | Localhost Only</p>
+    </footer>
+    {% block footer_scripts %}{% endblock %}
+</body>
+</html>

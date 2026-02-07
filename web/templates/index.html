@@ -1,595 +1,521 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ansible Web Interface</title>
-    <link rel="stylesheet" href="/static/css/base.css">
-    <script>
-        // Immediately apply cached theme to prevent flash of unstyled content
-        (function() {
-            try {
-                var cached = localStorage.getItem('ansible-web-theme-vars');
-                if (cached) {
-                    var vars = JSON.parse(cached);
-                    var root = document.documentElement;
-                    for (var key in vars) {
-                        if (vars[key]) root.style.setProperty(key, vars[key]);
-                    }
-                }
-            } catch (e) {}
-        })();
-    </script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.0/socket.io.min.js"></script>
-    <script src="/static/js/theme.js"></script>
-    <style>
-        /* Page-specific styles */
-        body {
-            padding: 20px;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Ansible Web Interface</h1>
-        <p class="subtitle">Manage and execute Ansible playbooks</p>
+{% extends "base.html" %}
+{% block title %}Batch Execution | Ansible Web Interface{% endblock %}
 
-        <div class="nav-links">
-            <a href="/" style="font-weight: bold;">Batch Execution</a>
-            <a href="/playbooks">Playbooks</a>
-            <a href="/schedules">Schedules</a>
-            <a href="/cmdb">CMDB</a>
-            <a href="/inventory">Inventory</a>
-            <a href="/storage">Storage</a>
-            <a href="/config">Config</a>
-            <a href="/logs">All Logs</a>
-            <a href="/agent">Agent</a>
-            <span class="connection-indicator">
-                <span class="connection-dot" id="connectionDot"></span>
-                <span id="connectionText">Connecting...</span>
-            </span>
-        </div>
+{% block content %}
+<div class="container">
+    <h1>Batch Execution</h1>
+    <p class="subtitle">Manage and execute Ansible playbooks</p>
 
-        <div class="refresh-note" id="statusNote">
-            &#8505;&#65039; Real-time updates via WebSocket. Click "Watch Live" to see playbook output as it runs.
-        </div>
-
-        <!-- Batch Execution Section -->
-        <div class="batch-section" id="batchSection">
-            <h2>
-                Batch Execution
-                <span class="toggle-icon" onclick="toggleBatchSection()" title="Toggle section">&#9660;</span>
-            </h2>
-
-            <div id="batchContent">
-                <div class="batch-grid">
-                    <!-- Playbooks Selection -->
-                    <div class="batch-column">
-                        <h3>Select Playbooks</h3>
-                        <div class="select-actions">
-                            <button type="button" onclick="selectAllPlaybooks()">Select All</button>
-                            <button type="button" onclick="clearAllPlaybooks()">Clear All</button>
-                        </div>
-                        <div class="multi-select-list" id="playbookSelectList">
-                            {% for playbook in playbooks %}
-                            <div class="multi-select-item" onclick="togglePlaybookSelection(this, '{{ playbook.name }}')">
-                                <input type="checkbox" id="pb_{{ playbook.name }}" value="{{ playbook.name }}">
-                                <label for="pb_{{ playbook.name }}">{{ playbook.display_name }}</label>
-                            </div>
-                            {% endfor %}
-                        </div>
-                        <div class="selection-counter">
-                            <span id="playbookCount">0</span> playbook(s) selected
-                        </div>
-                    </div>
-
-                    <!-- Targets Selection -->
-                    <div class="batch-column">
-                        <h3>Select Targets</h3>
-                        <div class="select-actions">
-                            <button type="button" onclick="selectAllTargets()">Select All</button>
-                            <button type="button" onclick="clearAllTargets()">Clear All</button>
-                        </div>
-                        <div class="multi-select-list" id="targetSelectList">
-                            {% for target in targets %}
-                            <div class="multi-select-item" onclick="toggleTargetSelection(this, '{{ target.value }}')">
-                                <input type="checkbox" id="tgt_{{ target.value }}" value="{{ target.value }}">
-                                <label for="tgt_{{ target.value }}">{{ target.label }}</label>
-                                {% if '[managed]' in target.label %}
-                                <span class="item-type">managed</span>
-                                {% elif target.value == 'all' %}
-                                <span class="item-type">all hosts</span>
-                                {% endif %}
-                            </div>
-                            {% endfor %}
-                        </div>
-                        <div class="selection-counter">
-                            <span id="targetCount">0</span> target(s) selected
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Execution Order -->
-                <div class="order-section">
-                    <h3>Execution Order <small style="font-weight: normal; text-transform: none;">(drag to reorder or use arrows)</small></h3>
-                    <div class="order-list" id="orderList">
-                        <div class="order-list-empty" id="orderListEmpty">
-                            Select playbooks above to set execution order
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Batch Actions -->
-                <div class="batch-actions" style="margin-top: 20px;">
-                    <input type="text" class="batch-name-input" id="batchName" placeholder="Batch job name (optional)">
-                    <button type="button" class="btn btn-primary" onclick="runBatchJob()" id="runBatchBtn" disabled>
-                        Run Batch
-                    </button>
-                    <button type="button" class="btn btn-secondary" onclick="scheduleBatchJob()" id="scheduleBatchBtn" disabled>
-                        Schedule Batch
-                    </button>
-                    <button type="button" class="btn btn-secondary" onclick="exportBatchConfig()" id="exportBatchBtn" disabled>
-                        Export Config
-                    </button>
-                </div>
-
-                <!-- Active Batch Jobs -->
-                <div class="active-batch-jobs" id="activeBatchJobs" style="display: none;">
-                    <h3>Active Batch Jobs</h3>
-                    <div id="batchJobsList"></div>
-                </div>
-            </div>
-        </div>
-
-        <div class="footer">
-            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                <p>Ansible Simple Web Interface | Localhost Only</p>
-                <div class="theme-selector">
-                    <label for="themeSelect">Theme:</label>
-                    <select id="themeSelect" class="theme-select"></select>
-                </div>
-            </div>
-            <p style="margin-top: 5px; font-size: 12px;">Generated with Claude Code</p>
-        </div>
+    <div class="refresh-note" id="statusNote">
+        Real-time updates via WebSocket. Click "Watch Live" to see playbook output as it runs.
     </div>
 
-    <script>
-        const connectionDot = document.getElementById('connectionDot');
-        const connectionText = document.getElementById('connectionText');
+    <!-- Batch Execution Section -->
+    <div class="batch-section" id="batchSection">
+        <h2>
+            Batch Execution
+            <span class="toggle-icon" onclick="toggleBatchSection()" title="Toggle section">&#9660;</span>
+        </h2>
 
-        // Connect to WebSocket
-        const socket = io();
+        <div id="batchContent">
+            <div class="batch-grid">
+                <!-- Playbooks Selection -->
+                <div class="batch-column">
+                    <h3>Select Playbooks</h3>
+                    <div class="select-actions">
+                        <button type="button" onclick="selectAllPlaybooks()">Select All</button>
+                        <button type="button" onclick="clearAllPlaybooks()">Clear All</button>
+                    </div>
+                    <div class="multi-select-list" id="playbookSelectList">
+                        {% for playbook in playbooks %}
+                        <div class="multi-select-item" onclick="togglePlaybookSelection(this, '{{ playbook.name }}')">
+                            <input type="checkbox" id="pb_{{ playbook.name }}" value="{{ playbook.name }}">
+                            <label for="pb_{{ playbook.name }}">{{ playbook.display_name }}</label>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <div class="selection-counter">
+                        <span id="playbookCount">0</span> playbook(s) selected
+                    </div>
+                </div>
 
-        socket.on('connect', function() {
-            connectionDot.classList.add('connected');
-            connectionText.textContent = 'Live';
-        });
+                <!-- Targets Selection -->
+                <div class="batch-column">
+                    <h3>Select Targets</h3>
+                    <div class="select-actions">
+                        <button type="button" onclick="selectAllTargets()">Select All</button>
+                        <button type="button" onclick="clearAllTargets()">Clear All</button>
+                    </div>
+                    <div class="multi-select-list" id="targetSelectList">
+                        {% for target in targets %}
+                        <div class="multi-select-item" onclick="toggleTargetSelection(this, '{{ target.value }}')">
+                            <input type="checkbox" id="tgt_{{ target.value }}" value="{{ target.value }}">
+                            <label for="tgt_{{ target.value }}">{{ target.label }}</label>
+                            {% if '[managed]' in target.label %}
+                            <span class="item-type">managed</span>
+                            {% elif target.value == 'all' %}
+                            <span class="item-type">all hosts</span>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <div class="selection-counter">
+                        <span id="targetCount">0</span> target(s) selected
+                    </div>
+                </div>
+            </div>
 
-        socket.on('disconnect', function() {
-            connectionDot.classList.remove('connected');
-            connectionText.textContent = 'Disconnected';
-        });
+            <!-- Execution Order -->
+            <div class="order-section">
+                <h3>Execution Order <small style="font-weight: normal; text-transform: none;">(drag to reorder or use arrows)</small></h3>
+                <div class="order-list" id="orderList">
+                    <div class="order-list-empty" id="orderListEmpty">
+                        Select playbooks above to set execution order
+                    </div>
+                </div>
+            </div>
 
-        // =====================================================================
-        // Batch Execution UI
-        // =====================================================================
+            <!-- Batch Actions -->
+            <div class="batch-actions" style="margin-top: 20px;">
+                <input type="text" class="batch-name-input" id="batchName" placeholder="Batch job name (optional)">
+                <button type="button" class="btn btn-primary" onclick="runBatchJob()" id="runBatchBtn" disabled>
+                    Run Batch
+                </button>
+                <button type="button" class="btn btn-secondary" onclick="scheduleBatchJob()" id="scheduleBatchBtn" disabled>
+                    Schedule Batch
+                </button>
+                <button type="button" class="btn btn-secondary" onclick="exportBatchConfig()" id="exportBatchBtn" disabled>
+                    Export Config
+                </button>
+            </div>
 
-        // State for batch execution
-        const batchState = {
-            selectedPlaybooks: [],
-            selectedTargets: [],
-            orderedPlaybooks: []
-        };
+            <!-- Active Batch Jobs -->
+            <div class="active-batch-jobs" id="activeBatchJobs" style="display: none;">
+                <h3>Active Batch Jobs</h3>
+                <div id="batchJobsList"></div>
+            </div>
+        </div>
+    </div>
+</div>
 
-        // Toggle batch section visibility
-        function toggleBatchSection() {
-            const content = document.getElementById('batchContent');
-            const icon = document.querySelector('.toggle-icon');
-            if (content.style.display === 'none') {
-                content.style.display = 'block';
-                icon.innerHTML = '&#9660;';
-            } else {
-                content.style.display = 'none';
-                icon.innerHTML = '&#9654;';
+{% endblock %}
+
+{% block footer_scripts %}
+<script>
+(function() {
+    const socket = window.__socket || io();
+
+    // =====================================================================
+    // Batch Execution UI
+    // =====================================================================
+
+    const batchState = {
+        selectedPlaybooks: [],
+        selectedTargets: [],
+        orderedPlaybooks: []
+    };
+
+    function toggleBatchSection() {
+        const content = document.getElementById('batchContent');
+        const icon = document.querySelector('.toggle-icon');
+        if (content.style.display === 'none') {
+            content.style.display = 'block';
+            icon.innerHTML = '&#9660;';
+        } else {
+            content.style.display = 'none';
+            icon.innerHTML = '&#9654;';
+        }
+    }
+
+    function togglePlaybookSelection(element, playbookName) {
+        const checkbox = element.querySelector('input[type="checkbox"]');
+        checkbox.checked = !checkbox.checked;
+        element.classList.toggle('selected', checkbox.checked);
+
+        if (checkbox.checked) {
+            if (!batchState.selectedPlaybooks.includes(playbookName)) {
+                batchState.selectedPlaybooks.push(playbookName);
+                addToOrderList(playbookName);
             }
+        } else {
+            batchState.selectedPlaybooks = batchState.selectedPlaybooks.filter(p => p !== playbookName);
+            removeFromOrderList(playbookName);
         }
 
-        // Toggle playbook selection
-        function togglePlaybookSelection(element, playbookName) {
-            const checkbox = element.querySelector('input[type="checkbox"]');
-            checkbox.checked = !checkbox.checked;
-            element.classList.toggle('selected', checkbox.checked);
+        updateCounters();
+        updateButtons();
+    }
 
-            if (checkbox.checked) {
+    function toggleTargetSelection(element, targetValue) {
+        const checkbox = element.querySelector('input[type="checkbox"]');
+        checkbox.checked = !checkbox.checked;
+        element.classList.toggle('selected', checkbox.checked);
+
+        if (checkbox.checked) {
+            if (!batchState.selectedTargets.includes(targetValue)) {
+                batchState.selectedTargets.push(targetValue);
+            }
+        } else {
+            batchState.selectedTargets = batchState.selectedTargets.filter(t => t !== targetValue);
+        }
+
+        updateCounters();
+        updateButtons();
+    }
+
+    function selectAllPlaybooks() {
+        document.querySelectorAll('#playbookSelectList .multi-select-item').forEach(item => {
+            const checkbox = item.querySelector('input[type="checkbox"]');
+            const playbookName = checkbox.value;
+            if (!checkbox.checked) {
+                checkbox.checked = true;
+                item.classList.add('selected');
                 if (!batchState.selectedPlaybooks.includes(playbookName)) {
                     batchState.selectedPlaybooks.push(playbookName);
                     addToOrderList(playbookName);
                 }
-            } else {
-                batchState.selectedPlaybooks = batchState.selectedPlaybooks.filter(p => p !== playbookName);
-                removeFromOrderList(playbookName);
             }
+        });
+        updateCounters();
+        updateButtons();
+    }
 
-            updateCounters();
-            updateButtons();
-        }
+    function clearAllPlaybooks() {
+        document.querySelectorAll('#playbookSelectList .multi-select-item').forEach(item => {
+            const checkbox = item.querySelector('input[type="checkbox"]');
+            checkbox.checked = false;
+            item.classList.remove('selected');
+        });
+        batchState.selectedPlaybooks = [];
+        batchState.orderedPlaybooks = [];
+        renderOrderList();
+        updateCounters();
+        updateButtons();
+    }
 
-        // Toggle target selection
-        function toggleTargetSelection(element, targetValue) {
-            const checkbox = element.querySelector('input[type="checkbox"]');
-            checkbox.checked = !checkbox.checked;
-            element.classList.toggle('selected', checkbox.checked);
-
-            if (checkbox.checked) {
+    function selectAllTargets() {
+        document.querySelectorAll('#targetSelectList .multi-select-item').forEach(item => {
+            const checkbox = item.querySelector('input[type="checkbox"]');
+            if (!checkbox.checked) {
+                checkbox.checked = true;
+                item.classList.add('selected');
+                const targetValue = checkbox.value;
                 if (!batchState.selectedTargets.includes(targetValue)) {
                     batchState.selectedTargets.push(targetValue);
                 }
-            } else {
-                batchState.selectedTargets = batchState.selectedTargets.filter(t => t !== targetValue);
             }
+        });
+        updateCounters();
+        updateButtons();
+    }
 
-            updateCounters();
-            updateButtons();
-        }
+    function clearAllTargets() {
+        document.querySelectorAll('#targetSelectList .multi-select-item').forEach(item => {
+            const checkbox = item.querySelector('input[type="checkbox"]');
+            checkbox.checked = false;
+            item.classList.remove('selected');
+        });
+        batchState.selectedTargets = [];
+        updateCounters();
+        updateButtons();
+    }
 
-        // Select/Clear all playbooks
-        function selectAllPlaybooks() {
-            document.querySelectorAll('#playbookSelectList .multi-select-item').forEach(item => {
-                const checkbox = item.querySelector('input[type="checkbox"]');
-                const playbookName = checkbox.value;
-                if (!checkbox.checked) {
-                    checkbox.checked = true;
-                    item.classList.add('selected');
-                    if (!batchState.selectedPlaybooks.includes(playbookName)) {
-                        batchState.selectedPlaybooks.push(playbookName);
-                        addToOrderList(playbookName);
-                    }
-                }
-            });
-            updateCounters();
-            updateButtons();
-        }
+    function updateCounters() {
+        document.getElementById('playbookCount').textContent = batchState.selectedPlaybooks.length;
+        document.getElementById('targetCount').textContent = batchState.selectedTargets.length;
+    }
 
-        function clearAllPlaybooks() {
-            document.querySelectorAll('#playbookSelectList .multi-select-item').forEach(item => {
-                const checkbox = item.querySelector('input[type="checkbox"]');
-                checkbox.checked = false;
-                item.classList.remove('selected');
-            });
-            batchState.selectedPlaybooks = [];
-            batchState.orderedPlaybooks = [];
-            renderOrderList();
-            updateCounters();
-            updateButtons();
-        }
+    function updateButtons() {
+        const canRun = batchState.orderedPlaybooks.length > 0 && batchState.selectedTargets.length > 0;
+        document.getElementById('runBatchBtn').disabled = !canRun;
+        document.getElementById('scheduleBatchBtn').disabled = !canRun;
+        document.getElementById('exportBatchBtn').disabled = batchState.orderedPlaybooks.length === 0;
+    }
 
-        // Select/Clear all targets
-        function selectAllTargets() {
-            document.querySelectorAll('#targetSelectList .multi-select-item').forEach(item => {
-                const checkbox = item.querySelector('input[type="checkbox"]');
-                if (!checkbox.checked) {
-                    checkbox.checked = true;
-                    item.classList.add('selected');
-                    const targetValue = checkbox.value;
-                    if (!batchState.selectedTargets.includes(targetValue)) {
-                        batchState.selectedTargets.push(targetValue);
-                    }
-                }
-            });
-            updateCounters();
-            updateButtons();
-        }
-
-        function clearAllTargets() {
-            document.querySelectorAll('#targetSelectList .multi-select-item').forEach(item => {
-                const checkbox = item.querySelector('input[type="checkbox"]');
-                checkbox.checked = false;
-                item.classList.remove('selected');
-            });
-            batchState.selectedTargets = [];
-            updateCounters();
-            updateButtons();
-        }
-
-        // Update selection counters
-        function updateCounters() {
-            document.getElementById('playbookCount').textContent = batchState.selectedPlaybooks.length;
-            document.getElementById('targetCount').textContent = batchState.selectedTargets.length;
-        }
-
-        // Update button states
-        function updateButtons() {
-            const canRun = batchState.orderedPlaybooks.length > 0 && batchState.selectedTargets.length > 0;
-            document.getElementById('runBatchBtn').disabled = !canRun;
-            document.getElementById('scheduleBatchBtn').disabled = !canRun;
-            document.getElementById('exportBatchBtn').disabled = batchState.orderedPlaybooks.length === 0;
-        }
-
-        // Order List Management
-        function addToOrderList(playbookName) {
-            if (!batchState.orderedPlaybooks.includes(playbookName)) {
-                batchState.orderedPlaybooks.push(playbookName);
-                renderOrderList();
-            }
-        }
-
-        function removeFromOrderList(playbookName) {
-            batchState.orderedPlaybooks = batchState.orderedPlaybooks.filter(p => p !== playbookName);
-            // Also uncheck in the selection list
-            const checkbox = document.getElementById('pb_' + playbookName);
-            if (checkbox) {
-                checkbox.checked = false;
-                checkbox.closest('.multi-select-item').classList.remove('selected');
-            }
-            batchState.selectedPlaybooks = batchState.selectedPlaybooks.filter(p => p !== playbookName);
-            renderOrderList();
-            updateCounters();
-            updateButtons();
-        }
-
-        function movePlaybook(index, direction) {
-            const newIndex = index + direction;
-            if (newIndex < 0 || newIndex >= batchState.orderedPlaybooks.length) return;
-
-            const temp = batchState.orderedPlaybooks[index];
-            batchState.orderedPlaybooks[index] = batchState.orderedPlaybooks[newIndex];
-            batchState.orderedPlaybooks[newIndex] = temp;
+    function addToOrderList(playbookName) {
+        if (!batchState.orderedPlaybooks.includes(playbookName)) {
+            batchState.orderedPlaybooks.push(playbookName);
             renderOrderList();
         }
+    }
 
-        function renderOrderList() {
-            const orderList = document.getElementById('orderList');
-            const emptyMessage = document.getElementById('orderListEmpty');
+    function removeFromOrderList(playbookName) {
+        batchState.orderedPlaybooks = batchState.orderedPlaybooks.filter(p => p !== playbookName);
+        const checkbox = document.getElementById('pb_' + playbookName);
+        if (checkbox) {
+            checkbox.checked = false;
+            checkbox.closest('.multi-select-item').classList.remove('selected');
+        }
+        batchState.selectedPlaybooks = batchState.selectedPlaybooks.filter(p => p !== playbookName);
+        renderOrderList();
+        updateCounters();
+        updateButtons();
+    }
 
-            if (batchState.orderedPlaybooks.length === 0) {
-                orderList.innerHTML = '<div class="order-list-empty" id="orderListEmpty">Select playbooks above to set execution order</div>';
-                return;
-            }
+    function movePlaybook(index, direction) {
+        const newIndex = index + direction;
+        if (newIndex < 0 || newIndex >= batchState.orderedPlaybooks.length) return;
 
-            orderList.innerHTML = batchState.orderedPlaybooks.map((playbook, index) => `
-                <div class="order-item" draggable="true" data-playbook="${playbook}" data-index="${index}">
-                    <span class="drag-handle">&#9776;</span>
-                    <span class="order-number">${index + 1}</span>
-                    <span class="playbook-name">${playbook.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</span>
-                    <div class="order-buttons">
-                        <button class="order-btn" onclick="movePlaybook(${index}, -1)" ${index === 0 ? 'disabled' : ''} title="Move up">&#9650;</button>
-                        <button class="order-btn" onclick="movePlaybook(${index}, 1)" ${index === batchState.orderedPlaybooks.length - 1 ? 'disabled' : ''} title="Move down">&#9660;</button>
-                        <button class="order-btn remove-btn" onclick="removeFromOrderList('${playbook}')" title="Remove">&#10005;</button>
-                    </div>
+        const temp = batchState.orderedPlaybooks[index];
+        batchState.orderedPlaybooks[index] = batchState.orderedPlaybooks[newIndex];
+        batchState.orderedPlaybooks[newIndex] = temp;
+        renderOrderList();
+    }
+
+    function renderOrderList() {
+        const orderList = document.getElementById('orderList');
+        const emptyMessage = document.getElementById('orderListEmpty');
+
+        if (batchState.orderedPlaybooks.length === 0) {
+            orderList.innerHTML = '<div class="order-list-empty" id="orderListEmpty">Select playbooks above to set execution order</div>';
+            return;
+        }
+
+        orderList.innerHTML = batchState.orderedPlaybooks.map((playbook, index) => `
+            <div class="order-item" draggable="true" data-playbook="${playbook}" data-index="${index}">
+                <span class="drag-handle">&#9776;</span>
+                <span class="order-number">${index + 1}</span>
+                <span class="playbook-name">${playbook.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</span>
+                <div class="order-buttons">
+                    <button class="order-btn" onclick="movePlaybook(${index}, -1)" ${index === 0 ? 'disabled' : ''} title="Move up">&#9650;</button>
+                    <button class="order-btn" onclick="movePlaybook(${index}, 1)" ${index === batchState.orderedPlaybooks.length - 1 ? 'disabled' : ''} title="Move down">&#9660;</button>
+                    <button class="order-btn remove-btn" onclick="removeFromOrderList('${playbook}')" title="Remove">&#10005;</button>
                 </div>
-            `).join('');
+            </div>
+        `).join('');
 
-            // Add drag-and-drop listeners
-            setupDragAndDrop();
+        setupDragAndDrop();
+    }
+
+    let draggedItem = null;
+
+    function setupDragAndDrop() {
+        const orderItems = document.querySelectorAll('.order-item');
+
+        orderItems.forEach(item => {
+            item.addEventListener('dragstart', handleDragStart);
+            item.addEventListener('dragend', handleDragEnd);
+            item.addEventListener('dragover', handleDragOver);
+            item.addEventListener('drop', handleDrop);
+            item.addEventListener('dragenter', handleDragEnter);
+            item.addEventListener('dragleave', handleDragLeave);
+        });
+    }
+
+    function handleDragStart(e) {
+        draggedItem = this;
+        this.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', this.dataset.index);
+    }
+
+    function handleDragEnd(e) {
+        this.classList.remove('dragging');
+        document.querySelectorAll('.order-item').forEach(item => {
+            item.classList.remove('drag-over');
+        });
+        draggedItem = null;
+    }
+
+    function handleDragOver(e) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+    }
+
+    function handleDragEnter(e) {
+        if (this !== draggedItem) {
+            this.classList.add('drag-over');
         }
+    }
 
-        // Drag and Drop
-        let draggedItem = null;
+    function handleDragLeave(e) {
+        this.classList.remove('drag-over');
+    }
 
-        function setupDragAndDrop() {
-            const orderItems = document.querySelectorAll('.order-item');
+    function handleDrop(e) {
+        e.preventDefault();
+        if (draggedItem === this) return;
 
-            orderItems.forEach(item => {
-                item.addEventListener('dragstart', handleDragStart);
-                item.addEventListener('dragend', handleDragEnd);
-                item.addEventListener('dragover', handleDragOver);
-                item.addEventListener('drop', handleDrop);
-                item.addEventListener('dragenter', handleDragEnter);
-                item.addEventListener('dragleave', handleDragLeave);
-            });
-        }
+        const fromIndex = parseInt(draggedItem.dataset.index);
+        const toIndex = parseInt(this.dataset.index);
 
-        function handleDragStart(e) {
-            draggedItem = this;
-            this.classList.add('dragging');
-            e.dataTransfer.effectAllowed = 'move';
-            e.dataTransfer.setData('text/plain', this.dataset.index);
-        }
+        const [removed] = batchState.orderedPlaybooks.splice(fromIndex, 1);
+        batchState.orderedPlaybooks.splice(toIndex, 0, removed);
 
-        function handleDragEnd(e) {
-            this.classList.remove('dragging');
-            document.querySelectorAll('.order-item').forEach(item => {
-                item.classList.remove('drag-over');
-            });
-            draggedItem = null;
-        }
+        renderOrderList();
+    }
 
-        function handleDragOver(e) {
-            e.preventDefault();
-            e.dataTransfer.dropEffect = 'move';
-        }
+    function runBatchJob() {
+        const name = document.getElementById('batchName').value.trim() || null;
 
-        function handleDragEnter(e) {
-            if (this !== draggedItem) {
-                this.classList.add('drag-over');
-            }
-        }
-
-        function handleDragLeave(e) {
-            this.classList.remove('drag-over');
-        }
-
-        function handleDrop(e) {
-            e.preventDefault();
-            if (draggedItem === this) return;
-
-            const fromIndex = parseInt(draggedItem.dataset.index);
-            const toIndex = parseInt(this.dataset.index);
-
-            // Reorder the array
-            const [removed] = batchState.orderedPlaybooks.splice(fromIndex, 1);
-            batchState.orderedPlaybooks.splice(toIndex, 0, removed);
-
-            renderOrderList();
-        }
-
-        // Batch Job Actions
-        function runBatchJob() {
-            const name = document.getElementById('batchName').value.trim() || null;
-
-            fetch('/api/batch', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    playbooks: batchState.orderedPlaybooks,
-                    targets: batchState.selectedTargets,
-                    name: name
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.error) {
-                    alert('Error: ' + data.error);
-                } else {
-                    // Show active batch jobs section
-                    document.getElementById('activeBatchJobs').style.display = 'block';
-                    // Add the new job to the list
-                    addBatchJobCard(data.batch_id, name || 'Batch ' + data.batch_id.substring(0, 8), 'pending');
-                    // Join the batch job room for updates
-                    socket.emit('join_batch', { batch_id: data.batch_id });
-                }
-            })
-            .catch(err => {
-                alert('Failed to start batch job: ' + err.message);
-            });
-        }
-
-        function scheduleBatchJob() {
-            // Redirect to schedule page with batch parameters
-            const params = new URLSearchParams({
-                batch: 'true',
-                playbooks: batchState.orderedPlaybooks.join(','),
-                targets: batchState.selectedTargets.join(','),
-                name: document.getElementById('batchName').value.trim()
-            });
-            window.location.href = '/schedules/new?' + params.toString();
-        }
-
-        function exportBatchConfig() {
-            const config = {
-                name: document.getElementById('batchName').value.trim() || 'Batch Job',
+        fetch('/api/batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
                 playbooks: batchState.orderedPlaybooks,
                 targets: batchState.selectedTargets,
-                exported_at: new Date().toISOString()
-            };
+                name: name
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                alert('Error: ' + data.error);
+            } else {
+                document.getElementById('activeBatchJobs').style.display = 'block';
+                addBatchJobCard(data.batch_id, name || 'Batch ' + data.batch_id.substring(0, 8), 'pending');
+                socket.emit('join_batch', { batch_id: data.batch_id });
+            }
+        })
+        .catch(err => {
+            alert('Failed to start batch job: ' + err.message);
+        });
+    }
 
-            const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'batch-config-' + new Date().toISOString().slice(0, 10) + '.json';
-            a.click();
-            URL.revokeObjectURL(url);
-        }
+    function scheduleBatchJob() {
+        const params = new URLSearchParams({
+            batch: 'true',
+            playbooks: batchState.orderedPlaybooks.join(','),
+            targets: batchState.selectedTargets.join(','),
+            name: document.getElementById('batchName').value.trim()
+        });
+        window.location.href = '/schedules/new?' + params.toString();
+    }
 
-        // Batch Job Display
-        function addBatchJobCard(batchId, name, status) {
-            const list = document.getElementById('batchJobsList');
-            const existingCard = document.getElementById('batch-' + batchId);
-            if (existingCard) return; // Already exists
+    function exportBatchConfig() {
+        const config = {
+            name: document.getElementById('batchName').value.trim() || 'Batch Job',
+            playbooks: batchState.orderedPlaybooks,
+            targets: batchState.selectedTargets,
+            exported_at: new Date().toISOString()
+        };
 
-            const card = document.createElement('div');
-            card.className = 'batch-job-card';
-            card.id = 'batch-' + batchId;
-            card.innerHTML = `
-                <div class="batch-job-header">
-                    <span class="batch-job-name">${name}</span>
-                    <div style="display: flex; gap: 10px; align-items: center;">
-                        <a href="/live/batch/${batchId}" class="btn btn-watch" style="padding: 4px 12px;">Watch Live</a>
-                        <span class="status-badge status-${status}">${status}</span>
-                    </div>
+        const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'batch-config-' + new Date().toISOString().slice(0, 10) + '.json';
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
+    function addBatchJobCard(batchId, name, status) {
+        const list = document.getElementById('batchJobsList');
+        const existingCard = document.getElementById('batch-' + batchId);
+        if (existingCard) return;
+
+        const card = document.createElement('div');
+        card.className = 'batch-job-card';
+        card.id = 'batch-' + batchId;
+        card.innerHTML = `
+            <div class="batch-job-header">
+                <span class="batch-job-name">${name}</span>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <a href="/live/batch/${batchId}" class="btn btn-watch" style="padding: 4px 12px;">Watch Live</a>
+                    <span class="status-badge status-${status}">${status}</span>
                 </div>
-                <div class="batch-job-progress">
-                    <div class="batch-job-progress-bar">
-                        <div class="batch-job-progress-fill" style="width: 0%"></div>
-                    </div>
-                    <div class="batch-job-progress-text">
-                        <span class="progress-count">0/0 playbooks</span>
-                        <span class="progress-percent">0%</span>
-                    </div>
+            </div>
+            <div class="batch-job-progress">
+                <div class="batch-job-progress-bar">
+                    <div class="batch-job-progress-fill" style="width: 0%"></div>
                 </div>
-                <div class="batch-job-current"></div>
-            `;
-            list.insertBefore(card, list.firstChild);
+                <div class="batch-job-progress-text">
+                    <span class="progress-count">0/0 playbooks</span>
+                    <span class="progress-percent">0%</span>
+                </div>
+            </div>
+            <div class="batch-job-current"></div>
+        `;
+        list.insertBefore(card, list.firstChild);
+    }
+
+    function updateBatchJobCard(batchId, data) {
+        const card = document.getElementById('batch-' + batchId);
+        if (!card) return;
+
+        const badge = card.querySelector('.status-badge');
+        const progressFill = card.querySelector('.batch-job-progress-fill');
+        const progressCount = card.querySelector('.progress-count');
+        const progressPercent = card.querySelector('.progress-percent');
+        const currentPlaybook = card.querySelector('.batch-job-current');
+
+        if (data.status) {
+            badge.textContent = data.status;
+            badge.className = 'status-badge status-' + data.status;
         }
 
-        function updateBatchJobCard(batchId, data) {
-            const card = document.getElementById('batch-' + batchId);
-            if (!card) return;
+        const total = data.total || 0;
+        const completed = (data.completed || 0) + (data.failed || 0);
+        const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
 
-            const badge = card.querySelector('.status-badge');
-            const progressFill = card.querySelector('.batch-job-progress-fill');
-            const progressCount = card.querySelector('.progress-count');
-            const progressPercent = card.querySelector('.progress-percent');
-            const currentPlaybook = card.querySelector('.batch-job-current');
-
-            if (data.status) {
-                badge.textContent = data.status;
-                badge.className = 'status-badge status-' + data.status;
-            }
-
-            const total = data.total || 0;
-            const completed = (data.completed || 0) + (data.failed || 0);
-            const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
-
-            progressFill.style.width = percent + '%';
-            if (data.failed > 0) {
-                progressFill.classList.add('has-failures');
-            }
-            progressCount.textContent = `${data.completed || 0}/${total} completed` + (data.failed > 0 ? `, ${data.failed} failed` : '');
-            progressPercent.textContent = percent + '%';
-
-            if (data.current_playbook && data.status === 'running') {
-                currentPlaybook.innerHTML = `Currently running: <strong>${data.current_playbook}</strong>`;
-            } else if (data.status === 'completed' || data.status === 'failed' || data.status === 'partial') {
-                currentPlaybook.innerHTML = '';
-                // Remove card after delay
-                setTimeout(() => {
-                    card.style.opacity = '0.5';
-                }, 5000);
-            }
+        progressFill.style.width = percent + '%';
+        if (data.failed > 0) {
+            progressFill.classList.add('has-failures');
         }
+        progressCount.textContent = `${data.completed || 0}/${total} completed` + (data.failed > 0 ? `, ${data.failed} failed` : '');
+        progressPercent.textContent = percent + '%';
 
-        // WebSocket events for batch jobs
-        socket.emit('join_batch_jobs');
+        if (data.current_playbook && data.status === 'running') {
+            currentPlaybook.innerHTML = `Currently running: <strong>${data.current_playbook}</strong>`;
+        } else if (data.status === 'completed' || data.status === 'failed' || data.status === 'partial') {
+            currentPlaybook.innerHTML = '';
+            setTimeout(() => {
+                card.style.opacity = '0.5';
+            }, 5000);
+        }
+    }
 
-        socket.on('batch_job_started', function(data) {
-            document.getElementById('activeBatchJobs').style.display = 'block';
-            addBatchJobCard(data.batch_id, 'Batch ' + data.batch_id.substring(0, 8), 'running');
-            updateBatchJobCard(data.batch_id, { total: data.total, completed: 0, failed: 0, status: 'running' });
+    socket.emit('join_batch_jobs');
+
+    socket.on('batch_job_started', function(data) {
+        document.getElementById('activeBatchJobs').style.display = 'block';
+        addBatchJobCard(data.batch_id, 'Batch ' + data.batch_id.substring(0, 8), 'running');
+        updateBatchJobCard(data.batch_id, { total: data.total, completed: 0, failed: 0, status: 'running' });
+    });
+
+    socket.on('batch_job_progress', function(data) {
+        updateBatchJobCard(data.batch_id, data);
+    });
+
+    socket.on('batch_job_finished', function(data) {
+        updateBatchJobCard(data.batch_id, data);
+    });
+
+    socket.on('batch_job_error', function(data) {
+        updateBatchJobCard(data.batch_id, { status: 'failed' });
+        alert('Batch job error: ' + data.error);
+    });
+
+    socket.on('batch_catchup', function(data) {
+        updateBatchJobCard(data.batch_id, data);
+    });
+
+    fetch('/api/batch/active')
+        .then(response => response.json())
+        .then(jobs => {
+            if (Object.keys(jobs).length > 0) {
+                document.getElementById('activeBatchJobs').style.display = 'block';
+                Object.keys(jobs).forEach(batchId => {
+                    const job = jobs[batchId];
+                    addBatchJobCard(batchId, job.name || 'Batch ' + batchId.substring(0, 8), job.status);
+                    updateBatchJobCard(batchId, job);
+                    socket.emit('join_batch', { batch_id: batchId });
+                });
+            }
         });
 
-        socket.on('batch_job_progress', function(data) {
-            updateBatchJobCard(data.batch_id, data);
-        });
-
-        socket.on('batch_job_finished', function(data) {
-            updateBatchJobCard(data.batch_id, data);
-        });
-
-        socket.on('batch_job_error', function(data) {
-            updateBatchJobCard(data.batch_id, { status: 'failed' });
-            alert('Batch job error: ' + data.error);
-        });
-
-        socket.on('batch_catchup', function(data) {
-            updateBatchJobCard(data.batch_id, data);
-        });
-
-        // Load active batch jobs on page load
-        fetch('/api/batch/active')
-            .then(response => response.json())
-            .then(jobs => {
-                if (Object.keys(jobs).length > 0) {
-                    document.getElementById('activeBatchJobs').style.display = 'block';
-                    Object.keys(jobs).forEach(batchId => {
-                        const job = jobs[batchId];
-                        addBatchJobCard(batchId, job.name || 'Batch ' + batchId.substring(0, 8), job.status);
-                        updateBatchJobCard(batchId, job);
-                        socket.emit('join_batch', { batch_id: batchId });
-                    });
-                }
-            });
-    </script>
-</body>
-</html>
+    window.toggleBatchSection = toggleBatchSection;
+    window.selectAllPlaybooks = selectAllPlaybooks;
+    window.clearAllPlaybooks = clearAllPlaybooks;
+    window.selectAllTargets = selectAllTargets;
+    window.clearAllTargets = clearAllTargets;
+    window.togglePlaybookSelection = togglePlaybookSelection;
+    window.toggleTargetSelection = toggleTargetSelection;
+    window.movePlaybook = movePlaybook;
+    window.removeFromOrderList = removeFromOrderList;
+    window.runBatchJob = runBatchJob;
+    window.scheduleBatchJob = scheduleBatchJob;
+    window.exportBatchConfig = exportBatchConfig;
+})();
+</script>
+{% endblock %}

@@ -1,28 +1,8 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cluster Dashboard - Ansible Web Interface</title>
-    <link rel="stylesheet" href="/static/css/base.css">
-    <script>
-        // Immediately apply cached theme
-        (function() {
-            try {
-                var cached = localStorage.getItem('ansible-web-theme-vars');
-                if (cached) {
-                    var vars = JSON.parse(cached);
-                    var root = document.documentElement;
-                    for (var key in vars) {
-                        if (vars[key]) root.style.setProperty(key, vars[key]);
-                    }
-                }
-            } catch (e) {}
-        })();
-    </script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.0/socket.io.min.js"></script>
-    <script src="/static/js/theme.js"></script>
-    <style>
+{% extends "base.html" %}
+{% block title %}Cluster Dashboard - Ansible Web Interface{% endblock %}
+
+{% block head_extras %}
+<style>
         body { padding: 20px; }
 
         .cluster-stats {
@@ -220,29 +200,14 @@
             font-size: 0.9em;
         }
     </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Cluster Dashboard</h1>
-        <p class="subtitle">Monitor workers, jobs, and sync status</p>
+{% endblock %}
 
-        <div class="nav-links">
-            <a href="/">Batch Execution</a>
-            <a href="/playbooks">Playbooks</a>
-            <a href="/schedules">Schedules</a>
-            <a href="/cmdb">CMDB</a>
-            <a href="/inventory">Inventory</a>
-            <a href="/storage">Storage</a>
-            <a href="/config">Config</a>
-            <a href="/logs">All Logs</a>
-            <a href="/cluster" style="font-weight: bold;">Cluster</a>
-            <span class="connection-indicator">
-                <span class="connection-dot" id="connectionDot"></span>
-                <span id="connectionText">Connecting...</span>
-            </span>
-        </div>
+{% block content %}
+<div class="container">
+    <h1>Cluster Dashboard</h1>
+    <p class="subtitle">Monitor workers, jobs, and sync status</p>
 
-        <!-- Cluster Statistics -->
+    <!-- Cluster Statistics -->
         <div class="cluster-stats" id="clusterStats">
             <div class="stat-card workers">
                 <div class="stat-value" id="totalWorkers">-</div>
@@ -317,9 +282,12 @@
             </div>
         </div>
     </div>
+{% endblock %}
 
-    <script>
-        const socket = io();
+{% block footer_scripts %}
+<script>
+        (function() {
+        const socket = window.__socket || io();
         let lastUpdate = null;
 
         // Connection status
@@ -508,6 +476,6 @@
 
         // Auto-refresh every 30 seconds
         setInterval(refreshData, 30000);
-    </script>
-</body>
-</html>
+        })();
+</script>
+{% endblock %}
