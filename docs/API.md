@@ -469,9 +469,9 @@ Get current application configuration (from file or defaults).
 {
   "config": {
     "storage": { "backend": "flatfile", "mongodb": { "host": "mongodb", "port": 27017, "database": "ansible_simpleweb" } },
-    "agent": { "enabled": false, "trigger_enabled": true, "model": "qwen2.5-coder:3b" },
-    "cluster": { "mode": "standalone", "registration_token": "", "checkin_interval": 60, "local_worker_tags": ["local"] },
-    "features": { "db_enabled": false, "agent_enabled": false, "workers_enabled": false },
+    "agent": { "enabled": false, "trigger_enabled": true, "model": "qwen2.5-coder:3b", "url": "http://agent-service:5000" },
+    "cluster": { "mode": "standalone", "registration_token": "", "checkin_interval": 60, "sync_interval": 300, "local_worker_tags": ["local"] },
+    "features": { "db_enabled": false, "agent_enabled": false, "workers_enabled": false, "worker_count": 0 },
     "deployment": { "agent_host": "local", "db_host": "local", "worker_hosts": [] }
   },
   "config_file_exists": false,
