@@ -159,7 +159,8 @@
                     }).join('') + '</ul>';
                 }
             } else {
-                var err = {}; try { reportsResp.clone().json().then(function(j) { err = j; }); } catch(x) {}
+                var err = {};
+                try { err = await reportsResp.json(); } catch (x) { err = {}; }
                 document.getElementById('reportsList').innerHTML = '<div class="empty-state" style="color:red">Error: ' + (err.error || 'Failed to load') + '</div>';
             }
         } catch (e) {
