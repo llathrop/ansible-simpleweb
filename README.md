@@ -62,7 +62,7 @@ docker-compose up -d
 docker-compose ps
 ```
 
-**Single image / demo:** To run only the primary container (no DB, agent, or workers), build the image and use the single-container compose file. See **Single-container (demo) mode** in `docs/REBUILD.md` and the **Single-container and expansion workflow** there for initial config, bootstrap, and adding workers later.
+**Single image / demo:** To run only the primary container (no DB, agent, or workers), build the image and use the single-container compose file. See **Single-container (demo) mode** in `docs/REBUILD.md` and the **Single-container and expansion workflow** there for initial config, bootstrap, and adding workers later. For **new install**, **restore from backup**, and **disaster recovery**, see **`docs/INSTALL.md`**.
 
 ### 2. Access the Web Interface
 

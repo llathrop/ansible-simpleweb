@@ -110,7 +110,7 @@ If config was lost or you are restoring on a new host:
 
 ## 6. Use for Install Documents
 
-This process can be used to define:
+The full **Installation Guide** (new install, restore install, disaster recovery) is **`docs/INSTALL.md`**. It is based on this process. In summary:
 
 - **New install:** Start from single container (or full compose), set or restore config, run deploy if needed, verify. See `docs/REBUILD.md` § Single-container and expansion workflow.
 - **Restore install:** Restore config (and optionally data) from backup, then `docker compose up -d` or single-container + restore + Deploy now; verify.

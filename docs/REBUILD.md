@@ -125,3 +125,5 @@ The script verifies: Web UI reachable, `/api/status`, `/api/config`, and storage
 4. **Bootstrap:** On startup, if config requests DB/Agent/Workers but they are not yet deployed, the app runs the deploy playbook in the background. You can also click **Deploy now** on the Config page or call `POST /api/deployment/run`.
 5. **Add workers later:** Enable workers in Config (or set `features.workers_enabled: true` and `worker_count`), then use **Deploy now**. The playbook adds worker containers; they register with the primary.
 6. **Backup / restore:** Use the Config page: **Backup config** / **Restore config** for `app_config.yaml`, and **Download data backup** / **Restore data** for schedules, inventory, and other data (flatfile or MongoDB). See `docs/CONFIGURATION.md` and `docs/API.md`. A validated backup/restore/rebuild process (manual + API backup, down, up, verify) is in `docs/BACKUP_RESTORE_REBUILD_VALIDATION.md`; run `./scripts/validate_backup_restore_rebuild.sh` to reproduce.
+
+For **new install**, **restore from backup**, and **disaster recovery** procedures, see **`docs/INSTALL.md`**.
