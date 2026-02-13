@@ -10,6 +10,10 @@ The system transforms the single-container Ansible web interface into a distribu
 - **Worker Nodes**: Register with primary, sync playbooks/inventory via git, execute jobs, report status via API
 - **Standalone Mode**: Local Ansible executor acts as implicit lowest-priority worker
 
+## Cluster Dashboard
+
+The Cluster dashboard (`/cluster`) shows workers, jobs, sync status, and **stack status** for DB, Agent, Ollama, and other related containers. Stack components are displayed with health (healthy/unhealthy/not_used) so you can see at a glance whether MongoDB, the agent service, and Ollama are reachable. As additional containers are added to the stack, they can be included in the dashboard via the `/api/cluster/status` response.
+
 ## Design Principles
 
 1. **Extend, don't replace** - Worker and job data follows existing storage patterns

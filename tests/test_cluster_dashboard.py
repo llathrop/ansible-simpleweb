@@ -245,10 +245,15 @@ class TestDashboardAPIFormat(unittest.TestCase):
 
     def test_response_has_required_fields(self):
         """Test API response structure for dashboard."""
-        # Simulate API response structure
+        # Simulate API response structure (includes stack per memory.md)
         response = {
             'cluster_mode': True,
             'checkin_interval': 600,
+            'stack': [
+                {'name': 'DB', 'enabled': True, 'status': 'healthy'},
+                {'name': 'Agent', 'enabled': True, 'status': 'healthy'},
+                {'name': 'Ollama', 'enabled': True, 'status': 'healthy'},
+            ],
             'workers': {
                 'total': 3,
                 'online': 2,
@@ -271,6 +276,20 @@ class TestDashboardAPIFormat(unittest.TestCase):
         # Check required fields for dashboard
         self.assertIn('workers', response)
         self.assertIn('jobs', response)
+        self.assertIn('stack', response)
+
+        # Stack: DB, Agent, Ollama (per memory.md cluster dashboard)
+        stack = response['stack']
+        self.assertIsInstance(stack, list)
+        self.assertGreaterEqual(len(stack), 3)
+        names = [s['name'] for s in stack]
+        self.assertIn('DB', names)
+        self.assertIn('Agent', names)
+        self.assertIn('Ollama', names)
+        for item in stack:
+            self.assertIn('name', item)
+            self.assertIn('enabled', item)
+            self.assertIn('status', item)
 
         # Check worker counts accessible directly
         self.assertEqual(response['workers']['total'], 3)

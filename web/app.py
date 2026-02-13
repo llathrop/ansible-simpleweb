@@ -3744,6 +3744,63 @@ def api_worker_checkin(worker_id):
 # Cluster Dashboard Routes
 # =============================================================================
 
+def _get_stack_status():
+    """
+    Get status of stack components: DB, Agent, Ollama, and other related containers.
+    Per memory.md: cluster dashboard should include DB, agent, workers, and any
+    other related containers (Ollama, etc.) as they are added to the stack.
+    """
+    stack = []
+    try:
+        from config_manager import load_config, get_effective_storage_backend
+        from deployment import get_current_services
+        cfg = load_config()
+        features = cfg.get('features') or {}
+        db_enabled = bool(features.get('db_enabled'))
+        agent_enabled = bool(features.get('agent_enabled'))
+        backend = get_effective_storage_backend().lower()
+
+        # DB: shown when MongoDB is the storage backend
+        db_in_use = backend == 'mongodb'
+        db_healthy = False
+        if db_in_use and storage_backend:
+            db_healthy = storage_backend.health_check()
+        stack.append({
+            'name': 'DB',
+            'enabled': db_in_use,
+            'status': 'healthy' if (db_in_use and db_healthy) else ('unhealthy' if db_in_use else 'not_used'),
+        })
+
+        # Agent: shown when agent is enabled in config
+        agent_reachable = False
+        if agent_enabled:
+            current = get_current_services(storage_backend=storage_backend)
+            agent_reachable = current.get('agent_reachable', False)
+        stack.append({
+            'name': 'Agent',
+            'enabled': agent_enabled,
+            'status': 'healthy' if (agent_enabled and agent_reachable) else ('unhealthy' if agent_enabled else 'not_used'),
+        })
+
+        # Ollama: shown when agent is enabled (agent depends on Ollama)
+        ollama_healthy = False
+        if agent_enabled:
+            ollama_url = os.environ.get('OLLAMA_URL', 'http://ollama:11434')
+            try:
+                r = requests.get(f"{ollama_url.rstrip('/')}/api/tags", timeout=2)
+                ollama_healthy = r.status_code == 200
+            except Exception:
+                pass
+        stack.append({
+            'name': 'Ollama',
+            'enabled': agent_enabled,
+            'status': 'healthy' if (agent_enabled and ollama_healthy) else ('unhealthy' if agent_enabled else 'not_used'),
+        })
+    except Exception:
+        pass
+    return stack
+
+
 @app.route('/cluster')
 def cluster_page():
     """Cluster dashboard page showing workers, jobs, and sync status."""
@@ -3796,9 +3853,13 @@ def api_cluster_status():
             except (ValueError, TypeError):
                 pass
 
+    # Stack status: DB, Agent, Ollama, and other related containers (per memory.md)
+    stack = _get_stack_status()
+
     return jsonify({
         'cluster_mode': CLUSTER_MODE,
         'checkin_interval': CHECKIN_INTERVAL,
+        'stack': stack,
         'workers': {
             'total': len(workers),
             'online': worker_counts.get('online', 0),

@@ -532,6 +532,27 @@ Runs the deploy playbook for the current delta (starts MongoDB, agent+ollama, or
 **Response (success):** `200` with `{"ok": true, "message": "..."}`  
 **Response (failure):** `400` with `{"ok": false, "error": "..."}`
 
+### GET /api/cluster/status
+
+Returns cluster overview: workers, jobs, and stack status (DB, Agent, Ollama, and other related containers). Used by the Cluster dashboard.
+
+**Response:**
+```json
+{
+  "cluster_mode": "primary",
+  "checkin_interval": 60,
+  "stack": [
+    { "name": "DB", "enabled": true, "status": "healthy" },
+    { "name": "Agent", "enabled": true, "status": "healthy" },
+    { "name": "Ollama", "enabled": true, "status": "healthy" }
+  ],
+  "workers": { "total": 3, "online": 2, "busy": 1, "offline": 0, "by_status": {...}, "stale": [] },
+  "jobs": { "total": 10, "queued": 2, "running": 1, "completed": 5, "failed": 2, "by_status": {...} }
+}
+```
+
+**Stack fields:** Each item has `name`, `enabled` (whether the component is in use), and `status` (`healthy`, `unhealthy`, or `not_used`).
+
 ### GET /api/data/backup
 
 Download a zip archive of data files (schedules, inventory, history, host facts, batch jobs, workers, job queue). Supported for **both flatfile and MongoDB**: flatfile zips the JSON files; MongoDB exports collections into the same JSON structure and zips. Usable from the Config panel “Download data backup”.
