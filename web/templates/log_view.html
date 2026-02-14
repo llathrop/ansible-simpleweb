@@ -242,7 +242,16 @@
             if (!agentDone) {
                 agentPollTimer = setInterval(pollReviewStatus, 3000);
                 const socket = window.__socket || io();
-                socket.on('connect', function() { socket.emit('join_job', { job_id: jobId }); });
+
+                function onConnect() {
+                    socket.emit('join_job', { job_id: jobId });
+                }
+
+                socket.on('connect', onConnect);
+                if (socket.connected) {
+                    onConnect();
+                }
+
                 socket.on('agent_review_ready', function(payload) {
                     if (payload.job_id === jobId) fetchAndShowReview();
                 });

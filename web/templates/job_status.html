@@ -206,11 +206,16 @@
 
     const socket = window.__socket || io();
 
-    socket.on('connect', function() {
+    function onConnect() {
         connectionDot.classList.add('connected');
         connectionText.textContent = 'Live';
         socket.emit('join_job', { job_id: jobId });
-    });
+    }
+
+    socket.on('connect', onConnect);
+    if (socket.connected) {
+        onConnect();
+    }
 
     socket.on('disconnect', function() {
         connectionDot.classList.remove('connected');

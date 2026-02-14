@@ -49,12 +49,17 @@
 
     const socket = window.__socket || io();
 
-    socket.on('connect', function() {
+    function onConnect() {
         connectionDot.classList.add('connected');
         connectionDot.classList.remove('disconnected');
         connectionText.textContent = 'Connected';
         socket.emit('join_run', { run_id: runId });
-    });
+    }
+
+    socket.on('connect', onConnect);
+    if (socket.connected) {
+        onConnect();
+    }
 
     socket.on('disconnect', function() {
         connectionDot.classList.remove('connected');
