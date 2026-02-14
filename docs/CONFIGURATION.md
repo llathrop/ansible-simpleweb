@@ -36,22 +36,28 @@ agent:
   enabled: false
   trigger_enabled: true
   model: qwen2.5-coder:3b
+  url: http://agent-service:5000
 
 cluster:
   mode: standalone   # standalone | primary
   registration_token: ""
   checkin_interval: 60
+  sync_interval: 300
   local_worker_tags: ["local"]
 
 features:
   db_enabled: false
   agent_enabled: false
   workers_enabled: false
+  worker_count: 0
 
 deployment:   # For future: deploy services on remote hosts
   agent_host: local
   db_host: local
   worker_hosts: []
+
+ui:
+  default_theme: default
 ```
 
 **Backup/restore:** Use the **Config** page in the web UI (or `GET /api/config/backup` and `POST /api/config/restore`) to backup and restore config. **Data** (schedules, inventory, history, etc.) is backed up separately—see [Data backup and restore](#data-backup-and-restore) below.

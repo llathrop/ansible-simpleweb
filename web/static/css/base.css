@@ -137,7 +137,136 @@ a:hover {
 }
 
 /* ==========================================================================
-   Navigation
+   App Layout (top bar + left nav)
+   ========================================================================== */
+
+body.layout-app {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+.layout-app .top-bar {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 12px 24px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-primary);
+    flex-wrap: wrap;
+}
+
+.layout-app .app-title {
+    font-weight: 700;
+    font-size: 1.1rem;
+    color: var(--text-primary);
+    text-decoration: none;
+}
+
+.layout-app .app-title:hover {
+    text-decoration: underline;
+}
+
+.layout-app .top-tabs {
+    display: flex;
+    gap: 4px;
+    flex: 1;
+}
+
+.layout-app .top-tab {
+    padding: 8px 16px;
+    border-radius: 4px;
+    color: var(--text-secondary);
+    font-weight: 500;
+    text-decoration: none;
+}
+
+.layout-app .top-tab:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+.layout-app .top-tab.active {
+    background: var(--btn-primary-bg);
+    color: var(--btn-primary-text);
+}
+
+.layout-app .top-bar-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.layout-app .theme-selector-inline label {
+    margin-right: 6px;
+    font-size: 0.9em;
+    color: var(--text-secondary);
+}
+
+.layout-app .theme-selector-inline select {
+    padding: 4px 8px;
+    border: 1px solid var(--border-primary);
+    border-radius: 4px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+
+.layout-app .layout-body {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+}
+
+.layout-app .left-nav {
+    width: 200px;
+    min-width: 200px;
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border-primary);
+    padding: 16px 0;
+}
+
+.layout-app .left-nav-panel {
+    display: flex;
+    flex-direction: column;
+}
+
+.layout-app .left-nav-link {
+    padding: 10px 20px;
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-weight: 500;
+    border-left: 3px solid transparent;
+}
+
+.layout-app .left-nav-link:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+.layout-app .left-nav-link.active {
+    background: var(--bg-tertiary);
+    color: var(--text-link);
+    border-left-color: var(--btn-primary-bg);
+    font-weight: 600;
+}
+
+.layout-app .main-content {
+    flex: 1;
+    padding: 24px;
+    overflow: auto;
+}
+
+.layout-app .app-footer {
+    padding: 12px 24px;
+    border-top: 1px solid var(--border-primary);
+    background: var(--bg-secondary);
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+/* ==========================================================================
+   Navigation (legacy nav-links for in-page use)
    ========================================================================== */
 
 .nav-links {

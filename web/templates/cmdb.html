@@ -1,26 +1,8 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CMDB Browser - Ansible Web Interface</title>
-    <link rel="stylesheet" href="/static/css/base.css">
-    <script>
-        (function() {
-            try {
-                var cached = localStorage.getItem('ansible-web-theme-vars');
-                if (cached) {
-                    var vars = JSON.parse(cached);
-                    var root = document.documentElement;
-                    for (var key in vars) {
-                        if (vars[key]) root.style.setProperty(key, vars[key]);
-                    }
-                }
-            } catch (e) {}
-        })();
-    </script>
-    <script src="/static/js/theme.js"></script>
-    <style>
+{% extends "base.html" %}
+{% block title %}CMDB Browser - Ansible Web Interface{% endblock %}
+
+{% block head_extras %}
+<style>
         body { padding: 20px; }
         .stats-bar {
             display: flex;
@@ -252,23 +234,14 @@
             color: var(--text-muted);
         }
     </style>
-</head>
-<body>
-    <div class="container container-wide">
-        <h1>CMDB Browser</h1>
-        <p class="subtitle">Browse collected host facts from playbook runs</p>
+{% endblock %}
 
-        <div class="nav-links">
-            <a href="/">Home</a>
-            <a href="/schedules">Schedules</a>
-            <a href="/inventory">Inventory</a>
-            <a href="/storage">Storage</a>
-            <a href="/config">Config</a>
-            <a href="/logs">All Logs</a>
-            <a href="/agent">Agent</a>
-        </div>
+{% block content %}
+<div class="container container-wide">
+    <h1>CMDB Browser</h1>
+    <p class="subtitle">Browse collected host facts from playbook runs</p>
 
-        <div class="stats-bar">
+    <div class="stats-bar">
             <div class="stat-item">
                 <div class="stat-value">{{ hosts|length }}</div>
                 <div class="stat-label">Hosts</div>
@@ -345,15 +318,6 @@
         </div>
         {% endif %}
 
-        <div class="footer" style="margin-top: 30px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                <p>Ansible Simple Web Interface | CMDB</p>
-                <div class="theme-selector">
-                    <label for="themeSelect">Theme:</label>
-                    <select id="themeSelect" class="theme-select"></select>
-                </div>
-            </div>
-        </div>
     </div>
 
     <!-- Data Viewer Modal -->
@@ -377,8 +341,10 @@
             </div>
         </div>
     </div>
+{% endblock %}
 
-    <script>
+{% block footer_scripts %}
+<script>
         function filterHosts() {
             const search = document.getElementById('searchInput').value.toLowerCase();
             const groupFilter = document.getElementById('groupFilter').value;
@@ -580,6 +546,5 @@
         document.addEventListener('keydown', e => {
             if (e.key === 'Escape') closeModal();
         });
-    </script>
-</body>
-</html>
+</script>
+{% endblock %}

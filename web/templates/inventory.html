@@ -1,27 +1,8 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Inventory Management - Ansible Web Interface</title>
-    <link rel="stylesheet" href="/static/css/base.css">
-    <script>
-        // Immediately apply cached theme to prevent flash of unstyled content
-        (function() {
-            try {
-                var cached = localStorage.getItem('ansible-web-theme-vars');
-                if (cached) {
-                    var vars = JSON.parse(cached);
-                    var root = document.documentElement;
-                    for (var key in vars) {
-                        if (vars[key]) root.style.setProperty(key, vars[key]);
-                    }
-                }
-            } catch (e) {}
-        })();
-    </script>
-    <script src="/static/js/theme.js"></script>
-    <style>
+{% extends "base.html" %}
+{% block title %}Inventory Management - Ansible Web Interface{% endblock %}
+
+{% block head_extras %}
+<style>
         body { padding: 20px; }
         .inventory-grid {
             display: grid;
@@ -394,24 +375,14 @@
             margin-bottom: 10px;
         }
     </style>
-</head>
-<body>
-    <div class="container container-wide">
-        <h1>Inventory Management</h1>
-        <p class="subtitle">Manage hosts and servers in the database</p>
+{% endblock %}
 
-        <div class="nav-links">
-            <a href="/">Batch Execution</a>
-            <a href="/playbooks">Playbooks</a>
-            <a href="/schedules">Schedules</a>
-            <strong><a href="/inventory">CMDB</a></strong>
-            <a href="/storage">Storage</a>
-            <a href="/config">Config</a>
-            <a href="/logs">All Logs</a>
-            <a href="/agent">Agent</a>
-        </div>
+{% block content %}
+<div class="container container-wide">
+    <h1>Inventory Management</h1>
+    <p class="subtitle">Manage hosts and servers in the database</p>
 
-        <div class="stats-bar">
+    <div class="stats-bar">
             <div class="stat-item">
                 <div class="stat-value" id="totalItems">{{ inventory|length }}</div>
                 <div class="stat-label">Total Items</div>
@@ -474,16 +445,7 @@
         </div>
         {% endif %}
 
-        <div class="footer" style="margin-top: 30px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                <p>Ansible Simple Web Interface | Localhost Only</p>
-                <div class="theme-selector">
-                    <label for="themeSelect">Theme:</label>
-                    <select id="themeSelect" class="theme-select"></select>
-                </div>
-            </div>
-        </div>
-    </div>
+</div>
 
     <!-- Host Configuration Wizard Modal -->
     <div class="modal wizard-modal" id="itemModal">
@@ -673,10 +635,12 @@
                     </div>
                 </div>
             </form>
-        </div>
     </div>
+</div>
+{% endblock %}
 
-    <script>
+{% block footer_scripts %}
+<script>
         // Store inventory data for editing
         const inventoryData = {{ inventory_json|safe }};
 
@@ -1226,6 +1190,5 @@
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') closeModal();
         });
-    </script>
-</body>
-</html>
+</script>
+{% endblock %}

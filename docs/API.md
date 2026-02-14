@@ -469,9 +469,9 @@ Get current application configuration (from file or defaults).
 {
   "config": {
     "storage": { "backend": "flatfile", "mongodb": { "host": "mongodb", "port": 27017, "database": "ansible_simpleweb" } },
-    "agent": { "enabled": false, "trigger_enabled": true, "model": "qwen2.5-coder:3b" },
-    "cluster": { "mode": "standalone", "registration_token": "", "checkin_interval": 60, "local_worker_tags": ["local"] },
-    "features": { "db_enabled": false, "agent_enabled": false, "workers_enabled": false },
+    "agent": { "enabled": false, "trigger_enabled": true, "model": "qwen2.5-coder:3b", "url": "http://agent-service:5000" },
+    "cluster": { "mode": "standalone", "registration_token": "", "checkin_interval": 60, "sync_interval": 300, "local_worker_tags": ["local"] },
+    "features": { "db_enabled": false, "agent_enabled": false, "workers_enabled": false, "worker_count": 0 },
     "deployment": { "agent_host": "local", "db_host": "local", "worker_hosts": [] }
   },
   "config_file_exists": false,
@@ -531,6 +531,27 @@ Runs the deploy playbook for the current delta (starts MongoDB, agent+ollama, or
 
 **Response (success):** `200` with `{"ok": true, "message": "..."}`  
 **Response (failure):** `400` with `{"ok": false, "error": "..."}`
+
+### GET /api/cluster/status
+
+Returns cluster overview: workers, jobs, and stack status (DB, Agent, Ollama, and other related containers). Used by the Cluster dashboard.
+
+**Response:**
+```json
+{
+  "cluster_mode": "primary",
+  "checkin_interval": 60,
+  "stack": [
+    { "name": "DB", "enabled": true, "status": "healthy" },
+    { "name": "Agent", "enabled": true, "status": "healthy" },
+    { "name": "Ollama", "enabled": true, "status": "healthy" }
+  ],
+  "workers": { "total": 3, "online": 2, "busy": 1, "offline": 0, "by_status": {...}, "stale": [] },
+  "jobs": { "total": 10, "queued": 2, "running": 1, "completed": 5, "failed": 2, "by_status": {...} }
+}
+```
+
+**Stack fields:** Each item has `name`, `enabled` (whether the component is in use), and `status` (`healthy`, `unhealthy`, or `not_used`).
 
 ### GET /api/data/backup
 

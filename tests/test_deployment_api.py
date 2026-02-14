@@ -57,6 +57,24 @@ class TestDeploymentAPI(unittest.TestCase):
         self.assertTrue(data.get('ok'))
         self.assertIn('message', data)
 
+    def test_cluster_status_includes_stack(self):
+        """GET /api/cluster/status returns stack with DB, Agent, Ollama (per memory.md)."""
+        resp = self.client.get('/api/cluster/status')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertIn('stack', data)
+        stack = data['stack']
+        self.assertIsInstance(stack, list)
+        names = [s['name'] for s in stack]
+        self.assertIn('DB', names)
+        self.assertIn('Agent', names)
+        self.assertIn('Ollama', names)
+        for item in stack:
+            self.assertIn('name', item)
+            self.assertIn('enabled', item)
+            self.assertIn('status', item)
+            self.assertIn(item['status'], ('healthy', 'unhealthy', 'not_used'))
+
     def test_deployment_run_with_deploy_requested_returns_ok_or_fail(self):
         """POST /api/deployment/run when config requests deploy: real run_bootstrap (may fail if no playbook)."""
         # Config requests DB -> delta has deploy_db true -> run_bootstrap runs for real

@@ -2,6 +2,7 @@ from flask import Flask, render_template, jsonify, request, send_file, redirect,
 from flask_socketio import SocketIO, emit, join_room, leave_room
 import requests
 import os
+import re
 import glob
 import json
 import subprocess
@@ -10,6 +11,16 @@ import time
 import uuid
 import tempfile
 from datetime import datetime
+
+# Redact password-like values in log lines (Ansible may echo vars)
+_LOG_SENSITIVE_PATTERN = re.compile(
+    r'((?:ansible_ssh_pass|ansible_password|ansible_become_pass)\s*["\']?\s*[:=]\s*)(["\']?)[^"\'&\s\n]+(["\']?)',
+    re.IGNORECASE
+)
+
+def _sanitize_log_line(line: str) -> str:
+    """Redact sensitive variable values from a log line."""
+    return _LOG_SENSITIVE_PATTERN.sub(r'\1*****', line)
 
 # Import scheduler components (initialized after app creation)
 from scheduler import ScheduleManager, build_recurrence_config
@@ -22,6 +33,17 @@ from content_repo import ContentRepository, get_content_repo
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'ansible-simpleweb-dev-key')
+
+
+@app.context_processor
+def inject_nav_context():
+    """Inject navigation context into all templates (nav_sections, active_section_id, active_page_url)."""
+    try:
+        from nav import get_nav_context
+        return get_nav_context(request.path)
+    except Exception:
+        return {'nav_sections': [], 'active_section_id': None, 'active_page_url': None}
+
 
 # Initialize SocketIO with eventlet for async support
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
@@ -584,15 +606,16 @@ def run_playbook_streaming(run_id, playbook_name, target, log_file, inventory_pa
             log_f.flush()
             socketio.emit('log_line', {'line': header, 'run_id': run_id}, room=f'run:{run_id}')
 
-            # Stream output line by line
+            # Stream output line by line (sanitize to avoid passwords in logs)
             for line in process.stdout:
+                safe_line = _sanitize_log_line(line)
                 # Write to file first (crash protection)
-                log_f.write(line)
+                log_f.write(safe_line)
                 log_f.flush()
                 os.fsync(log_f.fileno())  # Force OS to write to disk
 
                 # Then emit to WebSocket
-                socketio.emit('log_line', {'line': line, 'run_id': run_id}, room=f'run:{run_id}')
+                socketio.emit('log_line', {'line': safe_line, 'run_id': run_id}, room=f'run:{run_id}')
 
             # Wait for process to complete
             process.wait()
@@ -972,12 +995,13 @@ def run_batch_job_streaming(batch_id, playbooks, targets, name=None):
                         }, room=f'batch:{batch_id}')
 
                         for line in process.stdout:
-                            log_f.write(line)
+                            safe_line = _sanitize_log_line(line)
+                            log_f.write(safe_line)
                             log_f.flush()
                             socketio.emit('batch_log_line', {
                                 'batch_id': batch_id,
                                 'playbook': playbook_name,
-                                'line': line
+                                'line': safe_line
                             }, room=f'batch:{batch_id}')
 
                         process.wait()
@@ -3720,6 +3744,63 @@ def api_worker_checkin(worker_id):
 # Cluster Dashboard Routes
 # =============================================================================
 
+def _get_stack_status():
+    """
+    Get status of stack components: DB, Agent, Ollama, and other related containers.
+    Per memory.md: cluster dashboard should include DB, agent, workers, and any
+    other related containers (Ollama, etc.) as they are added to the stack.
+    """
+    stack = []
+    try:
+        from config_manager import load_config, get_effective_storage_backend
+        from deployment import get_current_services
+        cfg = load_config()
+        features = cfg.get('features') or {}
+        db_enabled = bool(features.get('db_enabled'))
+        agent_enabled = bool(features.get('agent_enabled'))
+        backend = get_effective_storage_backend().lower()
+
+        # DB: shown when MongoDB is the storage backend
+        db_in_use = backend == 'mongodb'
+        db_healthy = False
+        if db_in_use and storage_backend:
+            db_healthy = storage_backend.health_check()
+        stack.append({
+            'name': 'DB',
+            'enabled': db_in_use,
+            'status': 'healthy' if (db_in_use and db_healthy) else ('unhealthy' if db_in_use else 'not_used'),
+        })
+
+        # Agent: shown when agent is enabled in config
+        agent_reachable = False
+        if agent_enabled:
+            current = get_current_services(storage_backend=storage_backend)
+            agent_reachable = current.get('agent_reachable', False)
+        stack.append({
+            'name': 'Agent',
+            'enabled': agent_enabled,
+            'status': 'healthy' if (agent_enabled and agent_reachable) else ('unhealthy' if agent_enabled else 'not_used'),
+        })
+
+        # Ollama: shown when agent is enabled (agent depends on Ollama)
+        ollama_healthy = False
+        if agent_enabled:
+            ollama_url = os.environ.get('OLLAMA_URL', 'http://ollama:11434')
+            try:
+                r = requests.get(f"{ollama_url.rstrip('/')}/api/tags", timeout=2)
+                ollama_healthy = r.status_code == 200
+            except Exception:
+                pass
+        stack.append({
+            'name': 'Ollama',
+            'enabled': agent_enabled,
+            'status': 'healthy' if (agent_enabled and ollama_healthy) else ('unhealthy' if agent_enabled else 'not_used'),
+        })
+    except Exception:
+        pass
+    return stack
+
+
 @app.route('/cluster')
 def cluster_page():
     """Cluster dashboard page showing workers, jobs, and sync status."""
@@ -3772,9 +3853,13 @@ def api_cluster_status():
             except (ValueError, TypeError):
                 pass
 
+    # Stack status: DB, Agent, Ollama, and other related containers (per memory.md)
+    stack = _get_stack_status()
+
     return jsonify({
         'cluster_mode': CLUSTER_MODE,
         'checkin_interval': CHECKIN_INTERVAL,
+        'stack': stack,
         'workers': {
             'total': len(workers),
             'online': worker_counts.get('online', 0),
@@ -4172,6 +4257,9 @@ def api_stream_job_log(job_id):
     content = data.get('content', '')
     append = data.get('append', True)
 
+    # Sanitize so passwords never stored or broadcast (defense-in-depth; worker should already redact)
+    content_safe = '\n'.join(_sanitize_log_line(l) for l in content.split('\n'))
+
     # Verify worker owns this job
     if job.get('assigned_worker') != worker_id:
         return jsonify({'error': 'Worker does not own this job'}), 403
@@ -4184,7 +4272,7 @@ def api_stream_job_log(job_id):
         os.makedirs(LOGS_DIR, exist_ok=True)
         mode = 'a' if append else 'w'
         with open(partial_log_path, mode) as f:
-            f.write(content)
+            f.write(content_safe)
 
         # Update job with partial log reference if not set
         if not job.get('partial_log_file'):
@@ -4194,7 +4282,7 @@ def api_stream_job_log(job_id):
         if socketio:
             socketio.emit('job_log_update', {
                 'job_id': job_id,
-                'content': content,
+                'content': content_safe,
                 'append': append
             }, room=f'job_{job_id}')
 
@@ -4203,7 +4291,7 @@ def api_stream_job_log(job_id):
 
     return jsonify({
         'status': 'ok',
-        'bytes_written': len(content)
+        'bytes_written': len(content_safe)
     })
 
 

@@ -175,3 +175,24 @@ def test_save_config_then_load_round_trip(config_dir):
     loaded = config_manager.load_config()
     assert loaded['storage']['backend'] == 'flatfile'
     assert loaded['features']['db_enabled'] is True
+
+
+def test_validate_config_accepts_worker_count(config_dir):
+    """validate_config accepts features.worker_count."""
+    import web.config_manager as config_manager
+    validated, err = config_manager.validate_config({
+        'features': {'worker_count': 2},
+    })
+    assert err == ''
+    assert validated is not None
+    assert validated['features']['worker_count'] == 2
+
+
+def test_get_effective_agent_url_uses_config(config_dir):
+    """get_effective_agent_url uses config when present."""
+    import web.config_manager as config_manager
+    path = os.path.join(config_dir, 'app_config.yaml')
+    with open(path, 'w') as f:
+        f.write("agent:\n  url: http://custom-agent:5001\n")
+    importlib.reload(config_manager)
+    assert config_manager.get_effective_agent_url() == 'http://custom-agent:5001'

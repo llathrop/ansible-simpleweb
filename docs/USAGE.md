@@ -17,9 +17,19 @@ Complete guide to using the Ansible Simple Web Interface.
 
 Access the interface at: **http://localhost:3001**
 
+### Layout
+
+The interface uses a consistent layout across all pages:
+
+- **Top bar**: App title, section tabs (Execution, Logs & Data, System), connection indicator, theme selector
+- **Left panel**: Links for the current section (e.g. Batch Execution, Playbooks, Schedules under Execution)
+- **Main content**: Page-specific content
+
+Adding a new page or nav link is done in one place; all pages pick up the change automatically.
+
 ### Main Dashboard
 
-The dashboard displays all available playbooks in a grid layout. Each playbook card shows:
+The dashboard (Batch Execution) displays all available playbooks in a grid layout. Each playbook card shows:
 
 - **Playbook Name** - Auto-generated from filename
 - **Status Badge** - Current execution status
@@ -168,7 +178,7 @@ The interface supports multiple visual themes for accessibility and user prefere
 
 ### Changing Themes
 
-1. Look for the **Theme** dropdown in the footer of any page
+1. Look for the **Theme** dropdown in the top bar (or footer on some pages)
 2. Select from available themes:
    - **Default** - Light theme (original appearance)
    - **Dark** - Dark backgrounds, easier on eyes in low-light
