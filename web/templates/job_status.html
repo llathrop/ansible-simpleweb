@@ -159,10 +159,6 @@
 
     <div class="log-header">
         <h3>Output Log</h3>
-        <div class="connection-status">
-            <span class="connection-dot" id="connectionDot"></span>
-            <span id="connectionText">Connecting...</span>
-        </div>
     </div>
     <div class="log-section" id="logContent">Waiting for output...</div>
 
@@ -210,11 +206,16 @@
 
     const socket = window.__socket || io();
 
-    socket.on('connect', function() {
+    function onConnect() {
         connectionDot.classList.add('connected');
         connectionText.textContent = 'Live';
         socket.emit('join_job', { job_id: jobId });
-    });
+    }
+
+    socket.on('connect', onConnect);
+    if (socket.connected) {
+        onConnect();
+    }
 
     socket.on('disconnect', function() {
         connectionDot.classList.remove('connected');
