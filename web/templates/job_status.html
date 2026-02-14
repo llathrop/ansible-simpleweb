@@ -1,542 +1,479 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Job {{ job.id[:8] }} - {{ job.playbook }} | Ansible Web Interface</title>
-    <link rel="stylesheet" href="/static/css/base.css">
-    <script>
-        // Immediately apply cached theme to prevent flash of unstyled content
-        (function() {
-            try {
-                var cached = localStorage.getItem('ansible-web-theme-vars');
-                if (cached) {
-                    var vars = JSON.parse(cached);
-                    var root = document.documentElement;
-                    for (var key in vars) {
-                        if (vars[key]) root.style.setProperty(key, vars[key]);
-                    }
-                }
-            } catch (e) {}
-        })();
-    </script>
-    <script src="/static/js/agent-review.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.0/socket.io.min.js"></script>
-    <script src="/static/js/theme.js"></script>
-    <style>
-        body { padding: 20px; }
-        .job-card {
-            background: var(--bg-secondary, #f5f5f5);
-            border-radius: 8px;
-            padding: 20px;
-            margin: 20px 0;
-        }
-        .job-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
-        }
-        .job-title {
-            font-size: 1.5em;
-            font-weight: bold;
-        }
-        .job-info {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-        }
-        .info-item {
-            padding: 10px;
-            background: var(--bg-primary, #fff);
-            border-radius: 4px;
-        }
-        .info-label {
-            font-size: 0.85em;
-            color: var(--text-muted);
-            margin-bottom: 4px;
-        }
-        .info-value {
-            font-weight: 500;
-        }
-        .log-section {
-            margin-top: 20px;
-            padding: 15px;
-            background: var(--bg-code, #1e1e1e);
-            color: var(--text-code, #d4d4d4);
-            border-radius: 4px;
-            font-family: monospace;
-            white-space: pre-wrap;
-            max-height: 500px;
-            overflow-y: auto;
-        }
-        .spinner {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 2px solid var(--border-color);
-            border-top-color: var(--accent-color, #007bff);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin-right: 8px;
-            vertical-align: middle;
-        }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-        .waiting-message {
-            text-align: center;
-            padding: 40px;
-            color: var(--text-muted);
-        }
-        .connection-status {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-            font-size: 0.85em;
-            color: var(--text-muted);
-        }
-        .connection-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: #dc3545;
-        }
-        .connection-dot.connected {
-            background: #28a745;
-        }
-        .log-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-top: 20px;
-            margin-bottom: 10px;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Cluster Job Status</h1>
+{% extends "base.html" %}
+{% block title %}Job {{ job.id[:8] }} - {{ job.playbook }} | Ansible Web Interface{% endblock %}
 
-        <div class="nav-links">
-            <a href="/">&larr; Back to Dashboard</a>
-            <a href="/playbooks">Playbooks</a>
-            <a href="/cluster">Cluster</a>
-            <a href="/config">Config</a>
+{% block head_extras %}
+<style>
+    .job-card {
+        background: var(--bg-secondary, #f5f5f5);
+        border-radius: 8px;
+        padding: 20px;
+        margin: 20px 0;
+    }
+    .job-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+    }
+    .job-title {
+        font-size: 1.5em;
+        font-weight: bold;
+    }
+    .job-info {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+    }
+    .info-item {
+        padding: 10px;
+        background: var(--bg-primary, #fff);
+        border-radius: 4px;
+    }
+    .info-label {
+        font-size: 0.85em;
+        color: var(--text-muted);
+        margin-bottom: 4px;
+    }
+    .info-value {
+        font-weight: 500;
+    }
+    .log-section {
+        margin-top: 20px;
+        padding: 15px;
+        background: var(--bg-code, #1e1e1e);
+        color: var(--text-code, #d4d4d4);
+        border-radius: 4px;
+        font-family: monospace;
+        white-space: pre-wrap;
+        max-height: 500px;
+        overflow-y: auto;
+    }
+    .spinner {
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border: 2px solid var(--border-color);
+        border-top-color: var(--accent-color, #007bff);
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-right: 8px;
+        vertical-align: middle;
+    }
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+    .waiting-message {
+        text-align: center;
+        padding: 40px;
+        color: var(--text-muted);
+    }
+    .connection-status {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 0.85em;
+        color: var(--text-muted);
+    }
+    .connection-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #dc3545;
+    }
+    .connection-dot.connected {
+        background: #28a745;
+    }
+    .log-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 20px;
+        margin-bottom: 10px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Cluster Job Status</h1>
+    <p><a href="/">&larr; Back to Dashboard</a> | <a href="/playbooks">Playbooks</a> | <a href="/cluster">Cluster</a> | <a href="/config">Config</a></p>
+
+    <div class="job-card">
+        <div class="job-header">
+            <div class="job-title">{{ job.playbook }}</div>
+            <span id="statusBadge" class="status-badge status-{{ job.status }}">{{ job.status }}</span>
         </div>
 
-        <div class="job-card">
-            <div class="job-header">
-                <div class="job-title">{{ job.playbook }}</div>
-                <span id="statusBadge" class="status-badge status-{{ job.status }}">{{ job.status }}</span>
+        <div class="job-info">
+            <div class="info-item">
+                <div class="info-label">Job ID</div>
+                <div class="info-value">{{ job.id[:8] }}...</div>
             </div>
-
-            <div class="job-info">
-                <div class="info-item">
-                    <div class="info-label">Job ID</div>
-                    <div class="info-value">{{ job.id[:8] }}...</div>
-                </div>
-                <div class="info-item">
-                    <div class="info-label">Target</div>
-                    <div class="info-value">{{ job.target }}</div>
-                </div>
-                <div class="info-item">
-                    <div class="info-label">Worker</div>
-                    <div class="info-value" id="workerName">{{ worker_name or 'Pending assignment...' }}</div>
-                </div>
-                <div class="info-item">
-                    <div class="info-label">Submitted</div>
-                    <div class="info-value">{{ job.submitted_at }}</div>
-                </div>
-                <div class="info-item" id="startedItem" style="{% if not job.started_at %}display: none;{% endif %}">
-                    <div class="info-label">Started</div>
-                    <div class="info-value" id="startedAt">{{ job.started_at or '' }}</div>
-                </div>
-                <div class="info-item" id="completedItem" style="{% if not job.completed_at %}display: none;{% endif %}">
-                    <div class="info-label">Completed</div>
-                    <div class="info-value" id="completedAt">{{ job.completed_at or '' }}</div>
-                </div>
-                <div class="info-item" id="exitCodeItem" style="{% if job.exit_code is none %}display: none;{% endif %}">
-                    <div class="info-label">Exit Code</div>
-                    <div class="info-value" id="exitCode">{{ job.exit_code }}</div>
-                </div>
+            <div class="info-item">
+                <div class="info-label">Target</div>
+                <div class="info-value">{{ job.target }}</div>
             </div>
-
-            {% if job.error_message %}
-            <div id="errorMessage" style="margin-top: 15px; padding: 10px; background: var(--danger-bg, #ffebee); color: var(--danger-color, #c62828); border-radius: 4px;">
-                <strong>Error:</strong> {{ job.error_message }}
+            <div class="info-item">
+                <div class="info-label">Worker</div>
+                <div class="info-value" id="workerName">{{ worker_name or 'Pending assignment...' }}</div>
             </div>
-            {% endif %}
-        </div>
-
-        <div id="waitingSection" style="{% if job.status in ['completed', 'failed'] %}display: none;{% endif %}">
-            <div class="waiting-message">
-                <span class="spinner"></span>
-                <span id="waitingText">
-                    {% if job.status == 'queued' %}
-                    Waiting for worker assignment...
-                    {% elif job.status == 'assigned' %}
-                    Assigned to worker, waiting for execution...
-                    {% elif job.status == 'running' %}
-                    Job is running...
-                    {% endif %}
-                </span>
+            <div class="info-item">
+                <div class="info-label">Submitted</div>
+                <div class="info-value">{{ job.submitted_at }}</div>
+            </div>
+            <div class="info-item" id="startedItem" style="{% if not job.started_at %}display: none;{% endif %}">
+                <div class="info-label">Started</div>
+                <div class="info-value" id="startedAt">{{ job.started_at or '' }}</div>
+            </div>
+            <div class="info-item" id="completedItem" style="{% if not job.completed_at %}display: none;{% endif %}">
+                <div class="info-label">Completed</div>
+                <div class="info-value" id="completedAt">{{ job.completed_at or '' }}</div>
+            </div>
+            <div class="info-item" id="exitCodeItem" style="{% if job.exit_code is none %}display: none;{% endif %}">
+                <div class="info-label">Exit Code</div>
+                <div class="info-value" id="exitCode">{{ job.exit_code }}</div>
             </div>
         </div>
 
-        <!-- Live Output Log Section - always shown for running jobs -->
-        <div class="log-header">
-            <h3>Output Log</h3>
-            <div class="connection-status">
-                <span class="connection-dot" id="connectionDot"></span>
-                <span id="connectionText">Connecting...</span>
-            </div>
-        </div>
-        <div class="log-section" id="logContent">Waiting for output...</div>
-
-        {% if job.log_file %}
-        <div style="margin-top: 10px;">
-            <a href="/logs/{{ job.log_file }}" class="btn btn-secondary">View Full Log</a>
+        {% if job.error_message %}
+        <div id="errorMessage" style="margin-top: 15px; padding: 10px; background: var(--danger-bg, #ffebee); color: var(--danger-color, #c62828); border-radius: 4px;">
+            <strong>Error:</strong> {{ job.error_message }}
         </div>
         {% endif %}
+    </div>
 
-        <!-- Suggested fix (shown when SSH or other known errors detected; no container access needed) -->
-        <div id="suggestedFixSection" class="job-card" style="display: none; margin-top: 16px; padding: 16px; background: var(--bg-secondary, #f8f9fa); border: 1px solid var(--border-color, #dee2e6); border-radius: 8px;">
-            <h4 style="margin: 0 0 10px 0;">Suggested fix</h4>
-            <p id="suggestedFixTitle" style="margin: 0 0 10px 0; font-weight: 600;"></p>
-            <ol id="suggestedFixSteps" style="margin: 0 0 12px 0; padding-left: 20px;"></ol>
-            <div id="suggestedFixPublickey" style="display: none; margin: 12px 0; padding: 10px; background: var(--card-bg, #fff); border: 1px solid var(--border-color, #dee2e6); border-radius: 4px; font-family: monospace; font-size: 0.85em; word-break: break-all;"></div>
-            <button id="suggestedFixCopy" type="button" style="display: none; margin-bottom: 10px; padding: 6px 12px; cursor: pointer;">Copy public key</button>
-            <a id="suggestedFixLink" href="/inventory" style="display: none;">Open Inventory</a>
-        </div>
-
-        <!-- Agent Analysis Section -->
-        <div id="agentAnalysisSection" class="job-card" style="display: none; border-left: 5px solid #007bff;">
-            <div class="job-header" style="margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
-                <div class="job-title" style="font-size: 1.2em;">Agent Analysis</div>
-                <div style="display: flex; align-items: center; gap: 12px;">
-                    <span id="agentTiming" style="font-size: 0.85em; color: var(--text-muted, #666);"></span>
-                    <span id="agentStatusBadge" class="status-badge">Checking...</span>
-                </div>
-            </div>
-            <div class="job-info">
-                <div id="agentAnalysisContent" style="background: var(--bg-primary,#fff); padding: 10px; border-radius: 4px; border: 1px solid var(--border-color,#ddd);"></div>
-            </div>
-        </div>
-
-        <div class="footer" style="margin-top: 30px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                <p>Ansible Simple Web Interface | Cluster Mode</p>
-                <div class="theme-selector">
-                    <label for="themeSelect">Theme:</label>
-                    <select id="themeSelect" class="theme-select"></select>
-                </div>
-            </div>
+    <div id="waitingSection" style="{% if job.status in ['completed', 'failed'] %}display: none;{% endif %}">
+        <div class="waiting-message">
+            <span class="spinner"></span>
+            <span id="waitingText">
+                {% if job.status == 'queued' %}
+                Waiting for worker assignment...
+                {% elif job.status == 'assigned' %}
+                Assigned to worker, waiting for execution...
+                {% elif job.status == 'running' %}
+                Job is running...
+                {% endif %}
+            </span>
         </div>
     </div>
 
-    <script>
-        const jobId = "{{ job.id }}";
-        const statusBadge = document.getElementById('statusBadge');
-        const workerName = document.getElementById('workerName');
-        const waitingSection = document.getElementById('waitingSection');
-        const waitingText = document.getElementById('waitingText');
-        const logContent = document.getElementById('logContent');
-        const connectionDot = document.getElementById('connectionDot');
-        const connectionText = document.getElementById('connectionText');
+    <div class="log-header">
+        <h3>Output Log</h3>
+        <div class="connection-status">
+            <span class="connection-dot" id="connectionDot"></span>
+            <span id="connectionText">Connecting...</span>
+        </div>
+    </div>
+    <div class="log-section" id="logContent">Waiting for output...</div>
 
-        // Connect to WebSocket for live log updates
-        const socket = io();
+    {% if job.log_file %}
+    <div style="margin-top: 10px;">
+        <a href="/logs/{{ job.log_file }}" class="btn btn-secondary">View Full Log</a>
+    </div>
+    {% endif %}
 
-        socket.on('connect', function() {
-            connectionDot.classList.add('connected');
-            connectionText.textContent = 'Live';
+    <div id="suggestedFixSection" class="job-card" style="display: none; margin-top: 16px; padding: 16px; background: var(--bg-secondary, #f8f9fa); border: 1px solid var(--border-color, #dee2e6); border-radius: 8px;">
+        <h4 style="margin: 0 0 10px 0;">Suggested fix</h4>
+        <p id="suggestedFixTitle" style="margin: 0 0 10px 0; font-weight: 600;"></p>
+        <ol id="suggestedFixSteps" style="margin: 0 0 12px 0; padding-left: 20px;"></ol>
+        <div id="suggestedFixPublickey" style="display: none; margin: 12px 0; padding: 10px; background: var(--card-bg, #fff); border: 1px solid var(--border-color, #dee2e6); border-radius: 4px; font-family: monospace; font-size: 0.85em; word-break: break-all;"></div>
+        <button id="suggestedFixCopy" type="button" style="display: none; margin-bottom: 10px; padding: 6px 12px; cursor: pointer;">Copy public key</button>
+        <a id="suggestedFixLink" href="/inventory" style="display: none;">Open Inventory</a>
+    </div>
 
-            // Join this job's room for live log updates
-            socket.emit('join_job', { job_id: jobId });
-        });
+    <div id="agentAnalysisSection" class="job-card" style="display: none; border-left: 5px solid #007bff;">
+        <div class="job-header" style="margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
+            <div class="job-title" style="font-size: 1.2em;">Agent Analysis</div>
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <span id="agentTiming" style="font-size: 0.85em; color: var(--text-muted, #666);"></span>
+                <span id="agentStatusBadge" class="status-badge">Checking...</span>
+            </div>
+        </div>
+        <div class="job-info">
+            <div id="agentAnalysisContent" style="background: var(--bg-primary,#fff); padding: 10px; border-radius: 4px; border: 1px solid var(--border-color,#ddd);"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
 
-        socket.on('disconnect', function() {
-            connectionDot.classList.remove('connected');
-            connectionText.textContent = 'Disconnected';
-        });
+{% block footer_scripts %}
+<script src="/static/js/agent-review.js"></script>
+<script>
+    const jobId = "{{ job.id }}";
+    const statusBadge = document.getElementById('statusBadge');
+    const workerName = document.getElementById('workerName');
+    const waitingSection = document.getElementById('waitingSection');
+    const waitingText = document.getElementById('waitingText');
+    const logContent = document.getElementById('logContent');
+    const connectionDot = document.getElementById('connectionDot');
+    const connectionText = document.getElementById('connectionText');
 
-        // Receive catch-up log content when joining
-        socket.on('job_log_catchup', function(data) {
-            if (data.job_id === jobId && data.content) {
+    const socket = window.__socket || io();
+
+    socket.on('connect', function() {
+        connectionDot.classList.add('connected');
+        connectionText.textContent = 'Live';
+        socket.emit('join_job', { job_id: jobId });
+    });
+
+    socket.on('disconnect', function() {
+        connectionDot.classList.remove('connected');
+        connectionText.textContent = 'Disconnected';
+    });
+
+    socket.on('job_log_catchup', function(data) {
+        if (data.job_id === jobId && data.content) {
+            logContent.textContent = data.content;
+            logContent.scrollTop = logContent.scrollHeight;
+        }
+    });
+
+    socket.on('job_log_update', function(data) {
+        if (data.job_id === jobId) {
+            if (data.append) {
+                logContent.textContent += data.content;
+            } else {
                 logContent.textContent = data.content;
-                logContent.scrollTop = logContent.scrollHeight;
             }
-        });
-
-        // Receive live log updates from worker
-        socket.on('job_log_update', function(data) {
-            if (data.job_id === jobId) {
-                if (data.append) {
-                    // Append new content
-                    logContent.textContent += data.content;
-                } else {
-                    // Replace content
-                    logContent.textContent = data.content;
-                }
-                logContent.scrollTop = logContent.scrollHeight;
-            }
-        });
-
-        // Agent pushes when review is ready; refresh analysis section
-        socket.on('agent_review_ready', function(data) {
-            if (data.job_id === jobId) checkAgentAnalysis();
-        });
-
-        // Poll for job status updates
-        function updateJobStatus() {
-            fetch(`/api/jobs/${jobId}`)
-                .then(response => response.json())
-                .then(job => {
-                    // Update status badge
-                    statusBadge.textContent = job.status;
-                    statusBadge.className = 'status-badge status-' + job.status;
-
-                    // Update worker name
-                    if (job.assigned_worker) {
-                        fetch(`/api/workers/${job.assigned_worker}`)
-                            .then(r => r.json())
-                            .then(worker => {
-                                workerName.textContent = worker.name || job.assigned_worker;
-                            })
-                            .catch(() => {
-                                workerName.textContent = job.assigned_worker;
-                            });
-                    }
-
-                    // Update timestamps
-                    if (job.started_at) {
-                        document.getElementById('startedItem').style.display = '';
-                        document.getElementById('startedAt').textContent = job.started_at;
-                    }
-                    if (job.completed_at) {
-                        document.getElementById('completedItem').style.display = '';
-                        document.getElementById('completedAt').textContent = job.completed_at;
-                    }
-                    if (job.exit_code !== null && job.exit_code !== undefined) {
-                        document.getElementById('exitCodeItem').style.display = '';
-                        document.getElementById('exitCode').textContent = job.exit_code;
-                    }
-
-                    // Update waiting message
-                    if (job.status === 'queued') {
-                        waitingText.textContent = 'Waiting for worker assignment...';
-                        waitingSection.style.display = 'block';
-                    } else if (job.status === 'assigned') {
-                        waitingText.textContent = 'Assigned to worker, waiting for execution...';
-                        waitingSection.style.display = 'block';
-                    } else if (job.status === 'running') {
-                        waitingText.textContent = 'Job is running...';
-                        waitingSection.style.display = 'block';
-                    } else {
-                        waitingSection.style.display = 'none';
-                    }
-
-                    // If job completed, do a final log fetch and stop polling
-                    if (job.status === 'completed' || job.status === 'failed') {
-                        loadLog();
-                        checkAgentAnalysis();
-                    }
-                })
-                .catch(err => console.error('Error fetching job status:', err));
+            logContent.scrollTop = logContent.scrollHeight;
         }
+    });
 
-        // Check for agent analysis (full review). Use review-status for lightweight poll.
-        let agentAnalysisDone = false;
-        let agentStartedAt = null;   // server started_at when running, or client "waiting since" when pending
-        let agentWaitingSince = null;
-        let agentElapsedInterval = null;
-        let agentAvgSeconds = 0;
+    socket.on('agent_review_ready', function(data) {
+        if (data.job_id === jobId) checkAgentAnalysis();
+    });
 
-        function loadAgentAvgStats() {
-            fetch('/api/agent/review-stats')
-                .then(r => r.json())
-                .then(d => { if (d.avg_response_time_seconds != null && d.count > 0) agentAvgSeconds = d.avg_response_time_seconds; })
-                .catch(() => {});
-        }
+    function updateJobStatus() {
+        fetch(`/api/jobs/${jobId}`)
+            .then(response => response.json())
+            .then(job => {
+                statusBadge.textContent = job.status;
+                statusBadge.className = 'status-badge status-' + job.status;
 
-        function showSuggestedFix(errorSnippet) {
-            if (!errorSnippet || errorSnippet.length < 10) return;
-            fetch('/api/suggested-fix?error=' + encodeURIComponent(errorSnippet.slice(0, 2000)))
-                .then(r => r.json())
-                .then(function(d) {
-                    if (!d.detected || !d.steps || !d.steps.length) return;
-                    var section = document.getElementById('suggestedFixSection');
-                    var titleEl = document.getElementById('suggestedFixTitle');
-                    var stepsEl = document.getElementById('suggestedFixSteps');
-                    var pubkeyEl = document.getElementById('suggestedFixPublickey');
-                    var copyBtn = document.getElementById('suggestedFixCopy');
-                    var linkEl = document.getElementById('suggestedFixLink');
-                    titleEl.textContent = d.title || 'Suggested fix';
-                    stepsEl.innerHTML = d.steps.map(function(s) {
-                        return '<li style="margin-bottom: 6px;">' + s.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') + '</li>';
-                    }).join('');
-                    if (d.public_key) {
-                        pubkeyEl.textContent = d.public_key;
-                        pubkeyEl.style.display = 'block';
-                        copyBtn.style.display = 'inline-block';
-                        copyBtn.onclick = function() {
-                            navigator.clipboard.writeText(d.public_key).then(function() {
-                                copyBtn.textContent = 'Copied!';
-                                setTimeout(function() { copyBtn.textContent = 'Copy public key'; }, 2000);
-                            });
-                        };
-                    } else {
-                        pubkeyEl.style.display = 'none';
-                        copyBtn.style.display = 'none';
-                    }
-                    if (d.link && d.link.url) {
-                        linkEl.href = d.link.url;
-                        linkEl.textContent = d.link.label || 'Open Inventory';
-                        linkEl.style.display = 'inline-block';
-                    } else {
-                        linkEl.style.display = 'none';
-                    }
-                    section.style.display = 'block';
-                })
-                .catch(function() {});
-        }
-
-        function startAgentElapsedCounter() {
-            if (agentElapsedInterval) return;
-            agentElapsedInterval = setInterval(function() {
-                if (!agentStartedAt || agentAnalysisDone) return;
-                const el = document.getElementById('agentTiming');
-                if (!el) return;
-                const sec = Math.floor((Date.now() / 1000) - agentStartedAt);
-                el.textContent = 'Elapsed: ' + sec + 's' + (agentAvgSeconds > 0 ? ' (avg ' + agentAvgSeconds + 's)' : '');
-            }, 1000);
-        }
-
-        function stopAgentElapsedCounter() {
-            if (agentElapsedInterval) { clearInterval(agentElapsedInterval); agentElapsedInterval = null; }
-        }
-
-        function checkAgentAnalysis() {
-            const section = document.getElementById('agentAnalysisSection');
-            const content = document.getElementById('agentAnalysisContent');
-            const badge = document.getElementById('agentStatusBadge');
-            const timingEl = document.getElementById('agentTiming');
-
-            fetch(`/api/agent/review-status/${jobId}`)
-                .then(r => r.json())
-                .then(statusData => {
-                    section.style.display = 'block';
-                    if (statusData.status === 'completed' || statusData.status === 'error') {
-                        return fetch(`/api/agent/reviews/${jobId}`).then(async r => {
-                            const body = await r.json().catch(() => ({}));
-                            if (r.ok) return body;
-                            return { status: 'failure', error: body.error || 'HTTP ' + r.status, review: { status: 'failure', error: body.error || 'HTTP ' + r.status } };
+                if (job.assigned_worker) {
+                    fetch(`/api/workers/${job.assigned_worker}`)
+                        .then(r => r.json())
+                        .then(worker => {
+                            workerName.textContent = worker.name || job.assigned_worker;
+                        })
+                        .catch(() => {
+                            workerName.textContent = job.assigned_worker;
                         });
-                    }
-                    if (statusData.status === 'running') {
-                        agentStartedAt = statusData.started_at || (Date.now() / 1000);
-                        startAgentElapsedCounter();
-                        content.textContent = 'Analysis in progress… (will update when ready)';
-                        badge.textContent = 'Running';
-                        badge.className = 'status-badge';
-                        badge.style.backgroundColor = '#17a2b8';
-                        badge.style.color = 'white';
-                        if (!agentAnalysisDone) setTimeout(checkAgentAnalysis, 3000);
-                        return null;
-                    }
-                    if (!agentWaitingSince) agentWaitingSince = Date.now() / 1000;
+                }
+
+                if (job.started_at) {
+                    document.getElementById('startedItem').style.display = '';
+                    document.getElementById('startedAt').textContent = job.started_at;
+                }
+                if (job.completed_at) {
+                    document.getElementById('completedItem').style.display = '';
+                    document.getElementById('completedAt').textContent = job.completed_at;
+                }
+                if (job.exit_code !== null && job.exit_code !== undefined) {
+                    document.getElementById('exitCodeItem').style.display = '';
+                    document.getElementById('exitCode').textContent = job.exit_code;
+                }
+
+                if (job.status === 'queued') {
+                    waitingText.textContent = 'Waiting for worker assignment...';
+                    waitingSection.style.display = 'block';
+                } else if (job.status === 'assigned') {
+                    waitingText.textContent = 'Assigned to worker, waiting for execution...';
+                    waitingSection.style.display = 'block';
+                } else if (job.status === 'running') {
+                    waitingText.textContent = 'Job is running...';
+                    waitingSection.style.display = 'block';
+                } else {
+                    waitingSection.style.display = 'none';
+                }
+
+                if (job.status === 'completed' || job.status === 'failed') {
+                    loadLog();
+                    checkAgentAnalysis();
+                }
+            })
+            .catch(err => console.error('Error fetching job status:', err));
+    }
+
+    let agentAnalysisDone = false;
+    let agentStartedAt = null;
+    let agentWaitingSince = null;
+    let agentElapsedInterval = null;
+    let agentAvgSeconds = 0;
+
+    function loadAgentAvgStats() {
+        fetch('/api/agent/review-stats')
+            .then(r => r.json())
+            .then(d => { if (d.avg_response_time_seconds != null && d.count > 0) agentAvgSeconds = d.avg_response_time_seconds; })
+            .catch(() => {});
+    }
+
+    function showSuggestedFix(errorSnippet) {
+        if (!errorSnippet || errorSnippet.length < 10) return;
+        fetch('/api/suggested-fix?error=' + encodeURIComponent(errorSnippet.slice(0, 2000)))
+            .then(r => r.json())
+            .then(function(d) {
+                if (!d.detected || !d.steps || !d.steps.length) return;
+                var section = document.getElementById('suggestedFixSection');
+                var titleEl = document.getElementById('suggestedFixTitle');
+                var stepsEl = document.getElementById('suggestedFixSteps');
+                var pubkeyEl = document.getElementById('suggestedFixPublickey');
+                var copyBtn = document.getElementById('suggestedFixCopy');
+                var linkEl = document.getElementById('suggestedFixLink');
+                titleEl.textContent = d.title || 'Suggested fix';
+                stepsEl.innerHTML = d.steps.map(function(s) {
+                    return '<li style="margin-bottom: 6px;">' + s.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') + '</li>';
+                }).join('');
+                if (d.public_key) {
+                    pubkeyEl.textContent = d.public_key;
+                    pubkeyEl.style.display = 'block';
+                    copyBtn.style.display = 'inline-block';
+                    copyBtn.onclick = function() {
+                        navigator.clipboard.writeText(d.public_key).then(function() {
+                            copyBtn.textContent = 'Copied!';
+                            setTimeout(function() { copyBtn.textContent = 'Copy public key'; }, 2000);
+                        });
+                    };
+                } else {
+                    pubkeyEl.style.display = 'none';
+                    copyBtn.style.display = 'none';
+                }
+                if (d.link && d.link.url) {
+                    linkEl.href = d.link.url;
+                    linkEl.textContent = d.link.label || 'Open Inventory';
+                    linkEl.style.display = 'inline-block';
+                } else {
+                    linkEl.style.display = 'none';
+                }
+                section.style.display = 'block';
+            })
+            .catch(function() {});
+    }
+
+    function startAgentElapsedCounter() {
+        if (agentElapsedInterval) return;
+        agentElapsedInterval = setInterval(function() {
+            if (!agentStartedAt || agentAnalysisDone) return;
+            const el = document.getElementById('agentTiming');
+            if (!el) return;
+            const sec = Math.floor((Date.now() / 1000) - agentStartedAt);
+            el.textContent = 'Elapsed: ' + sec + 's' + (agentAvgSeconds > 0 ? ' (avg ' + agentAvgSeconds + 's)' : '');
+        }, 1000);
+    }
+
+    function stopAgentElapsedCounter() {
+        if (agentElapsedInterval) { clearInterval(agentElapsedInterval); agentElapsedInterval = null; }
+    }
+
+    function checkAgentAnalysis() {
+        const section = document.getElementById('agentAnalysisSection');
+        const content = document.getElementById('agentAnalysisContent');
+        const badge = document.getElementById('agentStatusBadge');
+        const timingEl = document.getElementById('agentTiming');
+
+        fetch(`/api/agent/review-status/${jobId}`)
+            .then(r => r.json())
+            .then(statusData => {
+                section.style.display = 'block';
+                if (statusData.status === 'completed' || statusData.status === 'error') {
+                    return fetch(`/api/agent/reviews/${jobId}`).then(async r => {
+                        const body = await r.json().catch(() => ({}));
+                        if (r.ok) return body;
+                        return { status: 'failure', error: body.error || 'HTTP ' + r.status, review: { status: 'failure', error: body.error || 'HTTP ' + r.status } };
+                    });
+                }
+                if (statusData.status === 'running') {
+                    agentStartedAt = statusData.started_at || (Date.now() / 1000);
                     startAgentElapsedCounter();
-                    if (agentAvgSeconds > 0 && timingEl && timingEl.textContent.indexOf('Elapsed:') < 0) timingEl.textContent = 'Avg ' + agentAvgSeconds + 's';
-                    content.textContent = 'Analysis pending… (will update when ready)';
-                    badge.textContent = 'Pending';
+                    content.textContent = 'Analysis in progress… (will update when ready)';
+                    badge.textContent = 'Running';
                     badge.className = 'status-badge';
-                    badge.style.backgroundColor = '#ffc107';
-                    badge.style.color = 'black';
+                    badge.style.backgroundColor = '#17a2b8';
+                    badge.style.color = 'white';
                     if (!agentAnalysisDone) setTimeout(checkAgentAnalysis, 3000);
                     return null;
-                })
-                .then(data => {
-                    if (!data) return;
-                    agentAnalysisDone = true;
-                    stopAgentElapsedCounter();
-                    const review = data.review;
-                    const reviewIsFailure = review && typeof review === 'object' && (review.status === 'failure' || review.error);
-                    const errMsg = (review && typeof review === 'object' && review.error) || data.error || data.message || 'Unknown error';
+                }
+                if (!agentWaitingSince) agentWaitingSince = Date.now() / 1000;
+                startAgentElapsedCounter();
+                if (agentAvgSeconds > 0 && timingEl && timingEl.textContent.indexOf('Elapsed:') < 0) timingEl.textContent = 'Avg ' + agentAvgSeconds + 's';
+                content.textContent = 'Analysis pending… (will update when ready)';
+                badge.textContent = 'Pending';
+                badge.className = 'status-badge';
+                badge.style.backgroundColor = '#ffc107';
+                badge.style.color = 'black';
+                if (!agentAnalysisDone) setTimeout(checkAgentAnalysis, 3000);
+                return null;
+            })
+            .then(data => {
+                if (!data) return;
+                agentAnalysisDone = true;
+                stopAgentElapsedCounter();
+                const review = data.review;
+                const reviewIsFailure = review && typeof review === 'object' && (review.status === 'failure' || review.error);
+                const errMsg = (review && typeof review === 'object' && review.error) || data.error || data.message || 'Unknown error';
 
-                    if (reviewIsFailure) {
-                        var esc = window.escapeHtmlForAgent || function(s){ if(s==null) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
-                        content.innerHTML = '<p style="margin:0;">Analysis Failed: ' + esc(errMsg) + '</p>';
-                        badge.textContent = 'Error';
-                        badge.className = 'status-badge status-offline';
-                        badge.style.backgroundColor = '#dc3545';
-                        badge.style.color = 'white';
-                        if (data.duration_seconds != null && timingEl) timingEl.textContent = 'Duration: ' + data.duration_seconds + 's';
-                        showSuggestedFix(errMsg);
-                    } else if (review) {
-                        var formatted = window.formatAgentReviewOrFallback && window.formatAgentReviewOrFallback(review);
-                        if (formatted) content.innerHTML = formatted;
-                        else content.textContent = typeof review === 'string' ? review : JSON.stringify(review, null, 2);
-                        badge.textContent = 'Completed';
-                        badge.className = 'status-badge status-online';
-                        badge.style.backgroundColor = '#28a745';
-                        badge.style.color = 'white';
-                        if (data.duration_seconds != null && timingEl) timingEl.textContent = 'Duration: ' + data.duration_seconds + 's';
-                    } else if (data.status === 'failure' || data.error) {
-                        var esc2 = window.escapeHtmlForAgent || function(s){ if(s==null) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
-                        content.innerHTML = '<p style="margin:0;">Analysis Failed: ' + esc2(errMsg) + '</p>';
-                        badge.textContent = 'Error';
-                        badge.className = 'status-badge status-offline';
-                        badge.style.backgroundColor = '#dc3545';
-                        badge.style.color = 'white';
-                        if (data.duration_seconds != null && timingEl) timingEl.textContent = 'Duration: ' + data.duration_seconds + 's';
-                    }
-                })
-                .catch(err => {
-                    console.error('Agent check failed', err);
-                    if (!agentAnalysisDone) {
-                        section.style.display = 'block';
-                        content.textContent = 'Error checking analysis: ' + (err.message || String(err));
-                        badge.textContent = 'Error';
-                        badge.className = 'status-badge status-offline';
-                        badge.style.backgroundColor = '#dc3545';
-                        badge.style.color = 'white';
-                    }
-                });
-        }
+                if (reviewIsFailure) {
+                    var esc = window.escapeHtmlForAgent || function(s){ if(s==null) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
+                    content.innerHTML = '<p style="margin:0;">Analysis Failed: ' + esc(errMsg) + '</p>';
+                    badge.textContent = 'Error';
+                    badge.className = 'status-badge status-offline';
+                    badge.style.backgroundColor = '#dc3545';
+                    badge.style.color = 'white';
+                    if (data.duration_seconds != null && timingEl) timingEl.textContent = 'Duration: ' + data.duration_seconds + 's';
+                    showSuggestedFix(errMsg);
+                } else if (review) {
+                    var formatted = window.formatAgentReviewOrFallback && window.formatAgentReviewOrFallback(review);
+                    if (formatted) content.innerHTML = formatted;
+                    else content.textContent = typeof review === 'string' ? review : JSON.stringify(review, null, 2);
+                    badge.textContent = 'Completed';
+                    badge.className = 'status-badge status-online';
+                    badge.style.backgroundColor = '#28a745';
+                    badge.style.color = 'white';
+                    if (data.duration_seconds != null && timingEl) timingEl.textContent = 'Duration: ' + data.duration_seconds + 's';
+                } else if (data.status === 'failure' || data.error) {
+                    var esc2 = window.escapeHtmlForAgent || function(s){ if(s==null) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
+                    content.innerHTML = '<p style="margin:0;">Analysis Failed: ' + esc2(errMsg) + '</p>';
+                    badge.textContent = 'Error';
+                    badge.className = 'status-badge status-offline';
+                    badge.style.backgroundColor = '#dc3545';
+                    badge.style.color = 'white';
+                    if (data.duration_seconds != null && timingEl) timingEl.textContent = 'Duration: ' + data.duration_seconds + 's';
+                }
+            })
+            .catch(err => {
+                console.error('Agent check failed', err);
+                if (!agentAnalysisDone) {
+                    section.style.display = 'block';
+                    content.textContent = 'Error checking analysis: ' + (err.message || String(err));
+                    badge.textContent = 'Error';
+                    badge.className = 'status-badge status-offline';
+                    badge.style.backgroundColor = '#dc3545';
+                    badge.style.color = 'white';
+                }
+            });
+    }
 
-        // Load log content via API (fallback for when WebSocket misses data)
-        function loadLog() {
-            fetch(`/api/jobs/${jobId}/log?format=json`)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.log) {
-                        logContent.textContent = data.log;
-                        logContent.scrollTop = logContent.scrollHeight;
-                        if (statusBadge.textContent === 'failed' && data.log) showSuggestedFix(data.log);
-                    } else if (data.content) {
-                        logContent.textContent = data.content;
-                        logContent.scrollTop = logContent.scrollHeight;
-                        if (statusBadge.textContent === 'failed' && data.content) showSuggestedFix(data.content);
-                    }
-                })
-                .catch(() => {
-                    // Keep existing content on error
-                });
-        }
+    function loadLog() {
+        fetch(`/api/jobs/${jobId}/log?format=json`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.log) {
+                    logContent.textContent = data.log;
+                    logContent.scrollTop = logContent.scrollHeight;
+                    if (statusBadge.textContent === 'failed' && data.log) showSuggestedFix(data.log);
+                } else if (data.content) {
+                    logContent.textContent = data.content;
+                    logContent.scrollTop = logContent.scrollHeight;
+                    if (statusBadge.textContent === 'failed' && data.content) showSuggestedFix(data.content);
+                }
+            })
+            .catch(() => {});
+    }
 
-        // Poll for status every 2 seconds
-        setInterval(updateJobStatus, 2000);
-
-        // Poll for log every 5 seconds as fallback
-        setInterval(loadLog, 5000);
-
-        // Load avg response time stats for agent timing display
-        loadAgentAvgStats();
-
-        // Initial load
-        updateJobStatus();
-        loadLog();
-    </script>
-</body>
-</html>
+    setInterval(updateJobStatus, 2000);
+    setInterval(loadLog, 5000);
+    loadAgentAvgStats();
+    updateJobStatus();
+    loadLog();
+</script>
+{% endblock %}
