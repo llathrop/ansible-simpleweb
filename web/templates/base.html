@@ -78,7 +78,7 @@
             {% endfor %}
         </aside>
 
-        <main class="main-content">
+        <main class="main-content {% block main_class %}{% endblock %}">
             {% block content %}{% endblock %}
         </main>
     </div>
