@@ -1,32 +1,8 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% if edit_mode %}Edit{% else %}New{% endif %} Schedule - Ansible Web Interface</title>
-    <link rel="stylesheet" href="/static/css/base.css">
-    <script>
-        // Immediately apply cached theme to prevent flash of unstyled content
-        (function() {
-            try {
-                var cached = localStorage.getItem('ansible-web-theme-vars');
-                if (cached) {
-                    var vars = JSON.parse(cached);
-                    var root = document.documentElement;
-                    for (var key in vars) {
-                        if (vars[key]) root.style.setProperty(key, vars[key]);
-                    }
-                }
-            } catch (e) {}
-        })();
-    </script>
-    <script src="/static/js/theme.js"></script>
-    <style>
-        /* Page-specific styles */
-        body {
-            padding: 20px;
-        }
+{% extends "base.html" %}
+{% block title %}{% if edit_mode %}Edit{% else %}New{% endif %} Schedule - Ansible Web Interface{% endblock %}
 
+{% block head_extras %}
+<style>
         /* Schedule type toggle */
         .schedule-type-toggle {
             display: flex;
@@ -117,16 +93,14 @@
             }
         }
     </style>
-</head>
-<body>
-    <div class="container">
-        <h1>{% if edit_mode %}Edit Schedule{% else %}New Schedule{% endif %}</h1>
+{% endblock %}
 
-        <div class="nav-links">
-            <a href="/schedules">&larr; Back to Schedules</a>
-        </div>
+{% block content %}
+<div class="container">
+    <h1>{% if edit_mode %}Edit Schedule{% else %}New Schedule{% endif %}</h1>
+    <p><a href="/schedules">&larr; Back to Schedules</a></p>
 
-        <form action="{% if edit_mode %}/schedules/{{ schedule.id }}/update{% else %}/schedules/create{% endif %}"
+    <form action="{% if edit_mode %}/schedules/{{ schedule.id }}/update{% else %}/schedules/create{% endif %}"
               method="POST" class="schedule-form" id="scheduleForm">
 
             <!-- Hidden fields for batch mode -->
@@ -346,20 +320,12 @@
                 </button>
                 <a href="/schedules" class="btn btn-secondary">Cancel</a>
             </div>
-        </form>
+    </form>
+</div>
+{% endblock %}
 
-        <div class="footer" style="margin-top: 30px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                <p>Ansible Simple Web Interface | Localhost Only</p>
-                <div class="theme-selector">
-                    <label for="themeSelect">Theme:</label>
-                    <select id="themeSelect" class="theme-select"></select>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script>
+{% block footer_scripts %}
+<script>
         // Batch mode state
         const batchState = {
             playbooks: [],
@@ -520,6 +486,5 @@
             updateRecurrenceOptions();
             initFromUrlParams();
         });
-    </script>
-</body>
-</html>
+</script>
+{% endblock %}

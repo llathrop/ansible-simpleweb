@@ -1,111 +1,68 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ schedule.name }} - History | Ansible Web Interface</title>
-    <link rel="stylesheet" href="/static/css/base.css">
-    <script>
-        // Immediately apply cached theme to prevent flash of unstyled content
-        (function() {
-            try {
-                var cached = localStorage.getItem('ansible-web-theme-vars');
-                if (cached) {
-                    var vars = JSON.parse(cached);
-                    var root = document.documentElement;
-                    for (var key in vars) {
-                        if (vars[key]) root.style.setProperty(key, vars[key]);
-                    }
-                }
-            } catch (e) {}
-        })();
-    </script>
-    <script src="/static/js/theme.js"></script>
-    <style>
-        /* Page-specific styles */
-        body {
-            padding: 20px;
-        }
-    </style>
-</head>
-<body>
-    <div class="container container-wide">
-        <h1>Schedule History</h1>
+{% extends "base.html" %}
+{% block title %}{{ schedule.name }} - History | Ansible Web Interface{% endblock %}
 
-        <div class="nav-links">
-            <a href="/schedules">&larr; Back to Schedules</a>
-            <a href="/">Home</a>
-            <a href="/logs">All Logs</a>
-        </div>
+{% block content %}
+<div class="container container-wide">
+    <h1>Schedule History</h1>
+    <p><a href="/schedules">&larr; Back to Schedules</a> | <a href="/">Home</a> | <a href="/logs">All Logs</a></p>
 
-        <div class="schedule-info">
-            <h2>{{ schedule.name }}</h2>
-            {% if schedule.description %}
-            <p>{{ schedule.description }}</p>
-            {% endif %}
-            <p>
-                <strong>Playbook:</strong> {{ schedule.playbook }} |
-                <strong>Target:</strong> {{ schedule.target }} |
-                <strong>Recurrence:</strong> {{ schedule.recurrence_display }}
-            </p>
-            <p>
-                <strong>Status:</strong>
-                <span class="status-badge status-{{ schedule.status }}">{{ schedule.status }}</span>
-                |
-                <strong>Total Runs:</strong> {{ schedule.run_count }}
-                {% if schedule.next_run_display %}
-                | <strong>Next Run:</strong> {{ schedule.next_run_display }}
-                {% endif %}
-            </p>
-        </div>
-
-        {% if history %}
-        <table class="schedule-table">
-            <thead>
-                <tr>
-                    <th>Run Time</th>
-                    <th>Duration</th>
-                    <th>Worker</th>
-                    <th>Status</th>
-                    <th>Log File</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for run in history %}
-                <tr class="history-row status-{{ run.status }}">
-                    <td>{{ run.started_display }}</td>
-                    <td>{{ run.duration_display }}</td>
-                    <td>{{ run.worker_name or 'local-executor' }}</td>
-                    <td>
-                        <span class="status-badge status-{{ run.status }}">{{ run.status }}</span>
-                    </td>
-                    <td>
-                        {% if run.log_file %}
-                        <a href="/logs/{{ run.log_file }}" class="log-link">{{ run.log_file }}</a>
-                        {% else %}
-                        <span class="text-muted">N/A</span>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        {% else %}
-        <div class="empty-state">
-            <p>No execution history yet.</p>
-            <p>History will appear here after the schedule runs.</p>
-        </div>
+    <div class="schedule-info">
+        <h2>{{ schedule.name }}</h2>
+        {% if schedule.description %}
+        <p>{{ schedule.description }}</p>
         {% endif %}
-
-        <div class="footer" style="margin-top: 30px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                <p>Ansible Simple Web Interface | Localhost Only</p>
-                <div class="theme-selector">
-                    <label for="themeSelect">Theme:</label>
-                    <select id="themeSelect" class="theme-select"></select>
-                </div>
-            </div>
-        </div>
+        <p>
+            <strong>Playbook:</strong> {{ schedule.playbook }} |
+            <strong>Target:</strong> {{ schedule.target }} |
+            <strong>Recurrence:</strong> {{ schedule.recurrence_display }}
+        </p>
+        <p>
+            <strong>Status:</strong>
+            <span class="status-badge status-{{ schedule.status }}">{{ schedule.status }}</span>
+            |
+            <strong>Total Runs:</strong> {{ schedule.run_count }}
+            {% if schedule.next_run_display %}
+            | <strong>Next Run:</strong> {{ schedule.next_run_display }}
+            {% endif %}
+        </p>
     </div>
-</body>
-</html>
+
+    {% if history %}
+    <table class="schedule-table">
+        <thead>
+            <tr>
+                <th>Run Time</th>
+                <th>Duration</th>
+                <th>Worker</th>
+                <th>Status</th>
+                <th>Log File</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for run in history %}
+            <tr class="history-row status-{{ run.status }}">
+                <td>{{ run.started_display }}</td>
+                <td>{{ run.duration_display }}</td>
+                <td>{{ run.worker_name or 'local-executor' }}</td>
+                <td>
+                    <span class="status-badge status-{{ run.status }}">{{ run.status }}</span>
+                </td>
+                <td>
+                    {% if run.log_file %}
+                    <a href="/logs/{{ run.log_file }}" class="log-link">{{ run.log_file }}</a>
+                    {% else %}
+                    <span class="text-muted">N/A</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+        <p>No execution history yet.</p>
+        <p>History will appear here after the schedule runs.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

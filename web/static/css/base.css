@@ -712,8 +712,19 @@ select:focus {
 
 /* ==========================================================================
    Live Log Page Specific Styles
+   Used when main-content has class live-log-page (extends base layout)
    ========================================================================== */
 
+.main-content.live-log-page {
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    min-height: 0;
+    background: var(--log-bg);
+    color: var(--log-text);
+}
+
+/* Legacy: body.live-log-page for standalone pages (can be removed after migration) */
 body.live-log-page {
     background: var(--log-bg);
     color: var(--log-text);
@@ -722,7 +733,8 @@ body.live-log-page {
     flex-direction: column;
 }
 
-.live-log-page .header {
+.live-log-page .header,
+.main-content.live-log-page .header {
     background: var(--bg-tertiary);
     padding: 15px 20px;
     border-bottom: 1px solid var(--border-primary);
@@ -733,32 +745,38 @@ body.live-log-page {
     gap: 10px;
 }
 
+.main-content.live-log-page .header h1,
 .live-log-page .header h1 {
     font-size: 18px;
     color: var(--text-primary);
 }
 
+.main-content.live-log-page .header-info,
 .live-log-page .header-info {
     font-size: 14px;
     color: var(--text-secondary);
 }
 
+.main-content.live-log-page .header-info span,
 .live-log-page .header-info span {
     margin-right: 15px;
 }
 
+.main-content.live-log-page .header-left,
 .live-log-page .header-left {
     display: flex;
     align-items: center;
     gap: 20px;
 }
 
+.main-content.live-log-page .header-right,
 .live-log-page .header-right {
     display: flex;
     align-items: center;
     gap: 15px;
 }
 
+.main-content.live-log-page .log-container,
 .live-log-page .log-container {
     flex: 1;
     overflow-y: auto;
@@ -768,6 +786,7 @@ body.live-log-page {
     line-height: 1.6;
 }
 
+.main-content.live-log-page .controls,
 .live-log-page .controls {
     display: flex;
     align-items: center;
@@ -786,17 +805,21 @@ body.live-log-page {
 }
 
 /* Live log status badges (dark background variant) */
+.main-content.live-log-page .status-starting,
+.main-content.live-log-page .status-running,
 .live-log-page .status-starting,
 .live-log-page .status-running {
     background: rgba(255, 165, 0, 0.2);
     color: #ffa500;
 }
 
+.main-content.live-log-page .status-completed,
 .live-log-page .status-completed {
     background: rgba(76, 175, 80, 0.2);
     color: #4caf50;
 }
 
+.main-content.live-log-page .status-failed,
 .live-log-page .status-failed {
     background: rgba(244, 67, 54, 0.2);
     color: #f44336;
