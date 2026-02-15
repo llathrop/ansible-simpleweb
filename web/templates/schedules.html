@@ -72,6 +72,8 @@
                     <a href="/schedules/{{ schedule.id }}/history" class="btn btn-secondary btn-small">History</a>
                     {% if schedule.is_running %}
                     <button class="btn btn-danger btn-small" onclick="stopSchedule('{{ schedule.id }}')">Stop</button>
+                    {% else %}
+                    <button class="btn btn-primary btn-small" onclick="runScheduleNow('{{ schedule.id }}')">Run Now</button>
                     {% endif %}
                     <button class="btn btn-secondary btn-small" onclick="pauseSchedule('{{ schedule.id }}')">Pause</button>
                     <a href="/schedules/{{ schedule.id }}/edit" class="btn btn-secondary btn-small">Edit</a>
@@ -137,6 +139,7 @@
                 </td>
                 <td class="actions">
                     <a href="/schedules/{{ schedule.id }}/history" class="btn btn-secondary btn-small">History</a>
+                    <button class="btn btn-primary btn-small" onclick="runScheduleNow('{{ schedule.id }}')">Run Now</button>
                     <button class="btn btn-primary btn-small" onclick="resumeSchedule('{{ schedule.id }}')">Resume</button>
                     <a href="/schedules/{{ schedule.id }}/edit" class="btn btn-secondary btn-small">Edit</a>
                     <button class="btn btn-danger btn-small" onclick="deleteSchedule('{{ schedule.id }}', '{{ schedule.name }}')">Delete</button>

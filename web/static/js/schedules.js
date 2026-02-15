@@ -123,9 +123,31 @@ function stopSchedule(scheduleId) {
 }
 
 /**
- * Run a schedule immediately (manual trigger)
- * Currently not implemented - would need backend support
+ * Run a schedule immediately (one-off execution)
+ * @param {string} scheduleId - Schedule UUID
  */
 function runScheduleNow(scheduleId) {
-    alert('Manual run not yet implemented. Use the main dashboard to run playbooks.');
+    fetch(`/api/schedules/${scheduleId}/run_now`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            const row = document.querySelector('[data-schedule-id="' + scheduleId + '"]');
+            if (row) {
+                const badge = row.querySelector('[data-status]');
+                if (badge) {
+                    badge.textContent = 'running';
+                    badge.className = 'status-badge status-running';
+                }
+            }
+        } else {
+            alert(data.error || 'Failed to start run (schedule may already be running)');
+        }
+    })
+    .catch(error => {
+        console.error('Error running schedule:', error);
+        alert('Error starting scheduled run');
+    });
 }

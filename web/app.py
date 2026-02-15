@@ -3402,6 +3402,18 @@ def api_stop_schedule(schedule_id):
     return jsonify({'success': success})
 
 
+@app.route('/api/schedules/<schedule_id>/run_now', methods=['POST'])
+def api_run_schedule_now(schedule_id):
+    """Run a scheduled playbook immediately (one-off execution)"""
+    if not schedule_manager:
+        return jsonify({'error': 'Scheduler not initialized'}), 500
+
+    success = schedule_manager.run_schedule_now(schedule_id)
+    if not success:
+        return jsonify({'success': False, 'error': 'Schedule not found or already running'}), 400
+    return jsonify({'success': True})
+
+
 @app.route('/api/schedules/<schedule_id>/history')
 def api_schedule_history(schedule_id):
     """Get execution history for a schedule"""
