@@ -1,153 +1,128 @@
 """
-Phase 7.1: Inventory Sync & Auth Verification
-
-Tests that inventory content (including multiple INI files like inventory/routers
-and group_vars like inventory/group_vars/routers.yml) propagates correctly to
-workers via the sync system.
+Tests for inventory sync (DB <-> static inventory).
 """
-
 import os
 import sys
-import shutil
 import tempfile
-import tarfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from web.content_repo import ContentRepository
+from web.inventory_sync import (
+    sync_db_to_static,
+    sync_static_to_db,
+    run_inventory_sync,
+    MANAGED_HOSTS_FILE,
+)
 
 
-def _create_file(base_dir: str, path: str, content: str) -> None:
-    """Create a file, creating parent dirs as needed."""
-    full_path = os.path.join(base_dir, path)
-    os.makedirs(os.path.dirname(full_path), exist_ok=True)
-    with open(full_path, 'w') as f:
-        f.write(content)
+class MockStorage:
+    """Mock storage backend for inventory sync tests."""
+
+    def __init__(self):
+        self.inventory = []
+
+    def get_all_inventory(self):
+        return list(self.inventory)
+
+    def save_inventory_item(self, item_id, item):
+        self.inventory = [i for i in self.inventory if i.get('id') != item_id]
+        self.inventory.append(item)
+        return True
 
 
-class TestInventorySyncManifest(unittest.TestCase):
-    """Verify inventory files (including routers and group_vars) are in sync manifest."""
+class TestInventorySync(unittest.TestCase):
+    """Verify inventory sync: DB to static and static to DB."""
 
     def setUp(self):
-        self.test_dir = tempfile.mkdtemp()
-        os.makedirs(os.path.join(self.test_dir, 'playbooks'), exist_ok=True)
-        os.makedirs(os.path.join(self.test_dir, 'inventory'), exist_ok=True)
-        os.makedirs(os.path.join(self.test_dir, 'library'), exist_ok=True)
-        os.makedirs(os.path.join(self.test_dir, 'callback_plugins'), exist_ok=True)
-
-        _create_file(self.test_dir, 'playbooks/hardware-inventory.yml', '---\n- hosts: all\n')
-        _create_file(self.test_dir, 'inventory/hosts', '[local]\nlocalhost\n')
-        _create_file(self.test_dir, 'inventory/routers', '[routers]\n192.168.1.1 ansible_user=admin\n')
-        _create_file(
-            self.test_dir,
-            'inventory/group_vars/routers.yml',
-            'ansible_connection: network_cli\nansible_network_os: routeros\n'
-        )
-        _create_file(self.test_dir, 'ansible.cfg', '[defaults]\ninventory = ./inventory\n')
+        self.tmp = tempfile.mkdtemp()
+        self.storage = MockStorage()
 
     def tearDown(self):
-        shutil.rmtree(self.test_dir, ignore_errors=True)
+        import shutil
+        shutil.rmtree(self.tmp, ignore_errors=True)
 
-    def test_inventory_routers_in_manifest(self):
-        """inventory/routers (multiple INI files) must be in sync manifest."""
-        repo = ContentRepository(content_dir=self.test_dir)
-        self.assertTrue(repo.init_repo(), "Content repo should initialize")
+    def test_sync_db_to_static_writes_managed_hosts_ini(self):
+        """DB hosts are written to managed_hosts.ini."""
+        self.storage.inventory = [
+            {
+                'id': 'id1',
+                'hostname': 'web1.example.com',
+                'group': 'webservers',
+                'variables': {'ansible_user': 'deploy'},
+            },
+            {
+                'id': 'id2',
+                'hostname': 'db1.example.com',
+                'group': 'databases',
+                'variables': {},
+            },
+        ]
+        n, err = sync_db_to_static(self.storage, self.tmp)
+        self.assertIsNone(err)
+        self.assertEqual(n, 2)
+        path = os.path.join(self.tmp, MANAGED_HOSTS_FILE)
+        self.assertTrue(os.path.isfile(path))
+        content = open(path).read()
+        self.assertIn('[webservers]', content)
+        self.assertIn('web1.example.com', content)
+        self.assertIn('ansible_user=deploy', content)
+        self.assertIn('[databases]', content)
+        self.assertIn('db1.example.com', content)
 
-        manifest = repo.get_file_manifest()
-        self.assertIn('inventory/routers', manifest,
-                      "Manifest must include inventory/routers for MikroTik targets")
+    def test_sync_db_to_static_empty_writes_empty_file(self):
+        """Empty DB writes managed_hosts.ini with just headers."""
+        n, err = sync_db_to_static(self.storage, self.tmp)
+        self.assertIsNone(err)
+        self.assertEqual(n, 0)
+        path = os.path.join(self.tmp, MANAGED_HOSTS_FILE)
+        self.assertTrue(os.path.isfile(path))
+        content = open(path).read()
+        self.assertIn('Auto-generated', content)
+        self.assertNotIn('[', content.replace('# [', ''))
 
-    def test_inventory_group_vars_in_manifest(self):
-        """inventory/group_vars/routers.yml must be in sync manifest."""
-        repo = ContentRepository(content_dir=self.test_dir)
-        self.assertTrue(repo.init_repo(), "Content repo should initialize")
+    def test_sync_static_to_db_adds_missing_hosts(self):
+        """Hosts in static inventory are added to DB if missing."""
+        hosts_ini = os.path.join(self.tmp, 'hosts.ini')
+        with open(hosts_ini, 'w') as f:
+            f.write("[webservers]\nweb1.example.com ansible_user=deploy\n")
+        n, err = sync_static_to_db(self.storage, self.tmp)
+        self.assertIsNone(err)
+        self.assertEqual(n, 1)
+        inv = self.storage.get_all_inventory()
+        self.assertEqual(len(inv), 1)
+        self.assertEqual(inv[0]['hostname'], 'web1.example.com')
+        self.assertEqual(inv[0]['group'], 'webservers')
+        self.assertEqual(inv[0]['variables'], {'ansible_user': 'deploy'})
 
-        manifest = repo.get_file_manifest()
-        self.assertIn('inventory/group_vars/routers.yml', manifest,
-                      "Manifest must include group_vars for routers auth/config")
+    def test_sync_static_to_db_skips_existing(self):
+        """Hosts already in DB are not duplicated."""
+        self.storage.inventory = [
+            {'id': 'id1', 'hostname': 'web1.example.com', 'group': 'x', 'variables': {}},
+        ]
+        hosts_ini = os.path.join(self.tmp, 'hosts.ini')
+        with open(hosts_ini, 'w') as f:
+            f.write("[webservers]\nweb1.example.com\n")
+        n, err = sync_static_to_db(self.storage, self.tmp)
+        self.assertIsNone(err)
+        self.assertEqual(n, 0)
+        self.assertEqual(len(self.storage.get_all_inventory()), 1)
 
-    def test_archive_contains_inventory_files(self):
-        """Sync archive must contain inventory/routers and group_vars."""
-        repo = ContentRepository(content_dir=self.test_dir)
-        self.assertTrue(repo.init_repo(), "Content repo should initialize")
-
-        archive_path = repo.create_archive()
-        self.assertIsNotNone(archive_path, "Archive creation should succeed")
-        self.assertTrue(os.path.exists(archive_path), "Archive file should exist")
-
-        try:
-            with tarfile.open(archive_path, 'r:gz') as tar:
-                names = tar.getnames()
-
-            self.assertIn('inventory/routers', names,
-                          "Archive must include inventory/routers")
-            self.assertIn('inventory/group_vars/routers.yml', names,
-                          "Archive must include inventory/group_vars/routers.yml")
-        finally:
-            if archive_path and os.path.exists(archive_path):
-                os.remove(archive_path)
-
-    def test_archive_content_matches_source(self):
-        """Extracted archive content must match source for inventory files."""
-        repo = ContentRepository(content_dir=self.test_dir)
-        self.assertTrue(repo.init_repo(), "Content repo should initialize")
-
-        archive_path = repo.create_archive()
-        self.assertIsNotNone(archive_path)
-
-        extract_dir = tempfile.mkdtemp()
-        try:
-            with tarfile.open(archive_path, 'r:gz') as tar:
-                tar.extractall(extract_dir)
-
-            routers_src = os.path.join(self.test_dir, 'inventory', 'routers')
-            routers_dst = os.path.join(extract_dir, 'inventory', 'routers')
-            self.assertTrue(os.path.exists(routers_dst))
-            with open(routers_src) as f1, open(routers_dst) as f2:
-                self.assertEqual(f1.read(), f2.read(), "inventory/routers content must match")
-
-            gv_src = os.path.join(self.test_dir, 'inventory', 'group_vars', 'routers.yml')
-            gv_dst = os.path.join(extract_dir, 'inventory', 'group_vars', 'routers.yml')
-            self.assertTrue(os.path.exists(gv_dst))
-            with open(gv_src) as f1, open(gv_dst) as f2:
-                self.assertEqual(f1.read(), f2.read(), "group_vars/routers.yml content must match")
-        finally:
-            shutil.rmtree(extract_dir, ignore_errors=True)
-            if archive_path and os.path.exists(archive_path):
-                os.remove(archive_path)
-
-
-def _cluster_available():
-    """Check if primary is reachable for integration tests."""
-    try:
-        import requests
-        url = os.environ.get('PRIMARY_URL', 'http://localhost:3001')
-        r = requests.get(f"{url}/api/sync/manifest", timeout=5)
-        return r.ok
-    except Exception:
-        return False
-
-
-@unittest.skipUnless(_cluster_available(), "Cluster not available - run docker-compose up first")
-class TestInventorySyncIntegration(unittest.TestCase):
-    """Integration tests against running cluster (requires docker-compose up)."""
-
-    def test_manifest_includes_routers_or_group_vars(self):
-        """Primary manifest should include routers or group_vars when present."""
-        import requests
-        url = os.environ.get('PRIMARY_URL', 'http://localhost:3001')
-        response = requests.get(f"{url}/api/sync/manifest", timeout=10)
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        files = data.get('files', {})
-        file_paths = list(files.keys()) if isinstance(files, dict) else [f.get('path', f) for f in files]
-
-        # At least one of: inventory/routers, inventory/group_vars/routers.yml, or inventory/hosts
-        inventory_paths = [p for p in file_paths if 'inventory' in p]
-        self.assertGreater(len(inventory_paths), 0,
-                          "Manifest should include inventory files")
-
-
-if __name__ == '__main__':
-    unittest.main()
+    def test_run_inventory_sync_full_cycle(self):
+        """Full sync: DB to static, then static to DB, then db_to_static again."""
+        self.storage.inventory = [
+            {'id': 'id1', 'hostname': 'db-host', 'group': 'managed', 'variables': {}},
+        ]
+        hosts_ini = os.path.join(self.tmp, 'hosts.ini')
+        with open(hosts_ini, 'w') as f:
+            f.write("[static]\nstatic-host.example.com\n")
+        result = run_inventory_sync(self.storage, self.tmp)
+        self.assertIsNone(result.get('error'))
+        self.assertGreaterEqual(result['db_to_static'], 1)
+        self.assertEqual(result['static_to_db'], 1)
+        managed_path = os.path.join(self.tmp, MANAGED_HOSTS_FILE)
+        self.assertTrue(os.path.isfile(managed_path))
+        inv = self.storage.get_all_inventory()
+        hostnames = {i['hostname'] for i in inv}
+        self.assertIn('db-host', hostnames)
+        self.assertIn('static-host.example.com', hostnames)

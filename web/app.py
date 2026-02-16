@@ -30,8 +30,25 @@ from storage import get_storage_backend
 
 # Import content repository manager (for cluster sync)
 from content_repo import ContentRepository, get_content_repo
+from inventory_sync import run_inventory_sync
 
 app = Flask(__name__)
+
+
+def _run_inventory_sync():
+    """Run inventory sync (DB <-> static). Called on inventory changes and periodically."""
+    if not storage_backend:
+        return
+    def commit_fn(msg):
+        repo = get_content_repo(CONTENT_DIR)
+        if repo and repo.is_initialized():
+            repo.commit_changes(msg)
+    try:
+        result = run_inventory_sync(storage_backend, INVENTORY_DIR, commit_fn)
+        if result.get('error'):
+            print(f"Inventory sync warning: {result['error']}")
+    except Exception as e:
+        print(f"Inventory sync error: {e}")
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'ansible-simpleweb-dev-key')
 
 
@@ -53,6 +70,7 @@ PLAYBOOKS_DIR = '/app/playbooks'
 LOGS_DIR = '/app/logs'
 RUN_SCRIPT = '/app/run-playbook.sh'
 INVENTORY_FILE = '/app/inventory/hosts'
+INVENTORY_DIR = os.path.dirname(INVENTORY_FILE)
 THEMES_DIR = '/app/config/themes'
 
 # Cluster configuration
@@ -2421,6 +2439,7 @@ def api_inventory_create():
     }
 
     if storage_backend.save_inventory_item(item_id, item):
+        _run_inventory_sync()
         return jsonify(item), 201
     else:
         return jsonify({'error': 'Failed to save inventory item'}), 500
@@ -2459,6 +2478,7 @@ def api_inventory_update(item_id):
     existing['updated'] = datetime.now().isoformat()
 
     if storage_backend.save_inventory_item(item_id, existing):
+        _run_inventory_sync()
         return jsonify(existing)
     else:
         return jsonify({'error': 'Failed to update inventory item'}), 500
@@ -2479,9 +2499,34 @@ def api_inventory_delete(item_id):
         return jsonify({'error': 'Storage backend not initialized'}), 500
 
     if storage_backend.delete_inventory_item(item_id):
+        _run_inventory_sync()
         return jsonify({'success': True, 'deleted': item_id})
     else:
         return jsonify({'error': 'Inventory item not found'}), 404
+
+
+@app.route('/api/inventory/sync', methods=['POST'])
+def api_inventory_sync():
+    """
+    Manually trigger inventory sync (DB <-> static).
+    Ensures DB hosts are in managed_hosts.ini and static hosts are in DB.
+    """
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+    try:
+        def _commit(msg):
+            repo = get_content_repo(CONTENT_DIR)
+            if repo and repo.is_initialized():
+                repo.commit_changes(msg)
+        result = run_inventory_sync(storage_backend, INVENTORY_DIR, _commit)
+        return jsonify({
+            'success': result.get('error') is None,
+            'db_to_static': result.get('db_to_static', 0),
+            'static_to_db': result.get('static_to_db', 0),
+            'error': result.get('error')
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/api/inventory/search', methods=['POST'])
@@ -5494,6 +5539,9 @@ if __name__ == '__main__':
     else:
         print(f"WARNING: Storage backend health check failed!")
 
+    # Initial inventory sync: DB <-> static so workers get all hosts
+    _run_inventory_sync()
+
     # Initialize cluster support
     print(f"Cluster mode: {CLUSTER_MODE}")
     if CLUSTER_MODE in ('standalone', 'primary'):
@@ -5526,6 +5574,17 @@ if __name__ == '__main__':
     )
     schedule_manager.start()
     print("Schedule manager initialized and started")
+
+    # Periodic inventory sync: DB <-> static (every 5 minutes)
+    from apscheduler.triggers.interval import IntervalTrigger
+    schedule_manager.scheduler.add_job(
+        _run_inventory_sync,
+        trigger=IntervalTrigger(minutes=5),
+        id='inventory_sync',
+        name='Inventory sync (DB <-> static)',
+        replace_existing=True
+    )
+    print("Inventory sync job registered (every 5 minutes)")
 
     # Bootstrap: if config requests DB/agent/workers but they are not deployed, run deploy playbook (background)
     def _bootstrap_if_needed():
