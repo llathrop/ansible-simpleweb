@@ -1504,6 +1504,30 @@ Create a new schedule.
 
 ---
 
+### POST /api/schedules/{schedule_id}/run_now
+
+Run a scheduled playbook immediately (one-off execution). Does not change the schedule; uses the same execution path as the scheduler. Supports both single-playbook and batch schedules.
+
+**Request:**
+```http
+POST /api/schedules/schedule-123/run_now HTTP/1.1
+Host: localhost:3001
+Content-Type: application/json
+```
+
+**Response (success):**
+```json
+{"success": true}
+```
+
+**Response (schedule not found or already running):**
+```json
+{"success": false, "error": "Schedule not found or already running"}
+```
+Status: 400
+
+---
+
 ## Future Enhancements
 
 Planned API improvements:

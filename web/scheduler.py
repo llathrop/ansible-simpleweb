@@ -911,6 +911,28 @@ class ScheduleManager:
 
         return False
 
+    def run_schedule_now(self, schedule_id: str) -> bool:
+        """
+        Execute a scheduled playbook immediately (one-off run).
+        Does not change the schedule; uses the same execution path as the scheduler.
+
+        Returns:
+            True if execution was started, False if schedule not found or already running.
+        """
+        with self.schedules_lock:
+            if schedule_id not in self.schedules:
+                return False
+        with self.running_jobs_lock:
+            if schedule_id in self.running_jobs:
+                return False
+
+        def run():
+            self._execute_scheduled_playbook(schedule_id)
+
+        thread = threading.Thread(target=run, daemon=True)
+        thread.start()
+        return True
+
     def get_schedule_history(self, schedule_id: str = None, limit: int = 50) -> List[Dict]:
         """
         Get execution history.
