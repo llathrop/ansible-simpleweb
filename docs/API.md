@@ -742,6 +742,28 @@ Host: localhost:3001
 
 ---
 
+### POST /api/inventory/sync
+
+Manually trigger inventory sync (DB to static and static to DB). Ensures DB hosts are written to `inventory/managed_hosts.ini` (so workers receive them via content sync) and hosts in static inventory files are added to the DB if missing. Sync also runs automatically on inventory create/update/delete and every 5 minutes.
+
+**Request:**
+```http
+POST /api/inventory/sync HTTP/1.1
+Host: localhost:3001
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "db_to_static": 3,
+  "static_to_db": 0,
+  "error": null
+}
+```
+
+---
+
 ### POST /api/inventory/search
 
 Search inventory items by criteria. Supports wildcard matching.

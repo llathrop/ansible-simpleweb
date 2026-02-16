@@ -43,6 +43,7 @@ Next-prompt.md
 # Inventory files with credentials (keep sample, ignore local configs)
 inventory/hosts
 inventory/hosts.local
+inventory/managed_hosts.ini
 inventory/routers
 inventory/*.local
 inventory/group_vars/

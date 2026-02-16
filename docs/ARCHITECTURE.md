@@ -36,6 +36,7 @@ This document is the **single architecture reference** for the whole environment
 - **Job completion**: Worker POSTs completion to primary → primary updates storage and log → primary triggers agent (fire-and-forget) → primary emits `job_completed` (and later `agent_review_ready` when agent finishes).
 - **Agent log review**: Trigger → agent fetches job + log from primary → agent calls LLM → agent writes review (or failure) → agent notifies primary → UI gets push or polls review-status then fetches review.
 - **Content sync**: Workers ask primary for current revision; if behind, they pull updated content (playbooks, inventory, ansible.cfg) and run jobs with that content.
+- **Inventory sync**: DB and static inventory are kept in sync. Hosts in the DB are written to `inventory/managed_hosts.ini` so workers receive them. Hosts in static inventory files are added to the DB if missing. Sync runs on inventory create/update/delete and every 5 minutes.
 
 ## 6. Logs and debugging
 
