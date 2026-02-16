@@ -799,9 +799,18 @@ class ScheduleManager:
 
             # Update allowed fields
             allowed_fields = ['name', 'description', 'target', 'recurrence']
+            if schedule.get('is_batch'):
+                allowed_fields.extend(['playbooks', 'targets'])
             for field in allowed_fields:
                 if field in updates:
                     schedule[field] = updates[field]
+
+            # Update display fields for batch schedules when playbooks/targets change
+            if schedule.get('is_batch'):
+                playbooks = schedule.get('playbooks', [])
+                targets = schedule.get('targets', [])
+                schedule['playbook'] = playbooks[0] if playbooks else None
+                schedule['target'] = f"{len(targets)} targets"
 
             self._save_schedule(schedule_id)
 

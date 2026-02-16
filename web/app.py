@@ -3294,12 +3294,22 @@ def edit_schedule(schedule_id):
     playbooks = get_playbooks()
     targets = get_inventory_targets()
 
-    return render_template('schedule_form.html',
-                          playbooks=playbooks,
-                          targets=targets,
-                          selected_playbook=schedule['playbook'],
-                          edit_mode=True,
-                          schedule=schedule)
+    ctx = {
+        'playbooks': playbooks,
+        'targets': targets,
+        'selected_playbook': schedule.get('playbook'),
+        'edit_mode': True,
+        'schedule': schedule,
+    }
+
+    if schedule.get('is_batch'):
+        ctx['batch_mode'] = True
+        ctx['batch_playbooks'] = ','.join(schedule.get('playbooks', []))
+        ctx['batch_targets'] = ','.join(schedule.get('targets', []))
+        ctx['batch_playbooks_list'] = schedule.get('playbooks', [])
+        ctx['batch_targets_list'] = schedule.get('targets', [])
+
+    return render_template('schedule_form.html', **ctx)
 
 
 @app.route('/schedules/<schedule_id>/update', methods=['POST'])
@@ -3307,6 +3317,10 @@ def update_schedule(schedule_id):
     """Update an existing schedule"""
     if not schedule_manager:
         return "Scheduler not initialized", 500
+
+    schedule = schedule_manager.get_schedule(schedule_id)
+    if not schedule:
+        return "Schedule not found", 404
 
     name = request.form.get('name', '').strip()
     description = request.form.get('description', '').strip()
@@ -3319,6 +3333,14 @@ def update_schedule(schedule_id):
         'target': target,
         'recurrence': recurrence_config
     }
+
+    if schedule.get('is_batch'):
+        playbooks_raw = request.form.get('playbooks', '')
+        targets_raw = request.form.get('targets', '')
+        playbooks = [p.strip() for p in playbooks_raw.split(',') if p.strip()]
+        targets = [t.strip() for t in targets_raw.split(',') if t.strip()]
+        updates['playbooks'] = playbooks
+        updates['targets'] = targets
 
     schedule_manager.update_schedule(schedule_id, updates)
     return redirect(url_for('schedules_page'))

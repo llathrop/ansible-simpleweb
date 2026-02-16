@@ -101,7 +101,8 @@
     <p><a href="/schedules">&larr; Back to Schedules</a></p>
 
     <form action="{% if edit_mode %}/schedules/{{ schedule.id }}/update{% else %}/schedules/create{% endif %}"
-              method="POST" class="schedule-form" id="scheduleForm">
+              method="POST" class="schedule-form" id="scheduleForm"
+              {% if edit_mode and schedule and schedule.is_batch %}data-edit-batch="true"{% endif %}>
 
             <!-- Hidden fields for batch mode -->
             <input type="hidden" id="is_batch" name="is_batch" value="{{ 'true' if (schedule and schedule.is_batch) or batch_mode else 'false' }}">
@@ -333,14 +334,18 @@
         };
 
         // Initialize from URL params (when coming from main page "Schedule Batch" button)
+        // or from edit mode (batch schedule being edited)
         function initFromUrlParams() {
             const urlParams = new URLSearchParams(window.location.search);
-            if (urlParams.get('batch') === 'true') {
+            const form = document.getElementById('scheduleForm');
+            const isEditBatch = form && form.dataset.editBatch === 'true';
+
+            if (urlParams.get('batch') === 'true' || isEditBatch) {
                 setScheduleMode('batch');
 
-                const playbooks = urlParams.get('playbooks');
-                const targets = urlParams.get('targets');
-                const name = urlParams.get('name');
+                const playbooks = isEditBatch ? (document.getElementById('playbooks_hidden')?.value || '') : urlParams.get('playbooks');
+                const targets = isEditBatch ? (document.getElementById('targets_hidden')?.value || '') : urlParams.get('targets');
+                const name = isEditBatch ? null : urlParams.get('name');
 
                 if (playbooks) {
                     playbooks.split(',').forEach(pb => {
