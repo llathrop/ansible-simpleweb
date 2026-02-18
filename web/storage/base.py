@@ -695,6 +695,383 @@ class StorageBackend(ABC):
         pass
 
     # =========================================================================
+    # User Operations (Authentication)
+    # =========================================================================
+
+    @abstractmethod
+    def get_user(self, username: str) -> Optional[Dict]:
+        """
+        Get a user by username.
+
+        Args:
+            username: Username to retrieve
+
+        Returns:
+            User dict or None if not found.
+            Structure: {
+                "id": "uuid",
+                "username": "john_admin",
+                "password_hash": "bcrypt_hash",
+                "email": "john@example.com",
+                "full_name": "John Smith",
+                "groups": ["operations"],
+                "roles": ["admin", "operator"],
+                "created_at": "ISO timestamp",
+                "last_login": "ISO timestamp",
+                "enabled": true
+            }
+        """
+        pass
+
+    @abstractmethod
+    def get_user_by_id(self, user_id: str) -> Optional[Dict]:
+        """
+        Get a user by ID.
+
+        Args:
+            user_id: User ID (UUID) to retrieve
+
+        Returns:
+            User dict or None if not found
+        """
+        pass
+
+    @abstractmethod
+    def get_all_users(self) -> List[Dict]:
+        """
+        Get all users.
+
+        Returns:
+            List of user dicts (without password_hash for security)
+        """
+        pass
+
+    @abstractmethod
+    def save_user(self, username: str, user: Dict) -> bool:
+        """
+        Save or update a user.
+
+        Args:
+            username: Username (used as key)
+            user: User data dict
+
+        Returns:
+            True if successful
+        """
+        pass
+
+    @abstractmethod
+    def delete_user(self, username: str) -> bool:
+        """
+        Delete a user.
+
+        Args:
+            username: Username to delete
+
+        Returns:
+            True if deleted, False if not found
+        """
+        pass
+
+    @abstractmethod
+    def check_user_credentials(self, username: str, password_hash: str) -> bool:
+        """
+        Check if username and password hash match.
+
+        Args:
+            username: Username to check
+            password_hash: Expected password hash
+
+        Returns:
+            True if credentials match, False otherwise
+        """
+        pass
+
+    # =========================================================================
+    # Group Operations
+    # =========================================================================
+
+    @abstractmethod
+    def get_group(self, group_name: str) -> Optional[Dict]:
+        """
+        Get a group by name.
+
+        Args:
+            group_name: Group name to retrieve
+
+        Returns:
+            Group dict or None if not found.
+            Structure: {
+                "id": "uuid",
+                "name": "operations_team",
+                "description": "Operations team members",
+                "roles": ["operator"],
+                "members": ["user_id_1", "user_id_2"],
+                "created_at": "ISO timestamp"
+            }
+        """
+        pass
+
+    @abstractmethod
+    def get_all_groups(self) -> List[Dict]:
+        """
+        Get all groups.
+
+        Returns:
+            List of group dicts
+        """
+        pass
+
+    @abstractmethod
+    def save_group(self, group_name: str, group: Dict) -> bool:
+        """
+        Save or update a group.
+
+        Args:
+            group_name: Group name (used as key)
+            group: Group data dict
+
+        Returns:
+            True if successful
+        """
+        pass
+
+    @abstractmethod
+    def delete_group(self, group_name: str) -> bool:
+        """
+        Delete a group.
+
+        Args:
+            group_name: Group name to delete
+
+        Returns:
+            True if deleted, False if not found
+        """
+        pass
+
+    # =========================================================================
+    # Role Operations (RBAC)
+    # =========================================================================
+
+    @abstractmethod
+    def get_role(self, role_name: str) -> Optional[Dict]:
+        """
+        Get a role by name.
+
+        Args:
+            role_name: Role name to retrieve
+
+        Returns:
+            Role dict or None if not found.
+            Structure: {
+                "id": "uuid",
+                "name": "playbook_executor",
+                "description": "Can execute specific playbooks",
+                "permissions": [
+                    "playbook:execute:system-health",
+                    "inventory:read:all"
+                ],
+                "inherits": ["monitor"],  # Optional role inheritance
+                "created_at": "ISO timestamp"
+            }
+        """
+        pass
+
+    @abstractmethod
+    def get_all_roles(self) -> List[Dict]:
+        """
+        Get all roles.
+
+        Returns:
+            List of role dicts
+        """
+        pass
+
+    @abstractmethod
+    def save_role(self, role_name: str, role: Dict) -> bool:
+        """
+        Save or update a role.
+
+        Args:
+            role_name: Role name (used as key)
+            role: Role data dict
+
+        Returns:
+            True if successful
+        """
+        pass
+
+    @abstractmethod
+    def delete_role(self, role_name: str) -> bool:
+        """
+        Delete a role.
+
+        Args:
+            role_name: Role name to delete
+
+        Returns:
+            True if deleted, False if not found
+        """
+        pass
+
+    # =========================================================================
+    # API Token Operations
+    # =========================================================================
+
+    @abstractmethod
+    def get_api_token(self, token_id: str) -> Optional[Dict]:
+        """
+        Get an API token by ID.
+
+        Args:
+            token_id: Token ID (UUID)
+
+        Returns:
+            Token dict or None if not found.
+            Structure: {
+                "id": "uuid",
+                "user_id": "user_uuid",
+                "name": "Automation Script Token",
+                "token_hash": "sha256_hash",
+                "created_at": "ISO timestamp",
+                "expires_at": "ISO timestamp" or None,
+                "last_used": "ISO timestamp" or None
+            }
+        """
+        pass
+
+    @abstractmethod
+    def get_api_token_by_hash(self, token_hash: str) -> Optional[Dict]:
+        """
+        Get an API token by its hash.
+
+        Args:
+            token_hash: SHA-256 hash of the token
+
+        Returns:
+            Token dict or None if not found
+        """
+        pass
+
+    @abstractmethod
+    def get_user_api_tokens(self, user_id: str) -> List[Dict]:
+        """
+        Get all API tokens for a user.
+
+        Args:
+            user_id: User ID (UUID)
+
+        Returns:
+            List of token dicts (without token_hash)
+        """
+        pass
+
+    @abstractmethod
+    def save_api_token(self, token_id: str, token: Dict) -> bool:
+        """
+        Save or update an API token.
+
+        Args:
+            token_id: Token ID (UUID)
+            token: Token data dict
+
+        Returns:
+            True if successful
+        """
+        pass
+
+    @abstractmethod
+    def update_api_token(self, token_id: str, token: Dict) -> bool:
+        """
+        Update an existing API token (e.g., last_used time).
+
+        Args:
+            token_id: Token ID (UUID)
+            token: Token data dict
+
+        Returns:
+            True if successful
+        """
+        pass
+
+    @abstractmethod
+    def delete_api_token(self, token_id: str) -> bool:
+        """
+        Delete an API token.
+
+        Args:
+            token_id: Token ID to delete
+
+        Returns:
+            True if deleted, False if not found
+        """
+        pass
+
+    # =========================================================================
+    # Audit Log Operations
+    # =========================================================================
+
+    @abstractmethod
+    def add_audit_entry(self, entry: Dict) -> bool:
+        """
+        Add an audit log entry.
+
+        Args:
+            entry: Audit entry dict with structure:
+                {
+                    "timestamp": "ISO timestamp",
+                    "user": "username",
+                    "user_id": "uuid",
+                    "action": "login|logout|create|update|delete|execute",
+                    "resource": "users|playbooks|schedules|etc",
+                    "resource_id": "uuid or name",
+                    "details": {...additional context...},
+                    "ip_address": "192.168.1.100",
+                    "user_agent": "Mozilla/...",
+                    "success": true|false
+                }
+
+        Returns:
+            True if successful
+        """
+        pass
+
+    @abstractmethod
+    def get_audit_log(self, filters: Dict = None, limit: int = 100, offset: int = 0) -> List[Dict]:
+        """
+        Get audit log entries with optional filters.
+
+        Args:
+            filters: Optional filters dict with keys:
+                - user: Filter by username
+                - action: Filter by action type
+                - resource: Filter by resource type
+                - start_time: ISO timestamp (inclusive)
+                - end_time: ISO timestamp (inclusive)
+                - success: true|false
+            limit: Maximum number of entries to return
+            offset: Number of entries to skip (for pagination)
+
+        Returns:
+            List of audit log entries (newest first)
+        """
+        pass
+
+    @abstractmethod
+    def cleanup_audit_log(self, max_age_days: int = 90, keep_count: int = 10000) -> int:
+        """
+        Clean up old audit log entries.
+
+        Args:
+            max_age_days: Maximum age in days to keep
+            keep_count: Minimum number of entries to keep regardless of age
+
+        Returns:
+            Number of entries removed
+        """
+        pass
+
+    # =========================================================================
     # Utility Operations
     # =========================================================================
 
