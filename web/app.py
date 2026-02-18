@@ -84,6 +84,70 @@ def inject_nav_context():
 # Initialize SocketIO with eventlet for async support
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
+
+# =============================================================================
+# Security Headers Middleware
+# =============================================================================
+
+@app.after_request
+def add_security_headers(response):
+    """Add security headers to all responses.
+
+    Headers added:
+    - X-Content-Type-Options: Prevent MIME type sniffing
+    - X-Frame-Options: Prevent clickjacking
+    - X-XSS-Protection: Enable XSS filter in older browsers
+    - Content-Security-Policy: Restrict resource loading
+    - Strict-Transport-Security: Enforce HTTPS (only when SSL enabled)
+    - Referrer-Policy: Control referrer information
+    - Permissions-Policy: Restrict browser features
+    """
+    # Prevent MIME type sniffing
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+
+    # Prevent clickjacking
+    response.headers['X-Frame-Options'] = 'DENY'
+
+    # Enable XSS filter (for older browsers)
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+
+    # Content Security Policy
+    # Allow inline scripts/styles for compatibility with existing templates
+    # In production, consider moving to nonce-based or hash-based CSP
+    response.headers['Content-Security-Policy'] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
+        "font-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
+        "img-src 'self' data:; "
+        "connect-src 'self' ws: wss:; "
+        "frame-ancestors 'none'; "
+        "form-action 'self';"
+    )
+
+    # Strict Transport Security (only add if SSL is enabled)
+    ssl_enabled = os.environ.get('SSL_ENABLED', 'false').lower() in ('true', '1', 'yes')
+    if ssl_enabled:
+        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+
+    # Referrer Policy
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+
+    # Permissions Policy (formerly Feature Policy)
+    response.headers['Permissions-Policy'] = (
+        "accelerometer=(), "
+        "camera=(), "
+        "geolocation=(), "
+        "gyroscope=(), "
+        "magnetometer=(), "
+        "microphone=(), "
+        "payment=(), "
+        "usb=()"
+    )
+
+    return response
+
+
 # Paths
 PLAYBOOKS_DIR = '/app/playbooks'
 LOGS_DIR = '/app/logs'

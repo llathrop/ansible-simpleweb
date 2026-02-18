@@ -16,6 +16,45 @@ from dataclasses import dataclass
 from .api_client import PrimaryAPIClient
 
 
+def _safe_extract_filter(member: tarfile.TarInfo, dest_path: str) -> Optional[tarfile.TarInfo]:
+    """
+    Filter function for tarfile.extractall to prevent path traversal attacks.
+
+    Rejects:
+    - Members with absolute paths
+    - Members with .. path components (path traversal)
+    - Members that would extract outside the destination directory
+
+    Args:
+        member: TarInfo object for the file being extracted
+        dest_path: Destination directory for extraction
+
+    Returns:
+        The member if safe to extract, None otherwise
+    """
+    # Resolve the full path where the file would be extracted
+    member_path = os.path.join(dest_path, member.name)
+    resolved_path = os.path.normpath(os.path.abspath(member_path))
+    resolved_dest = os.path.normpath(os.path.abspath(dest_path))
+
+    # Ensure the resolved path is within the destination directory
+    if not resolved_path.startswith(resolved_dest + os.sep) and resolved_path != resolved_dest:
+        print(f"[SECURITY] Rejecting tarfile member with path traversal: {member.name}")
+        return None
+
+    # Also check for absolute paths in the member name
+    if os.path.isabs(member.name):
+        print(f"[SECURITY] Rejecting tarfile member with absolute path: {member.name}")
+        return None
+
+    # Check for .. components
+    if '..' in member.name.split(os.sep):
+        print(f"[SECURITY] Rejecting tarfile member with .. component: {member.name}")
+        return None
+
+    return member
+
+
 @dataclass
 class SyncResult:
     """Result of a sync operation."""
@@ -193,9 +232,15 @@ class ContentSync:
                         shutil.rmtree(dir_path)
                     os.makedirs(dir_path, exist_ok=True)
 
-                # Extract archive
+                # Extract archive with security filter to prevent path traversal
                 with tarfile.open(archive_path, 'r:gz') as tar:
-                    tar.extractall(self.content_dir)
+                    # Filter members to prevent path traversal attacks
+                    safe_members = []
+                    for member in tar.getmembers():
+                        filtered = _safe_extract_filter(member, self.content_dir)
+                        if filtered:
+                            safe_members.append(filtered)
+                    tar.extractall(self.content_dir, members=safe_members)
 
                 # Count extracted files
                 files_synced = 0
