@@ -742,6 +742,27 @@ Host: localhost:3001
 
 ---
 
+### GET /api/inventory/validate-keys
+
+Validate that SSH key paths in inventory exist. Returns hosts with missing key files. In cluster mode, workers need the same paths; use `/app/ssh-keys/your-key` or ensure `./.ssh` is mounted on workers.
+
+**Response:**
+```json
+{
+  "valid": false,
+  "issues": [
+    {
+      "hostname": "192.168.1.55",
+      "id": "uuid",
+      "key_path": "/app/.ssh/svc-ansible-key",
+      "message": "Key file not found. Use /app/ssh-keys/your-key or ensure ./.ssh is mounted on workers."
+    }
+  ]
+}
+```
+
+---
+
 ### POST /api/inventory/sync
 
 Manually trigger inventory sync (DB to static and static to DB). Ensures DB hosts are written to `inventory/managed_hosts.ini` (so workers receive them via content sync) and hosts in static inventory files are added to the DB if missing. Sync also runs automatically on inventory create/update/delete and every 5 minutes.

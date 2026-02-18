@@ -133,10 +133,12 @@ worker-1:
 
 ### SSH Key Configuration
 
-Workers mount SSH keys from two locations:
+Workers must mount the same SSH key locations as the primary so inventory paths like `/app/.ssh/svc-ansible-key` or `/app/ssh-keys/deploy_key` resolve correctly:
 
 ```yaml
 volumes:
+  # Project .ssh (e.g. svc-ansible-key) - must match primary
+  - ./.ssh:/app/.ssh:ro
   # Uploaded keys from web UI
   - ./ssh-keys:/app/ssh-keys:ro
   # Host's SSH keys

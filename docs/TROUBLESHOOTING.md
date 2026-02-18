@@ -368,7 +368,7 @@ docker-compose exec ansible-web ssh -vvv -i /app/.ssh/svc-ansible-key user@targe
 **Inventory checklist:**
 - `ansible_user` must match a user on the target who has your public key in `~/.ssh/authorized_keys`
 - `ansible_ssh_private_key_file` must point to the private key file inside the container (e.g. `/app/ssh-keys/mykey` or `/app/.ssh/svc-ansible-key`)
-- In cluster mode, workers run Ansible; ensure the key exists at the same path on the worker (or use a synced/mounted volume)
+- In cluster mode, workers run Ansible; ensure the key exists at the same path on the worker. Workers must mount `./.ssh:/app/.ssh:ro` and `./ssh-keys:/app/ssh-keys:ro` (same as primary) in docker-compose
 
 **How to fix SSH publickey (step-by-step):**
 
@@ -414,6 +414,50 @@ docker-compose exec ansible-web ssh -vvv -i /app/.ssh/svc-ansible-key user@targe
 
 6. **Cluster mode**  
    If you use workers, the same key path must exist on each worker (e.g. same volume or sync). Run the same `ssh -i ...` test from a worker container if needed.
+
+### Worker: "no such identity: /app/.ssh/svc-ansible-key"
+
+**Symptom:** Job runs on a worker and fails with:
+
+```
+no such identity: /app/.ssh/svc-ansible-key: No such file or directory
+svc-ansible@192.168.1.55: Permission denied (publickey,password).
+```
+
+This means the worker container does not have the SSH key at that path. Workers must mount `./.ssh:/app/.ssh:ro` (same as the primary).
+
+**Solutions:**
+
+1. **Docker Compose:** Force recreate workers so they pick up the mount:
+   ```bash
+   docker compose up -d --force-recreate worker-1 worker-2 worker-3
+   ```
+
+2. **Verify the key exists on the host:**
+   ```bash
+   ls -la .ssh/svc-ansible-key
+   ```
+   If missing, create `.ssh` and add the key there.
+
+3. **Verify the worker sees the key:**
+   ```bash
+   docker compose exec worker-1 ls -la /app/.ssh/svc-ansible-key
+   ```
+   If this fails, the mount is wrong or the host `.ssh` is empty.
+
+4. **Deploy playbook (ansible-worker-*):** If workers were created before the SSH mount was added, remove and redeploy:
+   ```bash
+   docker rm -f ansible-worker-1 ansible-worker-2 ansible-worker-3
+   ansible-playbook playbooks/deploy/expand.yml -e deploy_workers=1 -e worker_count_to_add=3
+   ```
+
+5. **Remote worker host:** If workers run on a different machine, `.ssh` is gitignored and will not exist after clone. Create it and copy the key:
+   ```bash
+   mkdir -p /path/to/project/.ssh
+   scp primary-host:/path/to/project/.ssh/svc-ansible-key /path/to/project/.ssh/
+   chmod 600 /path/to/project/.ssh/svc-ansible-key
+   ```
+   Then recreate the worker containers on that host.
 
 **For MikroTik RouterOS (key auth):** Add the key via RouterOS CLI. Connect via Winbox or SSH, then run:
 ```
