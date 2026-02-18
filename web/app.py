@@ -2403,6 +2403,193 @@ def api_storage():
 
 
 # =============================================================================
+# Certificate API Endpoints
+# SSL/TLS certificate management (admin only)
+# =============================================================================
+
+@app.route('/api/certificates/info')
+@require_permission('config:view')
+def api_cert_info():
+    """
+    Get current SSL certificate information.
+
+    Returns:
+        JSON with certificate details (subject, issuer, expiry, etc.)
+        or error if no certificate exists.
+    """
+    from certificates import get_cert_info, check_cert_expiry, CertificateError
+    from config_manager import get_effective_security_settings
+
+    settings = get_effective_security_settings()
+    cert_path = settings['ssl_cert_path']
+    key_path = settings['ssl_key_path']
+
+    result = {
+        'ssl_enabled': settings['ssl_enabled'],
+        'ssl_mode': settings['ssl_mode'],
+        'cert_path': cert_path,
+        'key_path': key_path,
+        'cert_exists': os.path.exists(cert_path),
+        'key_exists': os.path.exists(key_path),
+    }
+
+    if result['cert_exists']:
+        try:
+            info = get_cert_info(cert_path)
+            status, days = check_cert_expiry(cert_path)
+            result.update({
+                'cert_info': info,
+                'status': status,
+                'days_until_expiry': days
+            })
+        except CertificateError as e:
+            result['cert_error'] = str(e)
+
+    return jsonify(result)
+
+
+@app.route('/api/certificates/generate', methods=['POST'])
+@require_permission('config:edit')
+def api_cert_generate():
+    """
+    Generate a new self-signed certificate.
+
+    Request body (optional):
+        {
+            "hostname": "...",      # Hostname for CN (default: from config)
+            "days": 365,            # Validity period (default: 365)
+            "force": false          # Force regeneration even if valid
+        }
+
+    Returns:
+        {"ok": true, "cert_info": {...}} on success
+        {"error": "..."} on failure
+    """
+    from certificates import generate_self_signed_cert, get_cert_info, CertificateError
+    from config_manager import get_effective_security_settings
+    from auth_routes import add_audit_entry
+
+    settings = get_effective_security_settings()
+    data = request.get_json() or {}
+
+    hostname = data.get('hostname') or settings['ssl_hostname']
+    days = int(data.get('days') or settings['ssl_validity_days'])
+    cert_path = settings['ssl_cert_path']
+    key_path = settings['ssl_key_path']
+
+    try:
+        generate_self_signed_cert(
+            hostname=hostname,
+            days=days,
+            cert_path=cert_path,
+            key_path=key_path
+        )
+
+        info = get_cert_info(cert_path)
+
+        # Audit log
+        add_audit_entry(
+            action='create',
+            resource='certificates',
+            resource_id=hostname,
+            details={'validity_days': days, 'self_signed': True},
+            success=True
+        )
+
+        return jsonify({
+            'ok': True,
+            'cert_info': info,
+            'message': f'Generated self-signed certificate for {hostname}'
+        })
+
+    except CertificateError as e:
+        add_audit_entry(
+            action='create',
+            resource='certificates',
+            resource_id=hostname,
+            details={'error': str(e)},
+            success=False
+        )
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/certificates/upload', methods=['POST'])
+@require_permission('config:edit')
+def api_cert_upload():
+    """
+    Upload a certificate and private key.
+
+    Expects multipart form data with:
+        - certificate: PEM file
+        - private_key: PEM file
+
+    Returns:
+        {"ok": true, "cert_info": {...}} on success
+        {"error": "..."} on failure
+    """
+    from certificates import save_uploaded_certificate, get_cert_info, CertificateError
+    from config_manager import get_effective_security_settings
+    from auth_routes import add_audit_entry
+
+    settings = get_effective_security_settings()
+    cert_path = settings['ssl_cert_path']
+    key_path = settings['ssl_key_path']
+
+    cert_file = request.files.get('certificate')
+    key_file = request.files.get('private_key')
+
+    if not cert_file:
+        return jsonify({'error': 'Certificate file is required'}), 400
+    if not key_file:
+        return jsonify({'error': 'Private key file is required'}), 400
+
+    try:
+        cert_data = cert_file.read()
+        key_data = key_file.read()
+
+        success, error = save_uploaded_certificate(
+            cert_data=cert_data,
+            key_data=key_data,
+            cert_path=cert_path,
+            key_path=key_path
+        )
+
+        if not success:
+            add_audit_entry(
+                action='update',
+                resource='certificates',
+                details={'error': error},
+                success=False
+            )
+            return jsonify({'error': error}), 400
+
+        info = get_cert_info(cert_path)
+
+        # Audit log
+        add_audit_entry(
+            action='update',
+            resource='certificates',
+            details={'uploaded': True, 'hostname': info['subject'].get('commonName')},
+            success=True
+        )
+
+        return jsonify({
+            'ok': True,
+            'cert_info': info,
+            'message': 'Certificate uploaded successfully'
+        })
+
+    except Exception as e:
+        add_audit_entry(
+            action='update',
+            resource='certificates',
+            details={'error': str(e)},
+            success=False
+        )
+        return jsonify({'error': f'Failed to upload certificate: {e}'}), 500
+
+
+# =============================================================================
 # Inventory API Endpoints
 # CRUD operations for managed inventory items (hosts/servers)
 # Stored via the pluggable storage backend (flatfile or MongoDB)

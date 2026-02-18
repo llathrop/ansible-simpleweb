@@ -58,6 +58,16 @@ DEFAULT_CONFIG = {
     'ui': {
         'default_theme': 'default',
     },
+    'security': {
+        'ssl_enabled': False,
+        'ssl_mode': 'auto',  # auto, provided, disabled
+        'ssl_cert_path': '/app/config/certs/server.crt',
+        'ssl_key_path': '/app/config/certs/server.key',
+        'ssl_ca_path': None,
+        'ssl_auto_renew': True,
+        'ssl_hostname': 'localhost',
+        'ssl_validity_days': 365,
+    },
 }
 
 
@@ -174,6 +184,21 @@ def validate_config(config: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], s
     if not isinstance(d.get('worker_hosts'), (list, type(None))):
         return None, 'deployment.worker_hosts must be a list'
 
+    # security
+    sec = merged.get('security', {})
+    if not isinstance(sec, dict):
+        return None, 'security must be a dict'
+    ssl_mode = (sec.get('ssl_mode') or 'auto').lower()
+    if ssl_mode not in ('auto', 'provided', 'disabled'):
+        return None, 'security.ssl_mode must be auto, provided, or disabled'
+    if not isinstance(sec.get('ssl_enabled'), (bool, type(None))):
+        return None, 'security.ssl_enabled must be a boolean'
+    validity = sec.get('ssl_validity_days')
+    if validity is not None and not isinstance(validity, (int, type(None))):
+        return None, 'security.ssl_validity_days must be an integer'
+    if isinstance(validity, int) and (validity < 1 or validity > 3650):
+        return None, 'security.ssl_validity_days must be 1-3650'
+
     return merged, ''
 
 
@@ -227,3 +252,30 @@ def config_file_exists() -> bool:
 def get_config_path() -> str:
     """Return absolute path to config file."""
     return CONFIG_PATH
+
+
+def get_effective_security_settings() -> dict:
+    """
+    Get security settings from config file.
+
+    Returns dict with:
+        ssl_enabled: bool - Whether SSL is enabled
+        ssl_mode: str - Certificate mode (auto, provided, disabled)
+        ssl_cert_path: str - Path to SSL certificate
+        ssl_key_path: str - Path to SSL private key
+        ssl_ca_path: str or None - Path to CA cert (optional)
+        ssl_hostname: str - Hostname for certificate generation
+        ssl_validity_days: int - Certificate validity period
+    """
+    cfg = load_config()
+    sec = cfg.get('security') or {}
+    return {
+        'ssl_enabled': bool(sec.get('ssl_enabled', False)),
+        'ssl_mode': (sec.get('ssl_mode') or 'auto').lower(),
+        'ssl_cert_path': sec.get('ssl_cert_path') or '/app/config/certs/server.crt',
+        'ssl_key_path': sec.get('ssl_key_path') or '/app/config/certs/server.key',
+        'ssl_ca_path': sec.get('ssl_ca_path'),
+        'ssl_auto_renew': bool(sec.get('ssl_auto_renew', True)),
+        'ssl_hostname': sec.get('ssl_hostname') or os.environ.get('SSL_HOSTNAME', 'localhost'),
+        'ssl_validity_days': int(sec.get('ssl_validity_days') or 365),
+    }
