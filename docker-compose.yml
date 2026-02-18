@@ -70,7 +70,8 @@ services:
     container_name: ansible-worker-1
     # network_mode: host  # Uncomment for direct host network access to targets
     volumes:
-      # SSH keys for target authentication
+      # SSH keys for target authentication (must match primary)
+      - ./.ssh:/app/.ssh:ro
       - ./ssh-keys:/app/ssh-keys:ro
       - ~/.ssh:/root/.ssh:ro
       # Mount ansible.cfg for config changes without image rebuild
@@ -114,6 +115,7 @@ services:
       - MAX_CONCURRENT_JOBS=2
       - ROUTER_PASSWORD=${ROUTER_PASSWORD:-}
     volumes:
+      - ./.ssh:/app/.ssh:ro
       - ./ssh-keys:/app/ssh-keys:ro
       - ~/.ssh:/root/.ssh:ro
       - ./ansible.cfg:/app/ansible.cfg
@@ -140,6 +142,7 @@ services:
       - MAX_CONCURRENT_JOBS=2
       - ROUTER_PASSWORD=${ROUTER_PASSWORD:-}
     volumes:
+      - ./.ssh:/app/.ssh:ro
       - ./ssh-keys:/app/ssh-keys:ro
       - ~/.ssh:/root/.ssh:ro
       - ./ansible.cfg:/app/ansible.cfg

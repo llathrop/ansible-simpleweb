@@ -2440,7 +2440,11 @@ def api_inventory_create():
 
     if storage_backend.save_inventory_item(item_id, item):
         _run_inventory_sync()
-        return jsonify(item), 201
+        resp = dict(item)
+        warn = _validate_ssh_key_path(item.get('variables'))
+        if warn:
+            resp['_warning'] = warn
+        return jsonify(resp), 201
     else:
         return jsonify({'error': 'Failed to save inventory item'}), 500
 
@@ -2479,7 +2483,11 @@ def api_inventory_update(item_id):
 
     if storage_backend.save_inventory_item(item_id, existing):
         _run_inventory_sync()
-        return jsonify(existing)
+        resp = dict(existing)
+        warn = _validate_ssh_key_path(existing.get('variables'))
+        if warn:
+            resp['_warning'] = warn
+        return jsonify(resp)
     else:
         return jsonify({'error': 'Failed to update inventory item'}), 500
 
@@ -2503,6 +2511,28 @@ def api_inventory_delete(item_id):
         return jsonify({'success': True, 'deleted': item_id})
     else:
         return jsonify({'error': 'Inventory item not found'}), 404
+
+
+@app.route('/api/inventory/validate-keys')
+def api_inventory_validate_keys():
+    """
+    Validate that SSH key paths in inventory exist.
+    Returns hosts with missing key files (cluster mode: workers need same paths).
+    """
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+    issues = []
+    for item in storage_backend.get_all_inventory():
+        path = (item.get('variables') or {}).get('ansible_ssh_private_key_file')
+        if path and isinstance(path, str) and path.strip():
+            if not os.path.isfile(path.strip()):
+                issues.append({
+                    'hostname': item.get('hostname'),
+                    'id': item.get('id'),
+                    'key_path': path.strip(),
+                    'message': 'Key file not found. Use /app/ssh-keys/your-key or ensure ./.ssh is mounted on workers.'
+                })
+    return jsonify({'valid': len(issues) == 0, 'issues': issues})
 
 
 @app.route('/api/inventory/sync', methods=['POST'])
@@ -2630,6 +2660,22 @@ def api_suggested_fix():
 
 SSH_KEYS_DIR = '/app/ssh-keys'
 
+
+def _validate_ssh_key_path(variables):
+    """If ansible_ssh_private_key_file is set, check file exists. Return warning or None."""
+    if not variables:
+        return None
+    path = variables.get('ansible_ssh_private_key_file')
+    if not path or not isinstance(path, str):
+        return None
+    path = path.strip()
+    if not path:
+        return None
+    if not os.path.isfile(path):
+        return f'SSH key file not found: {path}. In cluster mode, workers need the same path. Use /app/ssh-keys/your-key (uploaded) or ensure ./.ssh is mounted on workers.'
+    return None
+
+
 @app.route('/api/ssh-keys')
 def api_ssh_keys_list():
     """
@@ -2640,8 +2686,9 @@ def api_ssh_keys_list():
     """
     keys = []
 
-    # Check multiple locations for SSH keys (docker-compose mounts ~/.ssh:/root/.ssh)
+    # Check multiple locations for SSH keys (docker-compose mounts)
     key_dirs = [
+        '/app/.ssh',       # Project .ssh (e.g. svc-ansible-key)
         SSH_KEYS_DIR,      # Uploaded keys
         '/root/.ssh',      # Mounted host keys
     ]

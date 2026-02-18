@@ -57,8 +57,12 @@
 
     - name: Ensure worker container(s) (when deploy_workers)
       ansible.builtin.shell: |
+        PROJ=$(cd "{{ playbook_dir }}/../.." && pwd)
         for i in $(seq 1 {{ worker_count_to_add | default(1) | int }}); do
           docker run -d --name ansible-worker-$i \
+            -v "$PROJ/.ssh:/app/.ssh:ro" \
+            -v "$PROJ/ssh-keys:/app/ssh-keys:ro" \
+            -v "$HOME/.ssh:/root/.ssh:ro" \
             -e WORKER_NAME=worker-$i \
             -e SERVER_URL=http://ansible-web:3001 \
             -e REGISTRATION_TOKEN=cluster-secret-token-change-in-prod \
