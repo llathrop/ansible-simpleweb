@@ -499,14 +499,70 @@ def is_managed_host(hostname):
     return False
 
 
-def get_playbooks():
-    """Get list of available playbooks"""
+def get_playbook_tag(playbook_path: str) -> str:
+    """
+    Get the tag for a playbook based on its directory location.
+
+    Playbooks in subdirectories are auto-tagged with the directory name:
+    - /app/playbooks/servers/setup.yml -> tag: 'servers'
+    - /app/playbooks/network/configure.yml -> tag: 'network'
+    - /app/playbooks/setup.yml -> tag: None (root level)
+
+    Args:
+        playbook_path: Full path to playbook file
+
+    Returns:
+        Tag string or None for root-level playbooks
+    """
+    rel_path = os.path.relpath(playbook_path, PLAYBOOKS_DIR)
+    parts = rel_path.split(os.sep)
+    if len(parts) > 1:
+        # Playbook is in a subdirectory
+        return parts[0]
+    return None
+
+
+def get_playbooks_with_metadata():
+    """
+    Get list of available playbooks with metadata including tags.
+
+    Returns:
+        List of dicts with keys: name, path, tag, display_name
+    """
     playbooks = []
     if os.path.exists(PLAYBOOKS_DIR):
+        # Get root level playbooks
         for file in sorted(glob.glob(f'{PLAYBOOKS_DIR}/*.yml')):
             playbook_name = os.path.basename(file).replace('.yml', '')
-            playbooks.append(playbook_name)
+            playbooks.append({
+                'name': playbook_name,
+                'path': file,
+                'tag': None,
+                'display_name': playbook_name
+            })
+
+        # Get playbooks in subdirectories
+        for file in sorted(glob.glob(f'{PLAYBOOKS_DIR}/**/*.yml', recursive=True)):
+            # Skip root level (already added)
+            rel_path = os.path.relpath(file, PLAYBOOKS_DIR)
+            if os.sep in rel_path:
+                tag = get_playbook_tag(file)
+                playbook_name = os.path.basename(file).replace('.yml', '')
+                # Include path for uniqueness
+                full_name = rel_path.replace('.yml', '').replace(os.sep, '/')
+                playbooks.append({
+                    'name': full_name,
+                    'path': file,
+                    'tag': tag,
+                    'display_name': f"{tag}/{playbook_name}" if tag else playbook_name
+                })
+
     return playbooks
+
+
+def get_playbooks():
+    """Get list of available playbook names (backward compatible)"""
+    return [p['name'] for p in get_playbooks_with_metadata()]
 
 def get_latest_log(playbook_name):
     """Get the most recent log file for a playbook"""
@@ -1739,17 +1795,52 @@ def api_status():
 @app.route('/api/playbooks')
 @require_permission('playbooks:view')
 def api_playbooks():
-    """API endpoint to get playbook information"""
-    playbooks = get_playbooks()
+    """
+    API endpoint to get playbook information.
+
+    Playbooks are filtered based on user permissions:
+    - Users with playbooks:* see all playbooks
+    - Users with playbooks.servers:view see only server playbooks
+    - etc.
+
+    Response includes tag information for UI filtering/grouping.
+    """
+    from authz import check_permission, get_user_accessible_tags
+    from flask import g
+
+    user = get_current_user()
+    playbooks_with_meta = get_playbooks_with_metadata()
     result = []
 
-    for playbook in playbooks:
-        latest_log = get_latest_log(playbook)
-        status, run_id = get_playbook_status(playbook)
-        active_runs_list = get_active_runs_for_playbook(playbook)
+    # Get accessible tags for this user
+    accessible_tags = get_user_accessible_tags(user, 'playbooks')
+
+    for playbook in playbooks_with_meta:
+        # Check if user can access this playbook
+        tag = playbook.get('tag')
+
+        # If accessible_tags is None, user has full access
+        if accessible_tags is None:
+            can_access = True
+        elif tag is None:
+            # Root-level playbook - check if user has general playbooks:view
+            can_access = check_permission(user, 'playbooks:view')
+        else:
+            # Tagged playbook - check specific tag permission
+            can_access = tag in accessible_tags or check_permission(user, f'playbooks.{tag}:view')
+
+        if not can_access:
+            continue
+
+        playbook_name = playbook['name']
+        latest_log = get_latest_log(playbook_name)
+        status, run_id = get_playbook_status(playbook_name)
+        active_runs_list = get_active_runs_for_playbook(playbook_name)
 
         result.append({
-            'name': playbook,
+            'name': playbook_name,
+            'display_name': playbook['display_name'],
+            'tag': tag,
             'latest_log': latest_log,
             'last_run': get_log_timestamp(latest_log),
             'status': status,
