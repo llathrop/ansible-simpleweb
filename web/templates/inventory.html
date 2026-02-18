@@ -399,6 +399,7 @@
 
         <div class="action-bar" style="display: flex; gap: 10px; margin-bottom: 20px;">
             <button class="btn btn-primary" onclick="showAddModal()">+ Add Host</button>
+            <button class="btn btn-secondary" onclick="validateSshKeys()">Validate SSH Keys</button>
             <input type="text" id="searchInput" placeholder="Search hostname, group, or description..."
                    style="flex: 1; padding: 10px; border: 1px solid var(--border-primary); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary);"
                    onkeyup="filterInventory()">
@@ -1136,6 +1137,10 @@
                 });
 
                 if (response.ok) {
+                    const result = await response.json();
+                    if (result._warning) {
+                        alert('Saved, but: ' + result._warning);
+                    }
                     location.reload();
                 } else {
                     const err = await response.json();
@@ -1166,6 +1171,27 @@
                 }
             } catch (e) {
                 alert('Error deleting item: ' + e.message);
+            }
+        }
+
+        async function validateSshKeys() {
+            try {
+                const response = await fetch('/api/inventory/validate-keys');
+                const data = await response.json();
+                if (data.error) {
+                    alert('Error: ' + data.error);
+                    return;
+                }
+                if (data.valid) {
+                    alert('All SSH key paths exist.');
+                } else {
+                    const lines = data.issues.map(i =>
+                        `${i.hostname}: ${i.key_path}\n  ${i.message}`
+                    ).join('\n\n');
+                    alert('SSH key issues:\n\n' + lines);
+                }
+            } catch (e) {
+                alert('Error validating keys: ' + e.message);
             }
         }
 
