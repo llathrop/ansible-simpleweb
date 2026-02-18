@@ -11,7 +11,7 @@ Provides user authentication functionality including:
 import bcrypt
 import uuid
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Tuple
 import hashlib
 
@@ -86,7 +86,7 @@ class SessionManager:
             Session ID (UUID)
         """
         session_id = str(uuid.uuid4())
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         self.sessions[session_id] = {
             'user_id': user['id'],
@@ -113,7 +113,7 @@ class SessionManager:
             return None
 
         session = self.sessions[session_id]
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Check if session has expired
         elapsed = (now - session['last_active']).total_seconds()
@@ -144,7 +144,7 @@ class SessionManager:
 
     def cleanup_expired_sessions(self):
         """Remove all expired sessions."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         expired = [
             sid for sid, session in self.sessions.items()
             if (now - session['last_active']).total_seconds() > self.timeout_seconds
@@ -202,7 +202,7 @@ class APITokenManager:
         token = APITokenManager.generate_token()
         token_hash = APITokenManager.hash_token(token)
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         expiry = now + timedelta(days=expiry_days) if expiry_days else None
 
         token_entry = {
@@ -252,7 +252,7 @@ class LoginAttemptTracker:
             return False
 
         lockout_until = self.lockouts[username]
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         if now < lockout_until:
             return True
@@ -271,7 +271,7 @@ class LoginAttemptTracker:
         Args:
             username: Username that failed login
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         if username not in self.attempts:
             self.attempts[username] = []
@@ -319,7 +319,7 @@ class LoginAttemptTracker:
             return self.max_attempts
 
         # Clean old attempts first
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         cutoff = now - self.lockout_duration
         self.attempts[username] = [
             attempt for attempt in self.attempts[username]
@@ -342,7 +342,7 @@ class LoginAttemptTracker:
             return None
 
         lockout_until = self.lockouts[username]
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         if now >= lockout_until:
             return None
@@ -403,7 +403,7 @@ def authenticate_user(storage_backend, username: str, password: str) -> Dict:
     login_tracker.record_success(username)
 
     # Update last login time
-    user['last_login'] = datetime.utcnow().isoformat()
+    user['last_login'] = datetime.now(timezone.utc).isoformat()
     storage_backend.save_user(user['username'], user)
 
     return user
@@ -430,7 +430,7 @@ def authenticate_api_token(storage_backend, token: str) -> Optional[Dict]:
     # Check if token has expired
     if token_entry.get('expires_at'):
         expiry = datetime.fromisoformat(token_entry['expires_at'])
-        if datetime.utcnow() > expiry:
+        if datetime.now(timezone.utc) > expiry:
             return None
 
     # Get user
@@ -439,7 +439,7 @@ def authenticate_api_token(storage_backend, token: str) -> Optional[Dict]:
         return None
 
     # Update last used time
-    token_entry['last_used'] = datetime.utcnow().isoformat()
+    token_entry['last_used'] = datetime.now(timezone.utc).isoformat()
     storage_backend.update_api_token(token_entry['id'], token_entry)
 
     return user
