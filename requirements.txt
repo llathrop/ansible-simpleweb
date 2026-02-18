@@ -1,12 +1,12 @@
 Flask==3.0.0
 flask-socketio==5.3.6
-eventlet==0.34.2
-ansible==8.7.0
+eventlet==0.34.2  # Note: 0.40.3 available but needs testing for breaking changes
+ansible==8.7.0  # Note: 12.2.0 available but major version upgrade needs testing
 PyYAML==6.0.1
 APScheduler==3.10.4
 SQLAlchemy==2.0.23
-pymongo==4.6.1
-requests==2.31.0
+pymongo==4.6.3  # Updated from 4.6.1 (CVE-2024-5629)
+requests==2.32.4  # Updated from 2.31.0 (CVE-2024-35195, CVE-2024-47081)
 bcrypt==4.1.2
-cryptography>=41.0.0
+cryptography>=46.0.5  # Updated minimum for security patches
 gunicorn>=21.0.0

@@ -41,21 +41,27 @@ This document tracks all security issues identified during the security review p
 ### [MEDIUM] Dependency Vulnerabilities
 
 **Priority:** P6 - Medium/Easy
-**Status:** ⚠️ Requires Attention
+**Status:** ⚠️ Partially Fixed
 **Affected Components:** Package dependencies
 
-**Vulnerable Packages (from pip-audit):**
-| Package | Current | CVE | Fixed Version |
-|---------|---------|-----|---------------|
-| ansible | 8.7.0 | CVE-2025-14010 | 12.2.0 |
-| ansible-core | 2.15.13 | CVE-2024-8775, CVE-2024-11079 | 2.17.7+ |
-| cryptography | 46.0.4 | CVE-2026-26007 | 46.0.5 |
-| eventlet | 0.34.2 | CVE-2023-29483, CVE-2025-58068 | 0.40.3 |
-| pymongo | 4.6.1 | CVE-2024-5629 | 4.6.3 |
-| requests | 2.31.0 | CVE-2024-35195, CVE-2024-47081 | 2.32.4 |
+**Fixed Packages:**
+| Package | Old Version | New Version | CVE |
+|---------|-------------|-------------|-----|
+| pymongo | 4.6.1 | 4.6.3 | CVE-2024-5629 |
+| requests | 2.31.0 | 2.32.4 | CVE-2024-35195, CVE-2024-47081 |
+| cryptography | >=41.0.0 | >=46.0.5 | CVE-2026-26007 |
 
-**Remediation:**
-Update requirements.txt with fixed versions. Note: Ansible upgrades may require testing for compatibility.
+**Remaining Packages (require testing before upgrade):**
+| Package | Current | CVE | Fixed Version | Risk |
+|---------|---------|-----|---------------|------|
+| ansible | 8.7.0 | CVE-2025-14010 | 12.2.0 | Major version change - test playbook compatibility |
+| ansible-core | 2.15.13 | CVE-2024-8775, CVE-2024-11079 | 2.17.7+ | Bundled with ansible upgrade |
+| eventlet | 0.34.2 | CVE-2023-29483, CVE-2025-58068 | 0.40.3 | May affect SocketIO functionality |
+
+**Remediation for Remaining:**
+- Test ansible 12.2.0 upgrade in isolated environment before production
+- Verify all playbooks work with new ansible version
+- Test eventlet upgrade with SocketIO functionality
 
 ---
 
