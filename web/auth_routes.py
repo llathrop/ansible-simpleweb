@@ -232,9 +232,21 @@ def login_page():
 @auth_bp.route('/logout')
 def logout():
     """Log out the current user and redirect to login page."""
+    # Get user before destroying session for audit log
+    user = get_current_user()
+
     session_id = request.cookies.get(SESSION_COOKIE_NAME)
     if session_id:
         session_manager.destroy_session(session_id)
+
+    # Audit log: logout
+    if user:
+        add_audit_entry(
+            action='logout',
+            resource='auth',
+            resource_id=user.get('username'),
+            success=True
+        )
 
     response = make_response(redirect('/login'))
     response.delete_cookie(SESSION_COOKIE_NAME)
@@ -317,11 +329,36 @@ def api_login():
             # secure=True  # Enable when using HTTPS
         )
 
+        # Audit log: successful login
+        add_audit_entry(
+            action='login',
+            resource='auth',
+            resource_id=username,
+            details={'roles': user.get('roles', [])},
+            success=True
+        )
+
         return response
 
     except AccountLockedError as e:
+        # Audit log: account locked
+        add_audit_entry(
+            action='failed_login',
+            resource='auth',
+            resource_id=username,
+            details={'reason': 'account_locked'},
+            success=False
+        )
         return jsonify({'error': str(e)}), 423  # Locked
     except AuthenticationError as e:
+        # Audit log: failed login
+        add_audit_entry(
+            action='failed_login',
+            resource='auth',
+            resource_id=username,
+            details={'reason': str(e)},
+            success=False
+        )
         return jsonify({'error': str(e)}), 401
 
 
@@ -333,9 +370,21 @@ def api_logout():
     Returns:
         {"ok": true}
     """
+    # Get user before destroying session for audit log
+    user = get_current_user()
+
     session_id = request.cookies.get(SESSION_COOKIE_NAME)
     if session_id:
         session_manager.destroy_session(session_id)
+
+    # Audit log: logout
+    if user:
+        add_audit_entry(
+            action='logout',
+            resource='auth',
+            resource_id=user.get('username'),
+            success=True
+        )
 
     response = make_response(jsonify({'ok': True}))
     response.delete_cookie(SESSION_COOKIE_NAME)
@@ -454,6 +503,16 @@ def api_create_user():
     if storage.save_user(username, user):
         # Return user without password hash
         user_data = {k: v for k, v in user.items() if k != 'password_hash'}
+
+        # Audit log: user created
+        add_audit_entry(
+            action='create',
+            resource='users',
+            resource_id=username,
+            details={'roles': user.get('roles', [])},
+            success=True
+        )
+
         return jsonify({'ok': True, 'user': user_data})
     else:
         return jsonify({'error': 'Failed to create user'}), 500
@@ -499,6 +558,16 @@ def api_update_user(username):
 
     if storage.save_user(username, user):
         user_data = {k: v for k, v in user.items() if k != 'password_hash'}
+
+        # Audit log: user updated
+        add_audit_entry(
+            action='update',
+            resource='users',
+            resource_id=username,
+            details={'fields_updated': list(data.keys())},
+            success=True
+        )
+
         return jsonify({'ok': True, 'user': user_data})
     else:
         return jsonify({'error': 'Failed to update user'}), 500
@@ -523,6 +592,14 @@ def api_delete_user(username):
         return jsonify({'error': 'Cannot delete your own account'}), 400
 
     if storage.delete_user(username):
+        # Audit log: user deleted
+        add_audit_entry(
+            action='delete',
+            resource='users',
+            resource_id=username,
+            success=True
+        )
+
         return jsonify({'ok': True})
     else:
         return jsonify({'error': 'User not found or could not be deleted'}), 404
@@ -580,6 +657,15 @@ def api_change_password(username):
     user['updated_at'] = datetime.now(timezone.utc).isoformat()
 
     if storage.save_user(username, user):
+        # Audit log: password changed
+        add_audit_entry(
+            action='update',
+            resource='users',
+            resource_id=username,
+            details={'field': 'password', 'changed_by': current_user.get('username')},
+            success=True
+        )
+
         return jsonify({'ok': True})
     else:
         return jsonify({'error': 'Failed to update password'}), 500
@@ -807,3 +893,288 @@ def bootstrap_admin_user(storage_backend, username=None, password=None):
     else:
         print(f"ERROR: Failed to create initial admin user")
         return False
+
+
+# =============================================================================
+# Audit Logging
+# =============================================================================
+
+def add_audit_entry(action: str, resource: str, resource_id: str = None, details: dict = None, success: bool = True):
+    """
+    Add an audit log entry.
+
+    Helper function to log actions for audit trail.
+
+    Args:
+        action: Action performed (login, logout, create, update, delete, execute, view)
+        resource: Resource type (users, playbooks, schedules, inventory, etc.)
+        resource_id: Optional ID or name of specific resource
+        details: Optional dict with additional context
+        success: Whether the action was successful
+    """
+    storage = getattr(g, 'storage_backend', None)
+    if not storage:
+        return
+
+    user = get_current_user()
+
+    entry = {
+        'timestamp': datetime.now(timezone.utc).isoformat(),
+        'user': user.get('username') if user else None,
+        'user_id': user.get('id') if user else None,
+        'action': action,
+        'resource': resource,
+        'resource_id': resource_id,
+        'details': details or {},
+        'ip_address': request.remote_addr,
+        'user_agent': request.headers.get('User-Agent', '')[:200],  # Truncate
+        'success': success
+    }
+
+    storage.add_audit_entry(entry)
+
+
+def audit_action(action: str, resource: str, get_resource_id=None, get_details=None):
+    """
+    Decorator to automatically log route actions to audit trail.
+
+    Args:
+        action: Action type (create, update, delete, execute, view)
+        resource: Resource type (users, playbooks, schedules, etc.)
+        get_resource_id: Optional callable(args, kwargs) to extract resource ID
+        get_details: Optional callable(args, kwargs, response) to extract details
+
+    Example:
+        @audit_action('execute', 'playbooks', lambda a, k: k.get('playbook'))
+        def run_playbook(playbook):
+            ...
+    """
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            resource_id = None
+            details = {}
+
+            if get_resource_id:
+                try:
+                    resource_id = get_resource_id(args, kwargs)
+                except Exception:
+                    pass
+
+            try:
+                response = f(*args, **kwargs)
+
+                # Get details from response if handler provided
+                if get_details:
+                    try:
+                        details = get_details(args, kwargs, response)
+                    except Exception:
+                        pass
+
+                add_audit_entry(action, resource, resource_id, details, success=True)
+                return response
+
+            except Exception as e:
+                details['error'] = str(e)
+                add_audit_entry(action, resource, resource_id, details, success=False)
+                raise
+
+        return decorated_function
+    return decorator
+
+
+# ----- Audit Log Routes -----
+
+@auth_bp.route('/audit')
+@require_permission('audit:view')
+def audit_page():
+    """Render the audit log viewer page."""
+    return render_template('audit.html')
+
+
+@auth_bp.route('/api/audit', methods=['GET'])
+@require_permission('audit:view')
+def api_audit_log():
+    """
+    Get audit log entries with optional filters.
+
+    Query parameters:
+        - user: Filter by username
+        - action: Filter by action (login, logout, create, update, delete, execute)
+        - resource: Filter by resource type
+        - start_time: Filter entries after this time (ISO format)
+        - end_time: Filter entries before this time (ISO format)
+        - success: Filter by success (true/false)
+        - limit: Number of entries to return (default 100, max 1000)
+        - offset: Number of entries to skip for pagination
+
+    Returns:
+        {
+            "entries": [...],
+            "total": 1234,
+            "limit": 100,
+            "offset": 0
+        }
+    """
+    storage = getattr(g, 'storage_backend', None)
+    if not storage:
+        return jsonify({'error': 'Storage backend not available'}), 500
+
+    # Build filters from query params
+    filters = {}
+
+    if request.args.get('user'):
+        filters['user'] = request.args['user']
+
+    if request.args.get('action'):
+        filters['action'] = request.args['action']
+
+    if request.args.get('resource'):
+        filters['resource'] = request.args['resource']
+
+    if request.args.get('start_time'):
+        filters['start_time'] = request.args['start_time']
+
+    if request.args.get('end_time'):
+        filters['end_time'] = request.args['end_time']
+
+    if request.args.get('success') is not None:
+        filters['success'] = request.args['success'].lower() == 'true'
+
+    # Pagination
+    limit = min(1000, max(1, int(request.args.get('limit', 100))))
+    offset = max(0, int(request.args.get('offset', 0)))
+
+    entries = storage.get_audit_log(filters=filters, limit=limit, offset=offset)
+
+    # Get total count (without pagination) for UI
+    all_entries = storage.get_audit_log(filters=filters, limit=100000, offset=0)
+    total = len(all_entries)
+
+    return jsonify({
+        'entries': entries,
+        'total': total,
+        'limit': limit,
+        'offset': offset
+    })
+
+
+@auth_bp.route('/api/audit/export', methods=['GET'])
+@require_permission('audit:view')
+def api_audit_export():
+    """
+    Export audit log entries as CSV.
+
+    Query parameters same as /api/audit.
+
+    Returns:
+        CSV file download
+    """
+    import csv
+    import io
+
+    storage = getattr(g, 'storage_backend', None)
+    if not storage:
+        return jsonify({'error': 'Storage backend not available'}), 500
+
+    # Build filters from query params
+    filters = {}
+
+    if request.args.get('user'):
+        filters['user'] = request.args['user']
+
+    if request.args.get('action'):
+        filters['action'] = request.args['action']
+
+    if request.args.get('resource'):
+        filters['resource'] = request.args['resource']
+
+    if request.args.get('start_time'):
+        filters['start_time'] = request.args['start_time']
+
+    if request.args.get('end_time'):
+        filters['end_time'] = request.args['end_time']
+
+    # Get all entries (up to 100k for export)
+    entries = storage.get_audit_log(filters=filters, limit=100000, offset=0)
+
+    # Generate CSV
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # Header
+    writer.writerow(['Timestamp', 'User', 'Action', 'Resource', 'Resource ID', 'Success', 'IP Address', 'Details'])
+
+    # Data rows
+    for entry in entries:
+        writer.writerow([
+            entry.get('timestamp', ''),
+            entry.get('user', ''),
+            entry.get('action', ''),
+            entry.get('resource', ''),
+            entry.get('resource_id', ''),
+            'Yes' if entry.get('success') else 'No',
+            entry.get('ip_address', ''),
+            str(entry.get('details', {}))
+        ])
+
+    output.seek(0)
+
+    response = make_response(output.getvalue())
+    response.headers['Content-Type'] = 'text/csv'
+    response.headers['Content-Disposition'] = 'attachment; filename=audit_log.csv'
+
+    return response
+
+
+@auth_bp.route('/api/audit/stats', methods=['GET'])
+@require_permission('audit:view')
+def api_audit_stats():
+    """
+    Get audit log statistics.
+
+    Returns summary counts by action and resource type.
+    """
+    storage = getattr(g, 'storage_backend', None)
+    if not storage:
+        return jsonify({'error': 'Storage backend not available'}), 500
+
+    # Get recent entries for stats
+    entries = storage.get_audit_log(limit=10000, offset=0)
+
+    # Count by action
+    action_counts = {}
+    resource_counts = {}
+    user_counts = {}
+    success_count = 0
+    failure_count = 0
+
+    for entry in entries:
+        action = entry.get('action') or 'unknown'
+        resource = entry.get('resource') or 'unknown'
+        user = entry.get('user') or 'anonymous'
+
+        action_counts[action] = action_counts.get(action, 0) + 1
+        resource_counts[resource] = resource_counts.get(resource, 0) + 1
+        user_counts[user] = user_counts.get(user, 0) + 1
+
+        if entry.get('success'):
+            success_count += 1
+        else:
+            failure_count += 1
+
+    # Sort top users safely (handle potential None keys)
+    sorted_users = sorted(
+        [(k, v) for k, v in user_counts.items() if k is not None],
+        key=lambda x: x[1],
+        reverse=True
+    )[:10]
+
+    return jsonify({
+        'total_entries': len(entries),
+        'by_action': action_counts,
+        'by_resource': resource_counts,
+        'top_users': dict(sorted_users),
+        'success_count': success_count,
+        'failure_count': failure_count
+    })

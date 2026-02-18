@@ -51,6 +51,7 @@ NAV_SECTIONS = [
         'label': 'Admin',
         'pages': [
             {'url': '/users', 'label': 'Users'},
+            {'url': '/audit', 'label': 'Audit Log'},
         ],
         'admin_only': True,
     },

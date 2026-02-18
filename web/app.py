@@ -2043,6 +2043,7 @@ def api_batch_export(batch_id):
 # Used by web/static/js/theme.js to load and apply themes
 # =============================================================================
 
+# PUBLIC ROUTE: Theme list is public to allow login page styling
 @app.route('/api/themes')
 def api_themes():
     """
@@ -2081,6 +2082,7 @@ def api_themes():
     return jsonify(themes)
 
 
+# PUBLIC ROUTE: Theme details are public to allow login page styling
 @app.route('/api/themes/<theme_name>')
 def api_theme(theme_name):
     """
@@ -2697,6 +2699,7 @@ def _suggested_fix_for_error(error_text):
 
 
 @app.route('/api/suggested-fix')
+@require_permission('logs:view')
 def api_suggested_fix():
     """
     Return a suggested fix for an error message, for display in the web UI.
