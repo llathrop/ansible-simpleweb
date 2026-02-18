@@ -32,6 +32,16 @@ try:
         require_permission,
         require_any_permission
     )
+    from validation import (
+        ValidationError,
+        validate_request,
+        validate_username,
+        validate_email,
+        validate_password,
+        validate_role_id,
+        validate_permissions,
+        validate_roles
+    )
 except ImportError:
     # When running from project root (tests)
     from web.auth import (
@@ -50,6 +60,16 @@ except ImportError:
         resolve_user_permissions,
         require_permission,
         require_any_permission
+    )
+    from web.validation import (
+        ValidationError,
+        validate_request,
+        validate_username,
+        validate_email,
+        validate_password,
+        validate_role_id,
+        validate_permissions,
+        validate_roles
     )
 
 
@@ -474,13 +494,16 @@ def api_create_user():
         return jsonify({'error': 'Storage backend not available'}), 500
 
     data = request.get_json() or {}
-    username = data.get('username', '').strip()
-    password = data.get('password', '')
 
-    if not username:
-        return jsonify({'error': 'Username is required'}), 400
-    if not password:
-        return jsonify({'error': 'Password is required'}), 400
+    # Validate input using validation module
+    try:
+        validated = validate_request(data, 'user_create')
+        username = validated['username']
+        password = validated['password']
+        email = validated.get('email', '')
+        roles = validated.get('roles', [])
+    except ValidationError as e:
+        return jsonify({'error': str(e)}), 400
 
     # Check if user already exists
     existing = storage.get_user(username)
@@ -492,9 +515,9 @@ def api_create_user():
         'id': str(uuid.uuid4()),
         'username': username,
         'password_hash': hash_password(password),
-        'email': data.get('email', ''),
+        'email': email,
         'full_name': data.get('full_name', ''),
-        'roles': data.get('roles', []),
+        'roles': roles,
         'enabled': data.get('enabled', True),
         'created_at': datetime.now(timezone.utc).isoformat(),
         'last_login': None
@@ -1321,15 +1344,15 @@ def api_create_role():
         from web.authz import BUILTIN_ROLES
 
     data = request.get_json() or {}
-    role_id = data.get('id', '').strip().lower()
 
-    if not role_id:
-        return jsonify({'error': 'Role ID is required'}), 400
-
-    # Validate role ID format (alphanumeric, underscores, hyphens)
-    import re
-    if not re.match(r'^[a-z0-9_-]+$', role_id):
-        return jsonify({'error': 'Role ID can only contain lowercase letters, numbers, underscores, and hyphens'}), 400
+    # Validate input using validation module
+    try:
+        validated = validate_request(data, 'role_create')
+        role_id = validated['id']
+        permissions = validated.get('permissions', [])
+        inherits = validated.get('inherits', [])
+    except ValidationError as e:
+        return jsonify({'error': str(e)}), 400
 
     # Check if role already exists (builtin or custom)
     if role_id in BUILTIN_ROLES:
@@ -1340,7 +1363,6 @@ def api_create_role():
         return jsonify({'error': 'Role already exists'}), 409
 
     # Validate inherits references
-    inherits = data.get('inherits', [])
     for parent_role in inherits:
         if parent_role not in BUILTIN_ROLES and not storage.get_role(parent_role):
             return jsonify({'error': f'Inherited role "{parent_role}" does not exist'}), 400
@@ -1349,9 +1371,9 @@ def api_create_role():
     from datetime import datetime, timezone
     role = {
         'id': role_id,
-        'name': data.get('name', role_id),
-        'description': data.get('description', ''),
-        'permissions': data.get('permissions', []),
+        'name': validated.get('name', role_id),
+        'description': validated.get('description', ''),
+        'permissions': permissions,
         'inherits': inherits,
         'created_at': datetime.now(timezone.utc).isoformat()
     }

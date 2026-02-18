@@ -46,6 +46,17 @@ from auth_routes import (
     require_any_permission
 )
 
+# Import validation module for input sanitization
+from validation import (
+    ValidationError,
+    validate_string,
+    validate_playbook_name,
+    validate_target,
+    validate_safe_path,
+    validate_uuid,
+    validate_int
+)
+
 # Authentication settings
 AUTH_ENABLED = os.environ.get('AUTH_ENABLED', 'false').lower() == 'true'
 
@@ -1563,11 +1574,20 @@ def _get_worker_name(worker_id: str) -> str:
 @require_permission('playbooks:run')
 def run_playbook(playbook_name):
     """Trigger playbook execution with streaming"""
+    # Validate playbook name to prevent path traversal
+    try:
+        playbook_name = validate_playbook_name(playbook_name)
+    except ValidationError as e:
+        return jsonify({'error': str(e)}), 400
+
     if playbook_name not in get_playbooks():
         return jsonify({'error': 'Playbook not found'}), 404
 
-    # Get target from query parameter, default to host_machine
-    target = request.args.get('target', 'host_machine')
+    # Get and validate target from query parameter
+    try:
+        target = validate_target(request.args.get('target', 'host_machine'))
+    except ValidationError as e:
+        return jsonify({'error': str(e)}), 400
 
     # Check if we should use the cluster job queue
     # Use job queue if: cluster mode is 'primary' AND there are remote workers online
