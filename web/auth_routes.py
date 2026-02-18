@@ -1178,3 +1178,360 @@ def api_audit_stats():
         'success_count': success_count,
         'failure_count': failure_count
     })
+
+
+# =============================================================================
+# Role Management Routes
+# =============================================================================
+
+@auth_bp.route('/roles')
+@admin_required
+def roles_page():
+    """Render the role management page (admin only)."""
+    return render_template('roles.html')
+
+
+@auth_bp.route('/roles/new')
+@admin_required
+def new_role_page():
+    """Render the new role form (admin only)."""
+    return render_template('role_form.html', edit_mode=False)
+
+
+@auth_bp.route('/roles/<role_name>/edit')
+@admin_required
+def edit_role_page(role_name):
+    """Render the edit role form (admin only)."""
+    return render_template('role_form.html', edit_mode=True, role_name=role_name)
+
+
+@auth_bp.route('/api/roles', methods=['GET'])
+@admin_required
+def api_list_roles():
+    """
+    List all roles (admin only).
+
+    Returns:
+        {"roles": [...], "builtin_roles": {...}}
+    """
+    storage = getattr(g, 'storage_backend', None)
+    if not storage:
+        return jsonify({'error': 'Storage backend not available'}), 500
+
+    try:
+        from authz import BUILTIN_ROLES
+    except ImportError:
+        from web.authz import BUILTIN_ROLES
+
+    # Get custom roles from storage
+    custom_roles = storage.get_all_roles()
+
+    # Combine with builtin roles (mark which are builtin)
+    all_roles = []
+
+    # Add builtin roles first
+    for role_id, role_def in BUILTIN_ROLES.items():
+        role_data = {
+            'id': role_id,
+            'name': role_def.get('name', role_id),
+            'description': role_def.get('description', ''),
+            'permissions': role_def.get('permissions', []),
+            'inherits': role_def.get('inherits', []),
+            'builtin': True
+        }
+        all_roles.append(role_data)
+
+    # Add custom roles
+    for role in custom_roles:
+        role['builtin'] = False
+        all_roles.append(role)
+
+    return jsonify({
+        'roles': all_roles,
+        'builtin_role_ids': list(BUILTIN_ROLES.keys())
+    })
+
+
+@auth_bp.route('/api/roles/<role_name>', methods=['GET'])
+@admin_required
+def api_get_role(role_name):
+    """
+    Get a specific role (admin only).
+
+    Returns:
+        {"role": {...}}
+    """
+    storage = getattr(g, 'storage_backend', None)
+    if not storage:
+        return jsonify({'error': 'Storage backend not available'}), 500
+
+    try:
+        from authz import BUILTIN_ROLES
+    except ImportError:
+        from web.authz import BUILTIN_ROLES
+
+    # Check builtin roles first
+    if role_name in BUILTIN_ROLES:
+        role_def = BUILTIN_ROLES[role_name]
+        return jsonify({
+            'role': {
+                'id': role_name,
+                'name': role_def.get('name', role_name),
+                'description': role_def.get('description', ''),
+                'permissions': role_def.get('permissions', []),
+                'inherits': role_def.get('inherits', []),
+                'builtin': True
+            }
+        })
+
+    # Check custom roles
+    role = storage.get_role(role_name)
+    if not role:
+        return jsonify({'error': 'Role not found'}), 404
+
+    role['builtin'] = False
+    return jsonify({'role': role})
+
+
+@auth_bp.route('/api/roles', methods=['POST'])
+@admin_required
+def api_create_role():
+    """
+    Create a new custom role (admin only).
+
+    Request body:
+        {
+            "id": "role_id",
+            "name": "Role Display Name",
+            "description": "Role description",
+            "permissions": ["resource:action", ...],
+            "inherits": ["other_role_id", ...]
+        }
+
+    Returns:
+        {"ok": true, "role": {...}}
+    """
+    storage = getattr(g, 'storage_backend', None)
+    if not storage:
+        return jsonify({'error': 'Storage backend not available'}), 500
+
+    try:
+        from authz import BUILTIN_ROLES
+    except ImportError:
+        from web.authz import BUILTIN_ROLES
+
+    data = request.get_json() or {}
+    role_id = data.get('id', '').strip().lower()
+
+    if not role_id:
+        return jsonify({'error': 'Role ID is required'}), 400
+
+    # Validate role ID format (alphanumeric, underscores, hyphens)
+    import re
+    if not re.match(r'^[a-z0-9_-]+$', role_id):
+        return jsonify({'error': 'Role ID can only contain lowercase letters, numbers, underscores, and hyphens'}), 400
+
+    # Check if role already exists (builtin or custom)
+    if role_id in BUILTIN_ROLES:
+        return jsonify({'error': 'Cannot create role with builtin role name'}), 409
+
+    existing = storage.get_role(role_id)
+    if existing:
+        return jsonify({'error': 'Role already exists'}), 409
+
+    # Validate inherits references
+    inherits = data.get('inherits', [])
+    for parent_role in inherits:
+        if parent_role not in BUILTIN_ROLES and not storage.get_role(parent_role):
+            return jsonify({'error': f'Inherited role "{parent_role}" does not exist'}), 400
+
+    # Create role
+    from datetime import datetime, timezone
+    role = {
+        'id': role_id,
+        'name': data.get('name', role_id),
+        'description': data.get('description', ''),
+        'permissions': data.get('permissions', []),
+        'inherits': inherits,
+        'created_at': datetime.now(timezone.utc).isoformat()
+    }
+
+    if storage.save_role(role_id, role):
+        # Audit log
+        add_audit_entry(
+            action='create',
+            resource='roles',
+            resource_id=role_id,
+            details={'permissions_count': len(role['permissions'])},
+            success=True
+        )
+        return jsonify({'ok': True, 'role': role})
+    else:
+        return jsonify({'error': 'Failed to create role'}), 500
+
+
+@auth_bp.route('/api/roles/<role_name>', methods=['PUT'])
+@admin_required
+def api_update_role(role_name):
+    """
+    Update an existing custom role (admin only).
+
+    Builtin roles cannot be modified.
+
+    Request body:
+        {
+            "name": "Role Display Name",
+            "description": "Role description",
+            "permissions": ["resource:action", ...],
+            "inherits": ["other_role_id", ...]
+        }
+
+    Returns:
+        {"ok": true, "role": {...}}
+    """
+    storage = getattr(g, 'storage_backend', None)
+    if not storage:
+        return jsonify({'error': 'Storage backend not available'}), 500
+
+    try:
+        from authz import BUILTIN_ROLES
+    except ImportError:
+        from web.authz import BUILTIN_ROLES
+
+    # Cannot modify builtin roles
+    if role_name in BUILTIN_ROLES:
+        return jsonify({'error': 'Cannot modify builtin roles'}), 403
+
+    role = storage.get_role(role_name)
+    if not role:
+        return jsonify({'error': 'Role not found'}), 404
+
+    data = request.get_json() or {}
+
+    # Update allowed fields
+    if 'name' in data:
+        role['name'] = data['name']
+    if 'description' in data:
+        role['description'] = data['description']
+    if 'permissions' in data:
+        role['permissions'] = data['permissions']
+    if 'inherits' in data:
+        # Validate inherits references
+        for parent_role in data['inherits']:
+            if parent_role not in BUILTIN_ROLES and not storage.get_role(parent_role):
+                return jsonify({'error': f'Inherited role "{parent_role}" does not exist'}), 400
+        role['inherits'] = data['inherits']
+
+    from datetime import datetime, timezone
+    role['updated_at'] = datetime.now(timezone.utc).isoformat()
+
+    if storage.save_role(role_name, role):
+        # Audit log
+        add_audit_entry(
+            action='update',
+            resource='roles',
+            resource_id=role_name,
+            details={'fields_updated': list(data.keys())},
+            success=True
+        )
+        return jsonify({'ok': True, 'role': role})
+    else:
+        return jsonify({'error': 'Failed to update role'}), 500
+
+
+@auth_bp.route('/api/roles/<role_name>', methods=['DELETE'])
+@admin_required
+def api_delete_role(role_name):
+    """
+    Delete a custom role (admin only).
+
+    Builtin roles cannot be deleted.
+
+    Returns:
+        {"ok": true}
+    """
+    storage = getattr(g, 'storage_backend', None)
+    if not storage:
+        return jsonify({'error': 'Storage backend not available'}), 500
+
+    try:
+        from authz import BUILTIN_ROLES
+    except ImportError:
+        from web.authz import BUILTIN_ROLES
+
+    # Cannot delete builtin roles
+    if role_name in BUILTIN_ROLES:
+        return jsonify({'error': 'Cannot delete builtin roles'}), 403
+
+    # Check if any users have this role
+    all_users = storage.get_all_users()
+    users_with_role = [u['username'] for u in all_users if role_name in u.get('roles', [])]
+    if users_with_role:
+        return jsonify({
+            'error': f'Cannot delete role that is assigned to users: {", ".join(users_with_role[:5])}'
+        }), 400
+
+    if storage.delete_role(role_name):
+        # Audit log
+        add_audit_entry(
+            action='delete',
+            resource='roles',
+            resource_id=role_name,
+            success=True
+        )
+        return jsonify({'ok': True})
+    else:
+        return jsonify({'error': 'Role not found or could not be deleted'}), 404
+
+
+@auth_bp.route('/api/permissions', methods=['GET'])
+@admin_required
+def api_list_permissions():
+    """
+    List all available permission patterns for reference.
+
+    Returns:
+        {"permissions": [...]}
+    """
+    # Common permission patterns
+    permissions = [
+        # Playbooks
+        {'resource': 'playbooks', 'actions': ['view', 'run', 'edit'], 'description': 'Ansible playbooks'},
+        {'resource': 'playbooks.servers', 'actions': ['view', 'run', 'edit'], 'description': 'Server playbooks'},
+        {'resource': 'playbooks.network', 'actions': ['view', 'run', 'edit'], 'description': 'Network playbooks'},
+        {'resource': 'playbooks.database', 'actions': ['view', 'run', 'edit'], 'description': 'Database playbooks'},
+        {'resource': 'playbooks.security', 'actions': ['view', 'run', 'edit'], 'description': 'Security playbooks'},
+        # Inventory
+        {'resource': 'inventory', 'actions': ['view', 'edit'], 'description': 'Host inventory'},
+        {'resource': 'inventory.servers', 'actions': ['view', 'edit'], 'description': 'Server inventory'},
+        {'resource': 'inventory.network', 'actions': ['view', 'edit'], 'description': 'Network inventory'},
+        # Schedules
+        {'resource': 'schedules', 'actions': ['view', 'edit', 'create', 'delete'], 'description': 'Scheduled jobs'},
+        {'resource': 'schedules.own', 'actions': ['view', 'edit', 'delete'], 'description': 'Own scheduled jobs'},
+        # Jobs
+        {'resource': 'jobs', 'actions': ['view', 'submit', 'cancel'], 'description': 'Job management'},
+        {'resource': 'jobs.own', 'actions': ['cancel'], 'description': 'Cancel own jobs'},
+        # Logs
+        {'resource': 'logs', 'actions': ['view'], 'description': 'Execution logs'},
+        # Workers
+        {'resource': 'workers', 'actions': ['view', 'admin'], 'description': 'Worker management'},
+        # CMDB
+        {'resource': 'cmdb', 'actions': ['view', 'edit'], 'description': 'Configuration Management DB'},
+        # Agent
+        {'resource': 'agent', 'actions': ['view', 'generate', 'analyze'], 'description': 'AI Agent features'},
+        # Config
+        {'resource': 'config', 'actions': ['view', 'edit'], 'description': 'System configuration'},
+        # Users
+        {'resource': 'users', 'actions': ['view', 'edit', 'create', 'delete'], 'description': 'User management'},
+        # Audit
+        {'resource': 'audit', 'actions': ['view'], 'description': 'Audit log access'},
+    ]
+
+    return jsonify({
+        'permissions': permissions,
+        'wildcards': {
+            '*:*': 'Full access to everything',
+            'resource:*': 'All actions on a resource',
+            '*:action': 'Action on all resources'
+        }
+    })
