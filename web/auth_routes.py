@@ -26,7 +26,12 @@ try:
         AccountLockedError,
         APITokenManager
     )
-    from authz import check_permission, resolve_user_permissions
+    from authz import (
+        check_permission,
+        resolve_user_permissions,
+        require_permission,
+        require_any_permission
+    )
 except ImportError:
     # When running from project root (tests)
     from web.auth import (
@@ -40,7 +45,12 @@ except ImportError:
         AccountLockedError,
         APITokenManager
     )
-    from web.authz import check_permission, resolve_user_permissions
+    from web.authz import (
+        check_permission,
+        resolve_user_permissions,
+        require_permission,
+        require_any_permission
+    )
 
 
 # Create blueprint for auth routes
@@ -127,6 +137,87 @@ def admin_required(f):
             return render_template('error.html', error='Admin access required'), 403
 
         return f(*args, **kwargs)
+    return decorated_function
+
+
+def worker_auth_required(f):
+    """
+    Decorator to require worker authentication for a route.
+
+    Worker authentication can be:
+    1. Valid worker_id in request body/params that matches an existing worker
+    2. X-Worker-Id header with a registered worker ID
+    3. Registration token for initial registration
+
+    Used for worker-specific endpoints like checkin, job start/complete, log streaming.
+    """
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        storage = getattr(g, 'storage_backend', None)
+        if not storage:
+            return jsonify({'error': 'Storage backend not available'}), 500
+
+        # Get worker_id from various sources
+        worker_id = None
+
+        # From URL parameter (e.g., /api/workers/<worker_id>/checkin)
+        if 'worker_id' in kwargs:
+            worker_id = kwargs['worker_id']
+
+        # From request body
+        if not worker_id and request.is_json:
+            data = request.get_json(silent=True) or {}
+            worker_id = data.get('worker_id')
+
+        # From X-Worker-Id header
+        if not worker_id:
+            worker_id = request.headers.get('X-Worker-Id')
+
+        if not worker_id:
+            return jsonify({'error': 'Worker ID required'}), 401
+
+        # Validate worker exists
+        worker = storage.get_worker(worker_id)
+        if not worker:
+            return jsonify({'error': 'Invalid worker ID'}), 401
+
+        # Store worker in request context
+        g.current_worker = worker
+
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def service_auth_required(f):
+    """
+    Decorator for service-to-service authentication.
+
+    Used for endpoints called by the agent service or other internal services.
+    Authentication can be via:
+    1. X-Service-Token header matching SERVICE_TOKEN env var
+    2. Admin session (admins can access service endpoints)
+
+    If SERVICE_TOKEN is not configured, requires admin session.
+    """
+    import os
+
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        service_token = os.environ.get('SERVICE_TOKEN')
+
+        # Check X-Service-Token header first
+        provided_token = request.headers.get('X-Service-Token')
+        if service_token and provided_token == service_token:
+            return f(*args, **kwargs)
+
+        # Fall back to admin session
+        user = get_current_user()
+        if user and check_permission(user, '*:*'):  # Admin check
+            return f(*args, **kwargs)
+
+        # No valid auth
+        return jsonify({'error': 'Service authentication required'}), 401
+
     return decorated_function
 
 
@@ -613,6 +704,7 @@ def init_auth_middleware(app, storage_backend, auth_enabled=True):
     """
 
     # Public routes that don't require authentication
+    # Note: Some routes have their own auth (worker_auth_required, registration token, etc.)
     PUBLIC_ROUTES = {
         '/login',
         '/api/auth/login',
@@ -620,7 +712,21 @@ def init_auth_middleware(app, storage_backend, auth_enabled=True):
         '/health',
         '/api/status',
         '/static/',
-        '/favicon.ico'
+        '/favicon.ico',
+        # Worker routes - use registration token or worker_auth_required decorator
+        '/api/workers/register',
+        # Theme routes - read-only, allow unauthenticated for login page styling
+        '/api/themes',
+    }
+
+    # Route prefixes that use their own authentication (worker_auth_required or service_auth_required)
+    # These bypass general auth middleware but must have their own auth decorators
+    SELF_AUTH_ROUTE_PREFIXES = {
+        '/api/workers/',        # Worker checkin, etc. - uses @worker_auth_required
+        '/api/jobs/',           # Job start/complete/stream - uses @worker_auth_required
+        '/api/sync/',           # Content sync - uses @worker_auth_required
+        '/api/test-worker/',    # Test routes - uses @worker_auth_required
+        '/api/test-service/',   # Test routes - uses @service_auth_required
     }
 
     @app.before_request
@@ -637,6 +743,11 @@ def init_auth_middleware(app, storage_backend, auth_enabled=True):
         path = request.path
         for public in PUBLIC_ROUTES:
             if path == public or path.startswith(public):
+                return None
+
+        # Check if route handles its own auth (worker_auth_required, etc.)
+        for prefix in SELF_AUTH_ROUTE_PREFIXES:
+            if path.startswith(prefix):
                 return None
 
         # Check authentication

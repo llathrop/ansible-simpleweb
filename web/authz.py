@@ -39,7 +39,9 @@ BUILTIN_ROLES = {
             'inventory:view',
             'workers:view',
             'cmdb:view',
-            'agent:view'
+            'agent:view',
+            'agent:generate',
+            'agent:analyze'
         ],
         'inherits': []
     },
@@ -119,7 +121,9 @@ BUILTIN_ROLES = {
             'inventory:view',
             'schedules.own:*',
             'jobs:view',
-            'logs:view'
+            'logs:view',
+            'agent:view',
+            'agent:generate'
         ],
         'inherits': []
     },

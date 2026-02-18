@@ -33,7 +33,18 @@ from content_repo import ContentRepository, get_content_repo
 from inventory_sync import run_inventory_sync
 
 # Import auth module and routes
-from auth_routes import auth_bp, init_auth_middleware, bootstrap_admin_user, get_current_user
+from auth_routes import (
+    auth_bp,
+    init_auth_middleware,
+    bootstrap_admin_user,
+    get_current_user,
+    login_required,
+    admin_required,
+    worker_auth_required,
+    service_auth_required,
+    require_permission,
+    require_any_permission
+)
 
 # Authentication settings
 AUTH_ENABLED = os.environ.get('AUTH_ENABLED', 'false').lower() == 'true'
@@ -1278,6 +1289,7 @@ def get_batch_job_status(batch_id):
 
 
 @app.route('/')
+@require_permission('playbooks:view')
 def index():
     """Main page - list all playbooks"""
     playbooks = get_playbooks()
@@ -1428,6 +1440,7 @@ def _get_worker_name(worker_id: str) -> str:
 
 
 @app.route('/run/<playbook_name>')
+@require_permission('playbooks:run')
 def run_playbook(playbook_name):
     """Trigger playbook execution with streaming"""
     if playbook_name not in get_playbooks():
@@ -1530,6 +1543,7 @@ def run_playbook(playbook_name):
     return redirect(url_for('live_log', run_id=run_id))
 
 @app.route('/live/<run_id>')
+@require_permission('logs:view')
 def live_log(run_id):
     """View live streaming log for a run"""
     with runs_lock:
@@ -1555,6 +1569,7 @@ def live_log(run_id):
 
 
 @app.route('/job/<job_id>')
+@require_permission('jobs:view')
 def job_status_page(job_id):
     """View job status page for cluster jobs."""
     if not storage_backend:
@@ -1577,6 +1592,7 @@ def job_status_page(job_id):
 
 
 @app.route('/live/batch/<batch_id>')
+@require_permission('jobs:view')
 def batch_live_log(batch_id):
     """View live streaming log for a batch job"""
     batch_job = get_batch_job_status(batch_id)
@@ -1595,6 +1611,7 @@ def batch_live_log(batch_id):
 
 
 @app.route('/playbooks')
+@require_permission('playbooks:view')
 def playbooks_page():
     """Individual playbooks page - run single playbooks against targets"""
     playbooks = get_playbooks()
@@ -1620,6 +1637,7 @@ def playbooks_page():
 
 
 @app.route('/logs')
+@require_permission('logs:view')
 def list_logs():
     """List all log files"""
     log_files = []
@@ -1634,6 +1652,7 @@ def list_logs():
     return render_template('logs.html', logs=log_files)
 
 @app.route('/logs/<log_file>')
+@require_permission('logs:view')
 def view_log(log_file):
     """View a specific log file"""
     log_path = os.path.join(LOGS_DIR, log_file)
@@ -1702,6 +1721,7 @@ def view_log(log_file):
                           job_id=job_id)
 
 @app.route('/api/status')
+@require_permission('playbooks:view')
 def api_status():
     """Get status of all playbooks"""
     playbooks = get_playbooks()
@@ -1717,6 +1737,7 @@ def api_status():
     return jsonify(status_data)
 
 @app.route('/api/playbooks')
+@require_permission('playbooks:view')
 def api_playbooks():
     """API endpoint to get playbook information"""
     playbooks = get_playbooks()
@@ -1739,6 +1760,7 @@ def api_playbooks():
     return jsonify(result)
 
 @app.route('/api/runs')
+@require_permission('jobs:view')
 def api_runs():
     """Get all active runs"""
     with runs_lock:
@@ -1749,6 +1771,7 @@ def api_runs():
     return jsonify(runs)
 
 @app.route('/api/runs/<run_id>')
+@require_permission('jobs:view')
 def api_run_detail(run_id):
     """Get details of a specific run"""
     with runs_lock:
@@ -1758,6 +1781,7 @@ def api_run_detail(run_id):
     return jsonify({'error': 'Run not found'}), 404
 
 @app.route('/api/runs/<run_id>/log')
+@require_permission('logs:view')
 def api_run_log(run_id):
     """Get the log content for a run (for reconnection/catch-up)"""
     with runs_lock:
@@ -1791,6 +1815,7 @@ def api_run_log(run_id):
 # =============================================================================
 
 @app.route('/api/batch', methods=['GET'])
+@require_permission('jobs:view')
 def api_batch_list():
     """
     Get all batch jobs.
@@ -1824,6 +1849,7 @@ def api_batch_list():
 
 
 @app.route('/api/batch/<batch_id>', methods=['GET'])
+@require_permission('jobs:view')
 def api_batch_detail(batch_id):
     """Get details of a specific batch job."""
     batch_job = get_batch_job_status(batch_id)
@@ -1833,6 +1859,7 @@ def api_batch_detail(batch_id):
 
 
 @app.route('/api/batch', methods=['POST'])
+@require_permission('jobs:submit')
 def api_batch_create():
     """
     Create and start a new batch job.
@@ -1879,6 +1906,7 @@ def api_batch_create():
 
 
 @app.route('/api/batch/<batch_id>', methods=['DELETE'])
+@require_permission('jobs:cancel')
 def api_batch_delete(batch_id):
     """
     Delete a batch job.
@@ -1906,6 +1934,7 @@ def api_batch_delete(batch_id):
 
 
 @app.route('/api/batch/<batch_id>/logs', methods=['GET'])
+@require_permission('logs:view')
 def api_batch_logs(batch_id):
     """
     Get log files for a batch job.
@@ -1938,6 +1967,7 @@ def api_batch_logs(batch_id):
 
 
 @app.route('/api/batch/<batch_id>/logs/<log_file>', methods=['GET'])
+@require_permission('logs:view')
 def api_batch_log_content(batch_id, log_file):
     """Get the content of a specific log file from a batch job."""
     batch_job = get_batch_job_status(batch_id)
@@ -1970,6 +2000,7 @@ def api_batch_log_content(batch_id, log_file):
 
 
 @app.route('/api/batch/active', methods=['GET'])
+@require_permission('jobs:view')
 def api_batch_active():
     """Get all currently active (running) batch jobs."""
     with batch_lock:
@@ -1982,6 +2013,7 @@ def api_batch_active():
 
 
 @app.route('/api/batch/<batch_id>/export', methods=['GET'])
+@require_permission('jobs:view')
 def api_batch_export(batch_id):
     """
     Export a batch job configuration for reuse or version control.
@@ -2090,6 +2122,7 @@ def api_theme(theme_name):
 # =============================================================================
 
 @app.route('/api/config', methods=['GET'])
+@require_permission('config:view')
 def api_config_get():
     """
     Get current application configuration (from app_config.yaml or defaults).
@@ -2107,6 +2140,7 @@ def api_config_get():
 
 
 @app.route('/api/config', methods=['PUT'])
+@require_permission('config:edit')
 def api_config_put():
     """
     Update application configuration. Expects JSON body with config keys to merge.
@@ -2128,6 +2162,7 @@ def api_config_put():
 
 
 @app.route('/api/config/backup', methods=['GET'])
+@require_permission('config:view')
 def api_config_backup():
     """
     Return current config as a downloadable YAML file (config backup).
@@ -2150,6 +2185,7 @@ def api_config_backup():
 
 
 @app.route('/api/config/restore', methods=['POST'])
+@require_permission('config:edit')
 def api_config_restore():
     """
     Restore config from uploaded YAML file. Expects multipart file or raw YAML body.
@@ -2197,6 +2233,7 @@ def _json_serial(obj):
 
 
 @app.route('/api/data/backup', methods=['GET'])
+@admin_required
 def api_data_backup():
     """
     Download a zip of data files. Flatfile: copies JSON files. MongoDB: exports collections to same JSON structure and zips (so backup panel works for DB too).
@@ -2251,6 +2288,7 @@ def api_data_backup():
 
 
 @app.route('/api/data/restore', methods=['POST'])
+@admin_required
 def api_data_restore():
     """
     Restore data from uploaded zip. Flatfile: extract to config dir. MongoDB: import JSON into collections (same zip format as backup).
@@ -2340,6 +2378,7 @@ def api_data_restore():
 # =============================================================================
 
 @app.route('/api/storage')
+@require_permission('config:view')
 def api_storage():
     """
     Get information about the active storage backend.
@@ -2368,6 +2407,7 @@ def api_storage():
 # =============================================================================
 
 @app.route('/api/inventory')
+@require_permission('inventory:view')
 def api_inventory_list():
     """
     Get all inventory items.
@@ -2383,6 +2423,7 @@ def api_inventory_list():
 
 
 @app.route('/api/inventory/<item_id>')
+@require_permission('inventory:view')
 def api_inventory_get(item_id):
     """
     Get a single inventory item by ID.
@@ -2404,6 +2445,7 @@ def api_inventory_get(item_id):
 
 
 @app.route('/api/inventory', methods=['POST'])
+@require_permission('inventory:edit')
 def api_inventory_create():
     """
     Create a new inventory item.
@@ -2458,6 +2500,7 @@ def api_inventory_create():
 
 
 @app.route('/api/inventory/<item_id>', methods=['PUT'])
+@require_permission('inventory:edit')
 def api_inventory_update(item_id):
     """
     Update an existing inventory item.
@@ -2501,6 +2544,7 @@ def api_inventory_update(item_id):
 
 
 @app.route('/api/inventory/<item_id>', methods=['DELETE'])
+@require_permission('inventory:edit')
 def api_inventory_delete(item_id):
     """
     Delete an inventory item.
@@ -2522,6 +2566,7 @@ def api_inventory_delete(item_id):
 
 
 @app.route('/api/inventory/validate-keys')
+@require_permission('inventory:view')
 def api_inventory_validate_keys():
     """
     Validate that SSH key paths in inventory exist.
@@ -2544,6 +2589,7 @@ def api_inventory_validate_keys():
 
 
 @app.route('/api/inventory/sync', methods=['POST'])
+@require_permission('inventory:edit')
 def api_inventory_sync():
     """
     Manually trigger inventory sync (DB <-> static).
@@ -2568,6 +2614,7 @@ def api_inventory_sync():
 
 
 @app.route('/api/inventory/search', methods=['POST'])
+@require_permission('inventory:view')
 def api_inventory_search():
     """
     Search inventory items by criteria.
@@ -2685,6 +2732,7 @@ def _validate_ssh_key_path(variables):
 
 
 @app.route('/api/ssh-keys')
+@require_permission('inventory:view')
 def api_ssh_keys_list():
     """
     List available SSH keys from the ssh-keys directory.
@@ -2740,6 +2788,7 @@ def _get_default_public_key():
 
 
 @app.route('/api/ssh-keys/default-public')
+@require_permission('inventory:view')
 def api_ssh_keys_default_public():
     """
     Return the default SSH public key for copy-to-target (e.g. add to MikroTik).
@@ -2752,6 +2801,7 @@ def api_ssh_keys_default_public():
 
 
 @app.route('/api/ssh-keys', methods=['POST'])
+@require_permission('inventory:edit')
 def api_ssh_keys_upload():
     """
     Upload a new SSH private key.
@@ -2807,6 +2857,7 @@ def api_ssh_keys_upload():
 
 
 @app.route('/api/inventory/test-connection', methods=['POST'])
+@require_permission('inventory:edit')
 def api_inventory_test_connection():
     """
     Test SSH connection to a host.
@@ -2926,6 +2977,7 @@ def api_inventory_test_connection():
 # =============================================================================
 
 @app.route('/inventory')
+@require_permission('inventory:view')
 def inventory_page():
     """
     Inventory management page - view and manage stored inventory items.
@@ -2950,6 +3002,7 @@ def inventory_page():
 # =============================================================================
 
 @app.route('/storage')
+@require_permission('config:view')
 def storage_page():
     """
     Storage information page - view DB stats, config, and execution history.
@@ -2993,6 +3046,7 @@ def storage_page():
 
 
 @app.route('/api/history')
+@require_permission('logs:view')
 def api_history():
     """
     Get execution history with optional filtering.
@@ -3044,6 +3098,7 @@ def api_history():
 # =============================================================================
 
 @app.route('/api/hosts')
+@require_permission('cmdb:view')
 def api_hosts_list():
     """
     Get summary of all hosts with collected facts.
@@ -3059,6 +3114,7 @@ def api_hosts_list():
 
 
 @app.route('/api/hosts/<host>')
+@require_permission('cmdb:view')
 def api_host_facts(host):
     """
     Get all collected facts for a specific host.
@@ -3080,6 +3136,7 @@ def api_host_facts(host):
 
 
 @app.route('/api/hosts/<host>/<collection>')
+@require_permission('cmdb:view')
 def api_host_collection(host, collection):
     """
     Get a specific collection for a host.
@@ -3107,6 +3164,7 @@ def api_host_collection(host, collection):
 
 
 @app.route('/api/hosts/<host>/<collection>/history')
+@require_permission('cmdb:view')
 def api_host_collection_history(host, collection):
     """
     Get history of changes for a host's collection.
@@ -3130,6 +3188,7 @@ def api_host_collection_history(host, collection):
 
 
 @app.route('/api/hosts', methods=['POST'])
+@require_permission('cmdb:edit')
 def api_save_host_facts():
     """
     Save collected facts for a host.
@@ -3174,6 +3233,7 @@ def api_save_host_facts():
 
 
 @app.route('/api/hosts/<host>', methods=['DELETE'])
+@require_permission('cmdb:edit')
 def api_delete_host(host):
     """
     Delete all facts for a host.
@@ -3194,6 +3254,7 @@ def api_delete_host(host):
 
 
 @app.route('/api/hosts/<host>/<collection>', methods=['DELETE'])
+@require_permission('cmdb:edit')
 def api_delete_host_collection(host, collection):
     """
     Delete a specific collection for a host.
@@ -3215,6 +3276,7 @@ def api_delete_host_collection(host, collection):
 
 
 @app.route('/api/hosts/by-group/<group>')
+@require_permission('cmdb:view')
 def api_hosts_by_group(group):
     """
     Get all hosts in a specific group.
@@ -3233,6 +3295,7 @@ def api_hosts_by_group(group):
 
 
 @app.route('/cmdb')
+@require_permission('cmdb:view')
 def cmdb_page():
     """
     CMDB browser page - view collected host facts.
@@ -3265,6 +3328,7 @@ def cmdb_page():
 # =============================================================================
 
 @app.route('/schedules')
+@require_permission('schedules:view')
 def schedules_page():
     """Main schedule management page - list all schedules"""
     if not schedule_manager:
@@ -3281,6 +3345,7 @@ def schedules_page():
 
 
 @app.route('/schedules/new')
+@require_permission('schedules:edit')
 def new_schedule():
     """Form to create a new schedule"""
     playbooks = get_playbooks()
@@ -3314,6 +3379,7 @@ def new_schedule():
 
 
 @app.route('/schedules/create', methods=['POST'])
+@require_permission('schedules:edit')
 def create_schedule():
     """Create a new schedule from form submission"""
     if not schedule_manager:
@@ -3382,6 +3448,7 @@ def create_schedule():
 
 
 @app.route('/schedules/<schedule_id>/edit')
+@require_permission('schedules:edit')
 def edit_schedule(schedule_id):
     """Form to edit an existing schedule"""
     if not schedule_manager:
@@ -3413,6 +3480,7 @@ def edit_schedule(schedule_id):
 
 
 @app.route('/schedules/<schedule_id>/update', methods=['POST'])
+@require_permission('schedules:edit')
 def update_schedule(schedule_id):
     """Update an existing schedule"""
     if not schedule_manager:
@@ -3447,6 +3515,7 @@ def update_schedule(schedule_id):
 
 
 @app.route('/schedules/<schedule_id>/history')
+@require_permission('schedules:view')
 def schedule_history(schedule_id):
     """View execution history for a schedule"""
     if not schedule_manager:
@@ -3465,6 +3534,7 @@ def schedule_history(schedule_id):
 
 # Schedule API endpoints
 @app.route('/api/schedules')
+@require_permission('schedules:view')
 def api_schedules():
     """Get all schedules as JSON"""
     if not schedule_manager:
@@ -3473,6 +3543,7 @@ def api_schedules():
 
 
 @app.route('/api/schedules/<schedule_id>')
+@require_permission('schedules:view')
 def api_schedule_detail(schedule_id):
     """Get a single schedule"""
     if not schedule_manager:
@@ -3485,6 +3556,7 @@ def api_schedule_detail(schedule_id):
 
 
 @app.route('/api/schedules/<schedule_id>/pause', methods=['POST'])
+@require_permission('schedules:edit')
 def api_pause_schedule(schedule_id):
     """Pause a schedule"""
     if not schedule_manager:
@@ -3495,6 +3567,7 @@ def api_pause_schedule(schedule_id):
 
 
 @app.route('/api/schedules/<schedule_id>/resume', methods=['POST'])
+@require_permission('schedules:edit')
 def api_resume_schedule(schedule_id):
     """Resume a paused schedule"""
     if not schedule_manager:
@@ -3505,6 +3578,7 @@ def api_resume_schedule(schedule_id):
 
 
 @app.route('/api/schedules/<schedule_id>/delete', methods=['POST'])
+@require_permission('schedules:edit')
 def api_delete_schedule(schedule_id):
     """Delete a schedule"""
     if not schedule_manager:
@@ -3515,6 +3589,7 @@ def api_delete_schedule(schedule_id):
 
 
 @app.route('/api/schedules/<schedule_id>/stop', methods=['POST'])
+@require_permission('schedules:edit')
 def api_stop_schedule(schedule_id):
     """Stop a currently running scheduled job"""
     if not schedule_manager:
@@ -3525,6 +3600,7 @@ def api_stop_schedule(schedule_id):
 
 
 @app.route('/api/schedules/<schedule_id>/run_now', methods=['POST'])
+@require_permission('schedules:edit')
 def api_run_schedule_now(schedule_id):
     """Run a scheduled playbook immediately (one-off execution)"""
     if not schedule_manager:
@@ -3537,6 +3613,7 @@ def api_run_schedule_now(schedule_id):
 
 
 @app.route('/api/schedules/<schedule_id>/history')
+@require_permission('schedules:view')
 def api_schedule_history(schedule_id):
     """Get execution history for a schedule"""
     if not schedule_manager:
@@ -3720,6 +3797,7 @@ def api_worker_register():
 
 
 @app.route('/api/workers', methods=['GET'])
+@require_permission('workers:view')
 def api_get_workers():
     """
     Get all registered workers.
@@ -3744,6 +3822,7 @@ def api_get_workers():
 
 
 @app.route('/api/workers/<worker_id>', methods=['GET'])
+@require_permission('workers:view')
 def api_get_worker(worker_id):
     """Get a single worker by ID."""
     if not storage_backend:
@@ -3757,6 +3836,7 @@ def api_get_worker(worker_id):
 
 
 @app.route('/api/workers/<worker_id>', methods=['DELETE'])
+@require_permission('workers:admin')
 def api_delete_worker(worker_id):
     """
     Unregister/delete a worker.
@@ -3797,6 +3877,7 @@ def api_delete_worker(worker_id):
 
 
 @app.route('/api/workers/<worker_id>/checkin', methods=['POST'])
+@worker_auth_required
 def api_worker_checkin(worker_id):
     """
     Worker check-in endpoint.
@@ -3936,12 +4017,14 @@ def _get_stack_status():
 
 
 @app.route('/cluster')
+@require_permission('workers:view')
 def cluster_page():
     """Cluster dashboard page showing workers, jobs, and sync status."""
     return render_template('cluster.html')
 
 
 @app.route('/api/cluster/status', methods=['GET'])
+@require_permission('workers:view')
 def api_cluster_status():
     """
     Get cluster status summary.
@@ -4126,6 +4209,7 @@ def detect_stale_workers(mark_stale=False, requeue_jobs=False):
 
 
 @app.route('/api/workers/stale', methods=['GET'])
+@require_permission('workers:view')
 def api_get_stale_workers():
     """
     Get list of stale workers.
@@ -4143,6 +4227,7 @@ def api_get_stale_workers():
 
 
 @app.route('/api/workers/stale/handle', methods=['POST'])
+@require_permission('workers:admin')
 def api_handle_stale_workers():
     """
     Handle stale workers by marking them and requeuing their jobs.
@@ -4177,6 +4262,7 @@ def api_handle_stale_workers():
 # =============================================================================
 
 @app.route('/api/jobs', methods=['POST'])
+@require_permission('jobs:submit')
 def api_submit_job():
     """
     Submit a new job to the queue.
@@ -4256,6 +4342,7 @@ def api_submit_job():
 
 
 @app.route('/api/jobs', methods=['GET'])
+@require_permission('jobs:view')
 def api_list_jobs():
     """
     List jobs with optional filters.
@@ -4306,6 +4393,7 @@ def api_list_jobs():
 
 
 @app.route('/api/jobs/<job_id>', methods=['GET'])
+@require_permission('jobs:view')
 def api_get_job(job_id):
     """Get a single job by ID."""
     if not storage_backend:
@@ -4319,6 +4407,7 @@ def api_get_job(job_id):
 
 
 @app.route('/api/jobs/<job_id>', methods=['DELETE'])
+@require_permission('jobs:cancel')
 def api_cancel_job(job_id):
     """
     Cancel a job.
@@ -4358,6 +4447,7 @@ def api_cancel_job(job_id):
 
 
 @app.route('/api/jobs/<job_id>/log/stream', methods=['POST'])
+@worker_auth_required
 def api_stream_job_log(job_id):
     """
     Stream log content from worker during job execution.
@@ -4430,6 +4520,7 @@ def api_stream_job_log(job_id):
 
 
 @app.route('/api/jobs/<job_id>/log', methods=['GET'])
+@require_permission('logs:view')
 def api_get_job_log(job_id):
     """
     Get job execution log.
@@ -4518,6 +4609,7 @@ def api_get_job_log(job_id):
 
 
 @app.route('/api/jobs/pending', methods=['GET'])
+@worker_auth_required
 def api_get_pending_jobs():
     """
     Get pending jobs awaiting assignment.
@@ -4533,6 +4625,7 @@ def api_get_pending_jobs():
 
 
 @app.route('/api/jobs/<job_id>/assign', methods=['POST'])
+@service_auth_required
 def api_assign_job(job_id):
     """
     Assign a job to a worker.
@@ -4594,6 +4687,7 @@ def api_assign_job(job_id):
 
 
 @app.route('/api/jobs/<job_id>/start', methods=['POST'])
+@worker_auth_required
 def api_start_job(job_id):
     """
     Mark a job as started (called by worker when execution begins).
@@ -4644,6 +4738,7 @@ def api_start_job(job_id):
 
 
 @app.route('/api/jobs/<job_id>/complete', methods=['POST'])
+@worker_auth_required
 def api_complete_job(job_id):
     """
     Mark a job as completed (called by worker when execution finishes).
@@ -4864,6 +4959,7 @@ def get_job_router():
 
 
 @app.route('/api/jobs/route', methods=['POST'])
+@service_auth_required
 def api_route_pending_jobs():
     """
     Route pending jobs to available workers.
@@ -4891,6 +4987,7 @@ def api_route_pending_jobs():
 
 
 @app.route('/api/jobs/<job_id>/route', methods=['POST'])
+@service_auth_required
 def api_route_specific_job(job_id):
     """
     Route a specific job to a worker.
@@ -4910,6 +5007,7 @@ def api_route_specific_job(job_id):
 
 
 @app.route('/api/jobs/<job_id>/recommendations', methods=['GET'])
+@require_permission('workers:admin')
 def api_job_worker_recommendations(job_id):
     """
     Get worker recommendations for a job.
@@ -4940,6 +5038,7 @@ def api_job_worker_recommendations(job_id):
 # =============================================================================
 
 @app.route('/api/sync/status', methods=['GET'])
+@require_permission('workers:view')
 def api_sync_status():
     """
     Get content repository status.
@@ -4966,6 +5065,7 @@ def api_sync_status():
 
 
 @app.route('/api/sync/revision', methods=['GET'])
+@worker_auth_required
 def api_sync_revision():
     """
     Get current content revision (HEAD SHA).
@@ -4999,6 +5099,7 @@ def api_sync_revision():
 
 
 @app.route('/api/sync/manifest', methods=['GET'])
+@worker_auth_required
 def api_sync_manifest():
     """
     Get file manifest with checksums.
@@ -5038,6 +5139,7 @@ def api_sync_manifest():
 
 
 @app.route('/api/sync/archive', methods=['GET'])
+@worker_auth_required
 def api_sync_archive():
     """
     Download content archive (tar.gz).
@@ -5070,6 +5172,7 @@ def api_sync_archive():
 
 
 @app.route('/api/sync/file/<path:filepath>', methods=['GET'])
+@worker_auth_required
 def api_sync_file(filepath):
     """
     Download a single file from the content repository.
@@ -5120,6 +5223,7 @@ def api_sync_file(filepath):
 
 
 @app.route('/api/sync/history', methods=['GET'])
+@require_permission('config:view')
 def api_sync_history():
     """
     Get content commit history.
@@ -5152,6 +5256,7 @@ def api_sync_history():
 
 
 @app.route('/api/sync/commit', methods=['POST'])
+@require_permission('config:edit')
 def api_sync_commit():
     """
     Manually commit current content state.
@@ -5427,6 +5532,7 @@ AGENT_SERVICE_URL = os.environ.get('AGENT_SERVICE_URL', 'http://agent-service:50
 # =============================================================================
 
 @app.route('/api/deployment/status', methods=['GET'])
+@require_permission('config:view')
 def api_deployment_status():
     """
     Return desired vs current services and deployment delta (what needs to be deployed).
@@ -5448,6 +5554,7 @@ def api_deployment_status():
 
 
 @app.route('/api/deployment/run', methods=['POST'])
+@admin_required
 def api_deployment_run():
     """
     Run deployment playbook for current delta (bootstrap or expand).
@@ -5465,17 +5572,20 @@ def api_deployment_run():
 
 
 @app.route('/config')
+@require_permission('config:view')
 def config_page():
     """Config panel: view/edit app config, backup/restore config and data."""
     return render_template('config.html')
 
 
 @app.route('/agent')
+@require_permission('agent:view')
 def agent_dashboard():
     """Render Agent Dashboard."""
     return render_template('agent.html')
 
 @app.route('/api/agent/overview')
+@require_permission('agent:view')
 def agent_overview():
     """Proxy to get agent health status."""
     try:
@@ -5485,6 +5595,7 @@ def agent_overview():
         return jsonify({'error': str(e), 'status': 'offline'}), 503
 
 @app.route('/api/agent/reviews')
+@require_permission('agent:view')
 def agent_reviews():
     """Proxy to get recent log reviews."""
     try:
@@ -5494,6 +5605,7 @@ def agent_reviews():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/agent/reviews/<job_id>')
+@require_permission('agent:view')
 def agent_get_review(job_id):
     """Proxy to get specific review."""
     try:
@@ -5504,6 +5616,7 @@ def agent_get_review(job_id):
 
 
 @app.route('/api/agent/review-status/<job_id>')
+@require_permission('agent:view')
 def agent_review_status(job_id):
     """Proxy to get review status only (pending | running | completed | error) for polling."""
     try:
@@ -5514,6 +5627,7 @@ def agent_review_status(job_id):
 
 
 @app.route('/api/agent/review-stats')
+@require_permission('agent:view')
 def agent_review_stats():
     """Proxy to get avg response time for agent reviews."""
     try:
@@ -5524,6 +5638,7 @@ def agent_review_stats():
 
 
 @app.route('/api/agent/review-ready', methods=['POST'])
+@service_auth_required
 def agent_review_ready():
     """Called by agent when a review is ready; push to UI via socket so clients don't need to poll."""
     try:
@@ -5540,6 +5655,7 @@ def agent_review_ready():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/agent/proposals')
+@require_permission('agent:view')
 def agent_proposals():
     """Proxy to get recent playbook proposals."""
     try:
@@ -5549,6 +5665,7 @@ def agent_proposals():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/agent/reports')
+@require_permission('agent:view')
 def agent_reports():
     """Proxy to get recent config reports."""
     try:
@@ -5558,6 +5675,7 @@ def agent_reports():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/agent/generate', methods=['POST'])
+@require_permission('agent:generate')
 def agent_generate():
     """Proxy to generate playbook."""
     try:
@@ -5571,6 +5689,7 @@ def agent_generate():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/agent/analyze-config', methods=['POST'])
+@require_permission('agent:analyze')
 def agent_analyze_config():
     """Proxy to analyze config."""
     try:
