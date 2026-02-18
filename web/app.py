@@ -3611,11 +3611,27 @@ def cmdb_page():
 @app.route('/schedules')
 @require_permission('schedules:view')
 def schedules_page():
-    """Main schedule management page - list all schedules"""
+    """Main schedule management page - list all schedules
+
+    Users with 'schedules.all:view' or admin see all schedules.
+    Other users see only their own created schedules.
+    """
     if not schedule_manager:
         return "Scheduler not initialized", 500
 
     schedules = schedule_manager.get_all_schedules()
+
+    # Filter by ownership unless user has all-view permission
+    current_user = get_current_user()
+    from web.authz import check_permission
+    has_all_view = check_permission(current_user, 'schedules.all:view', storage_backend) or \
+                   check_permission(current_user, 'schedules:*', storage_backend) or \
+                   check_permission(current_user, '*:*', storage_backend)
+
+    if not has_all_view and current_user:
+        user_username = current_user.get('username', '')
+        schedules = [s for s in schedules if s.get('created_by') == user_username]
+
     playbooks = get_playbooks()
     targets = get_inventory_targets()
 
@@ -3697,13 +3713,18 @@ def create_schedule():
         if not name:
             name = f"Batch: {len(playbooks)} playbooks - {len(targets)} targets"
 
+        # Get current user for ownership tracking
+        current_user = get_current_user()
+        created_by = current_user.get('username') if current_user else None
+
         # Create batch schedule
         schedule_id = schedule_manager.create_batch_schedule(
             playbooks=playbooks,
             targets=targets,
             name=name,
             recurrence_config=recurrence_config,
-            description=description
+            description=description,
+            created_by=created_by
         )
     else:
         # Single playbook schedule (original behavior)
@@ -3716,20 +3737,25 @@ def create_schedule():
         if not name:
             name = f"{playbook} - {target}"
 
+        # Get current user for ownership tracking
+        current_user = get_current_user()
+        created_by = current_user.get('username') if current_user else None
+
         # Create the schedule
         schedule_id = schedule_manager.create_schedule(
             playbook=playbook,
             target=target,
             name=name,
             recurrence_config=recurrence_config,
-            description=description
+            description=description,
+            created_by=created_by
         )
 
     return redirect(url_for('schedules_page'))
 
 
 @app.route('/schedules/<schedule_id>/edit')
-@require_permission('schedules:edit')
+@require_any_permission('schedules:edit', 'schedules.own:edit', 'schedules.all:edit')
 def edit_schedule(schedule_id):
     """Form to edit an existing schedule"""
     if not schedule_manager:
@@ -3738,6 +3764,25 @@ def edit_schedule(schedule_id):
     schedule = schedule_manager.get_schedule(schedule_id)
     if not schedule:
         return "Schedule not found", 404
+
+    # Check ownership-based permission
+    current_user = get_current_user()
+    schedule_owner = schedule.get('created_by', '')
+    user_username = current_user.get('username', '') if current_user else ''
+
+    is_owner = (schedule_owner == user_username)
+    from web.authz import check_permission
+    has_all_edit = check_permission(current_user, 'schedules.all:edit', storage_backend) or \
+                   check_permission(current_user, 'schedules:*', storage_backend) or \
+                   check_permission(current_user, '*:*', storage_backend)
+
+    if is_owner:
+        has_own_edit = check_permission(current_user, 'schedules.own:edit', storage_backend) or \
+                       check_permission(current_user, 'schedules:edit', storage_backend)
+        if not (has_own_edit or has_all_edit):
+            return "Permission denied: cannot edit this schedule", 403
+    elif not has_all_edit:
+        return "Permission denied: cannot edit schedules created by other users", 403
 
     playbooks = get_playbooks()
     targets = get_inventory_targets()
@@ -3761,7 +3806,7 @@ def edit_schedule(schedule_id):
 
 
 @app.route('/schedules/<schedule_id>/update', methods=['POST'])
-@require_permission('schedules:edit')
+@require_any_permission('schedules:edit', 'schedules.own:edit', 'schedules.all:edit')
 def update_schedule(schedule_id):
     """Update an existing schedule"""
     if not schedule_manager:
@@ -3770,6 +3815,25 @@ def update_schedule(schedule_id):
     schedule = schedule_manager.get_schedule(schedule_id)
     if not schedule:
         return "Schedule not found", 404
+
+    # Check ownership-based permission
+    current_user = get_current_user()
+    schedule_owner = schedule.get('created_by', '')
+    user_username = current_user.get('username', '') if current_user else ''
+
+    is_owner = (schedule_owner == user_username)
+    from web.authz import check_permission
+    has_all_edit = check_permission(current_user, 'schedules.all:edit', storage_backend) or \
+                   check_permission(current_user, 'schedules:*', storage_backend) or \
+                   check_permission(current_user, '*:*', storage_backend)
+
+    if is_owner:
+        has_own_edit = check_permission(current_user, 'schedules.own:edit', storage_backend) or \
+                       check_permission(current_user, 'schedules:edit', storage_backend)
+        if not (has_own_edit or has_all_edit):
+            return "Permission denied: cannot edit this schedule", 403
+    elif not has_all_edit:
+        return "Permission denied: cannot edit schedules created by other users", 403
 
     name = request.form.get('name', '').strip()
     description = request.form.get('description', '').strip()
@@ -3817,10 +3881,28 @@ def schedule_history(schedule_id):
 @app.route('/api/schedules')
 @require_permission('schedules:view')
 def api_schedules():
-    """Get all schedules as JSON"""
+    """Get all schedules as JSON
+
+    Users with 'schedules.all:view' or admin see all schedules.
+    Other users see only their own created schedules.
+    """
     if not schedule_manager:
         return jsonify({'error': 'Scheduler not initialized'}), 500
-    return jsonify(schedule_manager.get_all_schedules())
+
+    schedules = schedule_manager.get_all_schedules()
+
+    # Filter by ownership unless user has all-view permission
+    current_user = get_current_user()
+    from web.authz import check_permission
+    has_all_view = check_permission(current_user, 'schedules.all:view', storage_backend) or \
+                   check_permission(current_user, 'schedules:*', storage_backend) or \
+                   check_permission(current_user, '*:*', storage_backend)
+
+    if not has_all_view and current_user:
+        user_username = current_user.get('username', '')
+        schedules = [s for s in schedules if s.get('created_by') == user_username]
+
+    return jsonify(schedules)
 
 
 @app.route('/api/schedules/<schedule_id>')
@@ -3837,55 +3919,99 @@ def api_schedule_detail(schedule_id):
 
 
 @app.route('/api/schedules/<schedule_id>/pause', methods=['POST'])
-@require_permission('schedules:edit')
+@require_any_permission('schedules:edit', 'schedules.own:edit', 'schedules.all:edit')
 def api_pause_schedule(schedule_id):
     """Pause a schedule"""
-    if not schedule_manager:
-        return jsonify({'error': 'Scheduler not initialized'}), 500
+    allowed, error = check_schedule_modify_permission(schedule_id)
+    if not allowed:
+        return error
 
     success = schedule_manager.pause_schedule(schedule_id)
     return jsonify({'success': success})
 
 
 @app.route('/api/schedules/<schedule_id>/resume', methods=['POST'])
-@require_permission('schedules:edit')
+@require_any_permission('schedules:edit', 'schedules.own:edit', 'schedules.all:edit')
 def api_resume_schedule(schedule_id):
     """Resume a paused schedule"""
-    if not schedule_manager:
-        return jsonify({'error': 'Scheduler not initialized'}), 500
+    allowed, error = check_schedule_modify_permission(schedule_id)
+    if not allowed:
+        return error
 
     success = schedule_manager.resume_schedule(schedule_id)
     return jsonify({'success': success})
 
 
+def check_schedule_modify_permission(schedule_id):
+    """
+    Check if current user can modify a schedule.
+
+    Returns:
+        (allowed: bool, error_response: tuple or None)
+    """
+    if not schedule_manager:
+        return False, (jsonify({'error': 'Scheduler not initialized'}), 500)
+
+    schedule = schedule_manager.get_schedule(schedule_id)
+    if not schedule:
+        return False, (jsonify({'error': 'Schedule not found'}), 404)
+
+    current_user = get_current_user()
+    schedule_owner = schedule.get('created_by', '')
+    user_username = current_user.get('username', '') if current_user else ''
+
+    # User can modify if they own the schedule, or have full schedule permissions
+    is_owner = (schedule_owner == user_username)
+    from web.authz import check_permission
+    has_all_edit = check_permission(current_user, 'schedules.all:edit', storage_backend) or \
+                   check_permission(current_user, 'schedules:*', storage_backend) or \
+                   check_permission(current_user, '*:*', storage_backend)
+
+    # If user owns it, check for schedules.own:edit permission
+    if is_owner:
+        has_own_edit = check_permission(current_user, 'schedules.own:edit', storage_backend) or \
+                       check_permission(current_user, 'schedules:edit', storage_backend)
+        if has_own_edit or has_all_edit:
+            return True, None
+
+    # If not owner, need full permissions
+    if has_all_edit:
+        return True, None
+
+    return False, (jsonify({'error': 'Permission denied: cannot modify schedules created by other users'}), 403)
+
+
 @app.route('/api/schedules/<schedule_id>/delete', methods=['POST'])
-@require_permission('schedules:edit')
+@require_any_permission('schedules:edit', 'schedules.own:edit', 'schedules.all:edit')
 def api_delete_schedule(schedule_id):
     """Delete a schedule"""
-    if not schedule_manager:
-        return jsonify({'error': 'Scheduler not initialized'}), 500
+    allowed, error = check_schedule_modify_permission(schedule_id)
+    if not allowed:
+        return error
 
     success = schedule_manager.delete_schedule(schedule_id)
     return jsonify({'success': success})
 
 
 @app.route('/api/schedules/<schedule_id>/stop', methods=['POST'])
-@require_permission('schedules:edit')
+@require_any_permission('schedules:edit', 'schedules.own:edit', 'schedules.all:edit')
 def api_stop_schedule(schedule_id):
     """Stop a currently running scheduled job"""
-    if not schedule_manager:
-        return jsonify({'error': 'Scheduler not initialized'}), 500
+    allowed, error = check_schedule_modify_permission(schedule_id)
+    if not allowed:
+        return error
 
     success = schedule_manager.stop_running_job(schedule_id)
     return jsonify({'success': success})
 
 
 @app.route('/api/schedules/<schedule_id>/run_now', methods=['POST'])
-@require_permission('schedules:edit')
+@require_any_permission('schedules:edit', 'schedules.own:edit', 'schedules.all:edit')
 def api_run_schedule_now(schedule_id):
     """Run a scheduled playbook immediately (one-off execution)"""
-    if not schedule_manager:
-        return jsonify({'error': 'Scheduler not initialized'}), 500
+    allowed, error = check_schedule_modify_permission(schedule_id)
+    if not allowed:
+        return error
 
     success = schedule_manager.run_schedule_now(schedule_id)
     if not success:
@@ -4586,6 +4712,10 @@ def api_submit_job():
     job_id = str(uuid.uuid4())
     now = datetime.now().isoformat()
 
+    # Get current user for ownership tracking
+    current_user = get_current_user()
+    submitted_by = current_user.get('username') if current_user else data.get('submitted_by', 'api')
+
     job = {
         'id': job_id,
         'playbook': playbook,
@@ -4597,7 +4727,7 @@ def api_submit_job():
         'extra_vars': data.get('extra_vars', {}),
         'status': 'queued',
         'assigned_worker': None,
-        'submitted_by': data.get('submitted_by', 'api'),
+        'submitted_by': submitted_by,
         'submitted_at': now,
         'assigned_at': None,
         'started_at': None,
@@ -4636,6 +4766,8 @@ def api_list_jobs():
     - offset: Skip first N results (default: 0)
 
     Returns list of job objects.
+    Users with 'jobs.all:view' or admin see all jobs.
+    Other users see only their own submitted jobs.
     """
     if not storage_backend:
         return jsonify({'error': 'Storage backend not initialized'}), 500
@@ -4657,6 +4789,17 @@ def api_list_jobs():
 
     # Get jobs from storage
     jobs = storage_backend.get_all_jobs(filters)
+
+    # Filter by ownership unless user has all-view permission
+    current_user = get_current_user()
+    from web.authz import check_permission
+    has_all_view = check_permission(current_user, 'jobs.all:view', storage_backend) or \
+                   check_permission(current_user, 'jobs:*', storage_backend) or \
+                   check_permission(current_user, '*:*', storage_backend)
+
+    if not has_all_view and current_user:
+        user_username = current_user.get('username', '')
+        jobs = [j for j in jobs if j.get('submitted_by') == user_username]
 
     # Apply limit/offset
     limit = min(500, max(1, int(request.args.get('limit', 100))))
@@ -4688,13 +4831,16 @@ def api_get_job(job_id):
 
 
 @app.route('/api/jobs/<job_id>', methods=['DELETE'])
-@require_permission('jobs:cancel')
+@require_any_permission('jobs:cancel', 'jobs.own:cancel', 'jobs.all:cancel')
 def api_cancel_job(job_id):
     """
     Cancel a job.
 
     Only jobs with status 'queued' or 'assigned' can be cancelled.
     Running jobs will be marked for cancellation (worker must check).
+
+    Users can cancel their own jobs with 'jobs:cancel' or 'jobs.own:cancel'.
+    To cancel other users' jobs, requires 'jobs.all:cancel' or 'jobs:*'.
     """
     if not storage_backend:
         return jsonify({'error': 'Storage backend not initialized'}), 500
@@ -4702,6 +4848,21 @@ def api_cancel_job(job_id):
     job = storage_backend.get_job(job_id)
     if not job:
         return jsonify({'error': 'Job not found'}), 404
+
+    # Check ownership-based permission
+    current_user = get_current_user()
+    job_owner = job.get('submitted_by', '')
+    user_username = current_user.get('username', '') if current_user else ''
+
+    # User can cancel if they own the job, or have all-cancel permission
+    is_owner = (job_owner == user_username)
+    from web.authz import check_permission
+    has_all_cancel = check_permission(current_user, 'jobs.all:cancel', storage_backend) or \
+                     check_permission(current_user, 'jobs:*', storage_backend) or \
+                     check_permission(current_user, '*:*', storage_backend)
+
+    if not is_owner and not has_all_cancel:
+        return jsonify({'error': 'Permission denied: cannot cancel jobs submitted by other users'}), 403
 
     current_status = job.get('status', '')
 

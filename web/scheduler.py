@@ -659,7 +659,8 @@ class ScheduleManager:
     # =========================================================================
 
     def create_schedule(self, playbook: str, target: str, name: str,
-                        recurrence_config: Dict, description: str = '') -> str:
+                        recurrence_config: Dict, description: str = '',
+                        created_by: str = None) -> str:
         """
         Create a new schedule.
 
@@ -669,6 +670,7 @@ class ScheduleManager:
             name: Human-readable schedule name
             recurrence_config: Dict with recurrence settings
             description: Optional description
+            created_by: Username or ID of creator (for ownership tracking)
 
         Returns:
             schedule_id: UUID of created schedule
@@ -684,6 +686,7 @@ class ScheduleManager:
             'recurrence': recurrence_config,
             'enabled': True,
             'created': datetime.now().isoformat(),
+            'created_by': created_by,
             'last_run': None,
             'last_status': None,
             'next_run': None,
@@ -709,7 +712,8 @@ class ScheduleManager:
         return schedule_id
 
     def create_batch_schedule(self, playbooks: List[str], targets: List[str], name: str,
-                              recurrence_config: Dict, description: str = '') -> str:
+                              recurrence_config: Dict, description: str = '',
+                              created_by: str = None) -> str:
         """
         Create a new batch schedule (multiple playbooks, multiple targets).
 
@@ -719,6 +723,7 @@ class ScheduleManager:
             name: Human-readable schedule name
             recurrence_config: Dict with recurrence settings
             description: Optional description
+            created_by: Username or ID of creator (for ownership tracking)
 
         Returns:
             schedule_id: UUID of created schedule
@@ -737,6 +742,7 @@ class ScheduleManager:
             'recurrence': recurrence_config,
             'enabled': True,
             'created': datetime.now().isoformat(),
+            'created_by': created_by,
             'last_run': None,
             'last_status': None,
             'next_run': None,
