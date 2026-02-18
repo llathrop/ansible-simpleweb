@@ -32,6 +32,21 @@ LOGS_DIR = os.environ.get('LOGS_DIR', '/app/logs')
 DATA_DIR = os.environ.get('DATA_DIR', '/app/data')
 PLAYBOOKS_DIR = os.environ.get('PLAYBOOKS_DIR', '/app/playbooks')
 DOCS_DIR = os.environ.get('DOCS_DIR', '/app/docs')
+
+# SSL Configuration for requests to ansible-web
+# SSL_VERIFY: true (default), false (disable verification for self-signed), or path to CA cert
+def _get_ssl_verify():
+    """Get SSL verification setting from environment."""
+    verify_env = os.environ.get('SSL_VERIFY', 'true').lower()
+    if verify_env in ('false', '0', 'no', 'disable'):
+        return False
+    elif verify_env in ('true', '1', 'yes', 'enable'):
+        return True
+    else:
+        # Treat as path to CA certificate
+        return verify_env if os.path.exists(verify_env) else True
+
+SSL_VERIFY = _get_ssl_verify()
 REVIEWS_DIR = os.path.join(DATA_DIR, 'reviews')
 REVIEW_STATUS_DIR = os.path.join(DATA_DIR, 'review_status')
 REVIEW_STATS_FILE = os.path.join(DATA_DIR, 'review_stats.json')
@@ -138,7 +153,7 @@ def monitor_schedules():
     try:
         # Fetch active schedules from Ansible Web
         # Set timeout to prevent hanging if web is unresponsive
-        resp = requests.get(f"{SERVER_URL}/api/schedules", timeout=5)
+        resp = requests.get(f"{SERVER_URL}/api/schedules", timeout=5, verify=SSL_VERIFY)
         if resp.status_code != 200:
             return jsonify({'error': 'Failed to fetch schedules'}), 500
             
@@ -335,7 +350,7 @@ def _notify_web_review_ready(job_id, status):
     """Tell ansible-web that a review is ready so it can push to UI (no polling)."""
     url = f"{SERVER_URL}/api/agent/review-ready"
     try:
-        r = requests.post(url, json={'job_id': job_id, 'status': status}, timeout=5)
+        r = requests.post(url, json={'job_id': job_id, 'status': status}, timeout=5, verify=SSL_VERIFY)
         if r.status_code != 200:
             logger.warning(f"Notify review-ready returned {r.status_code}: {r.text[:100]}")
         else:
@@ -405,7 +420,7 @@ def process_log_review(job_id, exit_code):
     try:
         # 1. Fetch Job Details from Ansible Web
         job_url = f"{SERVER_URL}/api/jobs/{job_id}"
-        resp = requests.get(job_url, timeout=15)
+        resp = requests.get(job_url, timeout=15, verify=SSL_VERIFY)
         if resp.status_code != 200:
             err = f"Failed to fetch job details: {resp.status_code} {resp.text[:200]}"
             logger.error(err)

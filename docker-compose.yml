@@ -4,6 +4,8 @@ services:
     container_name: ansible-simpleweb
     ports:
       - "3001:3001"
+      # HTTPS port (enable SSL_ENABLED=true to use)
+      - "3443:3443"
     volumes:
       # Mount playbooks for easy editing
       - ./playbooks:/app/playbooks
@@ -13,7 +15,7 @@ services:
       - ./inventory:/app/inventory
       # Mount web app for development
       - ./web:/app/web
-      # Mount config for themes
+      # Mount config for themes and certificates
       - ./config:/app/config
       # Mount custom Ansible modules
       - ./library:/app/library
@@ -27,6 +29,8 @@ services:
       - ~/.ssh:/root/.ssh:ro
       # Mount directory for uploaded SSH keys (writable)
       - ./ssh-keys:/app/ssh-keys
+      # Mount gunicorn config for production mode
+      - ./gunicorn_config.py:/app/gunicorn_config.py
     environment:
       - FLASK_ENV=development
       - FLASK_APP=web/app.py
@@ -41,6 +45,15 @@ services:
       - REGISTRATION_TOKEN=cluster-secret-token-change-in-prod
       - CHECKIN_INTERVAL=60
       - LOCAL_WORKER_TAGS=local,primary
+      # SSL Configuration (set SSL_ENABLED=true to enable HTTPS)
+      - SSL_ENABLED=${SSL_ENABLED:-false}
+      - SSL_CERT_PATH=/app/config/certs/server.crt
+      - SSL_KEY_PATH=/app/config/certs/server.key
+      - SSL_HOSTNAME=${SSL_HOSTNAME:-localhost}
+      # Authentication (set AUTH_ENABLED=true to require login)
+      - AUTH_ENABLED=${AUTH_ENABLED:-false}
+      - INITIAL_ADMIN_USER=${INITIAL_ADMIN_USER:-admin}
+      - INITIAL_ADMIN_PASSWORD=${INITIAL_ADMIN_PASSWORD:-}
     depends_on:
       - mongodb
     restart: unless-stopped
