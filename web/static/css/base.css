@@ -212,6 +212,37 @@ body.layout-app {
     font-size: 0.9rem;
 }
 
+.layout-app .user-menu {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding-left: 16px;
+    border-left: 1px solid var(--border-primary);
+}
+
+.layout-app .user-menu .user-name {
+    color: var(--text-secondary);
+    font-size: 0.9em;
+    font-weight: 500;
+}
+
+.layout-app .user-menu .logout-link {
+    color: var(--text-muted);
+    text-decoration: none;
+    font-size: 0.85em;
+    padding: 4px 10px;
+    border: 1px solid var(--border-primary);
+    border-radius: 4px;
+    background: var(--bg-tertiary);
+    transition: all 0.2s;
+}
+
+.layout-app .user-menu .logout-link:hover {
+    color: var(--text-primary);
+    border-color: var(--accent-primary);
+    background: var(--bg-secondary);
+}
+
 .layout-app .layout-body {
     display: flex;
     flex: 1;

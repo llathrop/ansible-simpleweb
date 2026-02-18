@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Ansible Web Interface</title>
+    <link rel="stylesheet" href="/static/css/base.css">
+    <style>
+        body {
+            background: var(--bg-primary, #1a1a2e);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            font-family: var(--font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+        }
+        .login-container {
+            background: var(--bg-secondary, #16213e);
+            border: 1px solid var(--border-primary, #0f3460);
+            border-radius: 12px;
+            padding: 40px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+        }
+        .login-header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+        .login-header h1 {
+            color: var(--text-primary, #e0e0e0);
+            font-size: 1.75rem;
+            margin: 0 0 8px 0;
+        }
+        .login-header p {
+            color: var(--text-muted, #888);
+            margin: 0;
+            font-size: 0.95rem;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            color: var(--text-secondary, #ccc);
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1px solid var(--border-primary, #0f3460);
+            border-radius: 6px;
+            background: var(--bg-tertiary, #1a1a2e);
+            color: var(--text-primary, #e0e0e0);
+            font-size: 1rem;
+            box-sizing: border-box;
+            transition: border-color 0.2s;
+        }
+        .form-group input:focus {
+            outline: none;
+            border-color: var(--accent-primary, #e94560);
+        }
+        .form-group input::placeholder {
+            color: var(--text-muted, #666);
+        }
+        .btn-login {
+            width: 100%;
+            padding: 14px;
+            background: var(--accent-primary, #e94560);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .btn-login:hover {
+            background: var(--accent-primary-hover, #d63851);
+        }
+        .btn-login:disabled {
+            background: var(--text-muted, #666);
+            cursor: not-allowed;
+        }
+        .error-msg {
+            background: var(--status-failed-bg, rgba(239, 68, 68, 0.1));
+            color: var(--status-failed-text, #ef4444);
+            padding: 12px 16px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-size: 0.9rem;
+            display: none;
+        }
+        .error-msg.visible {
+            display: block;
+        }
+        .footer-text {
+            text-align: center;
+            margin-top: 24px;
+            color: var(--text-muted, #666);
+            font-size: 0.85rem;
+        }
+    </style>
+    <script>
+        (function() {
+            try {
+                var cached = localStorage.getItem('ansible-web-theme-vars');
+                if (cached) {
+                    var vars = JSON.parse(cached);
+                    var root = document.documentElement;
+                    for (var key in vars) {
+                        if (vars[key]) root.style.setProperty(key, vars[key]);
+                    }
+                }
+            } catch (e) {}
+        })();
+    </script>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-header">
+            <h1>Ansible SimpleWeb</h1>
+            <p>Sign in to continue</p>
+        </div>
+
+        <div id="errorMsg" class="error-msg"></div>
+
+        <form id="loginForm" onsubmit="return handleLogin(event)">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" placeholder="Enter your username" required autofocus>
+            </div>
+
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" placeholder="Enter your password" required>
+            </div>
+
+            <button type="submit" class="btn-login" id="btnLogin">Sign In</button>
+        </form>
+
+        <p class="footer-text">Ansible SimpleWeb | Secure Access</p>
+    </div>
+
+    <script>
+        function showError(message) {
+            var errorEl = document.getElementById('errorMsg');
+            errorEl.textContent = message;
+            errorEl.classList.add('visible');
+        }
+
+        function hideError() {
+            document.getElementById('errorMsg').classList.remove('visible');
+        }
+
+        function handleLogin(event) {
+            event.preventDefault();
+            hideError();
+
+            var btn = document.getElementById('btnLogin');
+            var username = document.getElementById('username').value.trim();
+            var password = document.getElementById('password').value;
+
+            if (!username || !password) {
+                showError('Please enter both username and password');
+                return false;
+            }
+
+            btn.disabled = true;
+            btn.textContent = 'Signing in...';
+
+            fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: username, password: password })
+            })
+            .then(function(response) {
+                return response.json().then(function(data) {
+                    return { status: response.status, data: data };
+                });
+            })
+            .then(function(result) {
+                if (result.status === 200 && result.data.ok) {
+                    // Redirect to the originally requested page or home
+                    var redirect = new URLSearchParams(window.location.search).get('next') || '/';
+                    window.location.href = redirect;
+                } else {
+                    showError(result.data.error || 'Login failed');
+                    btn.disabled = false;
+                    btn.textContent = 'Sign In';
+                }
+            })
+            .catch(function(err) {
+                showError('Connection error: ' + err.message);
+                btn.disabled = false;
+                btn.textContent = 'Sign In';
+            });
+
+            return false;
+        }
+
+        // Check if already logged in
+        fetch('/api/auth/session')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.authenticated) {
+                    var redirect = new URLSearchParams(window.location.search).get('next') || '/';
+                    window.location.href = redirect;
+                }
+            })
+            .catch(function() {});
+    </script>
+</body>
+</html>

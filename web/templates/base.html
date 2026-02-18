@@ -47,6 +47,12 @@
                 <label for="themeSelect">Theme:</label>
                 <select id="themeSelect" class="theme-select"></select>
             </div>
+            {% if current_user %}
+            <div class="user-menu">
+                <span class="user-name">{{ current_user.username }}</span>
+                <a href="/logout" class="logout-link" title="Log out">Logout</a>
+            </div>
+            {% endif %}
         </div>
     </header>
 
@@ -84,7 +90,7 @@
     </div>
 
     <footer class="app-footer">
-        <p>Ansible SimpleWeb | Localhost Only</p>
+        <p>Ansible SimpleWeb{% if current_user %} | {{ current_user.username }}{% endif %}</p>
     </footer>
     {% block footer_scripts %}{% endblock %}
 </body>

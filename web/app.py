@@ -32,6 +32,12 @@ from storage import get_storage_backend
 from content_repo import ContentRepository, get_content_repo
 from inventory_sync import run_inventory_sync
 
+# Import auth module and routes
+from auth_routes import auth_bp, init_auth_middleware, bootstrap_admin_user, get_current_user
+
+# Authentication settings
+AUTH_ENABLED = os.environ.get('AUTH_ENABLED', 'false').lower() == 'true'
+
 app = Flask(__name__)
 
 
@@ -54,12 +60,14 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'ansible-simpleweb-dev-k
 
 @app.context_processor
 def inject_nav_context():
-    """Inject navigation context into all templates (nav_sections, active_section_id, active_page_url)."""
+    """Inject navigation context into all templates (nav_sections, active_section_id, active_page_url, current_user)."""
     try:
         from nav import get_nav_context
-        return get_nav_context(request.path)
+        from flask import g
+        user = getattr(g, 'current_user', None)
+        return get_nav_context(request.path, user)
     except Exception:
-        return {'nav_sections': [], 'active_section_id': None, 'active_page_url': None}
+        return {'nav_sections': [], 'active_section_id': None, 'active_page_url': None, 'current_user': None}
 
 
 # Initialize SocketIO with eventlet for async support
@@ -5585,6 +5593,18 @@ if __name__ == '__main__':
         print(f"Storage backend health check: OK")
     else:
         print(f"WARNING: Storage backend health check failed!")
+
+    # Register auth blueprint
+    app.register_blueprint(auth_bp)
+    print(f"Auth blueprint registered")
+
+    # Initialize authentication middleware
+    init_auth_middleware(app, storage_backend, auth_enabled=AUTH_ENABLED)
+    print(f"Authentication {'ENABLED' if AUTH_ENABLED else 'DISABLED'}")
+
+    # Bootstrap admin user if auth is enabled and no users exist
+    if AUTH_ENABLED:
+        bootstrap_admin_user(storage_backend)
 
     # Initial inventory sync: DB <-> static so workers get all hosts
     _run_inventory_sync()
