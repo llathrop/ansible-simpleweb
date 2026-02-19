@@ -1860,6 +1860,25 @@ def view_log(log_file):
                           started=started,
                           job_id=job_id)
 
+@app.route('/health')
+def health_check():
+    """
+    Simple health check endpoint for connectivity verification.
+
+    This endpoint is public (no authentication required) and is used by:
+    - Workers to verify server is reachable before registration
+    - Load balancers for health checks
+    - Monitoring systems
+
+    Returns:
+        {"status": "healthy", "service": "ansible-simpleweb"}
+    """
+    return jsonify({
+        'status': 'healthy',
+        'service': 'ansible-simpleweb'
+    })
+
+
 @app.route('/api/status')
 @require_permission('playbooks:view')
 def api_status():

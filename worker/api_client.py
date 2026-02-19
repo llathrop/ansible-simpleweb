@@ -373,12 +373,15 @@ class PrimaryAPIClient:
         """
         Check if primary server is reachable.
 
+        Uses the public /health endpoint which doesn't require authentication.
+        This allows workers to verify connectivity before registration.
+
         Returns:
             True if server responds, False otherwise
         """
         try:
             response = requests.get(
-                f"{self.server_url}/api/sync/status",
+                f"{self.server_url}/health",
                 timeout=5,
                 verify=self.ssl_verify
             )
