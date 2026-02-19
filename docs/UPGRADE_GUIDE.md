@@ -262,13 +262,25 @@ After successful upgrade:
 
 ### Workers Cannot Connect
 
-**Symptoms**: Workers show as offline, connection refused
+**Symptoms**: Workers show as offline, connection refused, or constantly restarting
 
 **Solutions**:
-1. Update `SERVER_URL` to use HTTPS
+
+1. Update `SERVER_URL` to use HTTPS (if SSL enabled)
 2. Set `SSL_VERIFY=false` for self-signed certificates
 3. Check firewall allows port 3443
-4. Verify worker token is valid
+4. Verify `REGISTRATION_TOKEN` matches between web and workers
+5. Check worker logs for specific errors:
+
+   ```bash
+   docker compose logs worker-1 --tail 50
+   ```
+
+**Common Error Messages**:
+
+- "Cannot connect to primary server" - Check `SERVER_URL` and network connectivity
+- "Worker ID required" - Worker authentication issue, verify `REGISTRATION_TOKEN`
+- "Initial sync failed" - Worker registered but can't sync content, check worker logs
 
 ### Existing Data Missing
 
