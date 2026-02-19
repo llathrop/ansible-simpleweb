@@ -1,0 +1,261 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit User' if edit_mode else 'New User' }} - Ansible Web Interface{% endblock %}
+
+{% block head_extras %}
+<style>
+.section { background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+.section h2 { margin-top: 0; margin-bottom: 15px; border-bottom: 1px solid var(--border-primary); padding-bottom: 10px; }
+.form-group { margin-bottom: 20px; }
+.form-group label { display: block; margin-bottom: 8px; color: var(--text-secondary); font-weight: 500; }
+.form-group input[type="text"],
+.form-group input[type="email"],
+.form-group input[type="password"] {
+    width: 100%;
+    max-width: 400px;
+    padding: 10px 14px;
+    border: 1px solid var(--border-primary);
+    border-radius: 6px;
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    font-size: 1rem;
+    box-sizing: border-box;
+}
+.form-group input:focus { outline: none; border-color: var(--accent-primary); }
+.form-group input::placeholder { color: var(--text-muted); }
+.form-group small { display: block; margin-top: 4px; color: var(--text-muted); font-size: 0.85em; }
+.checkbox-group { display: flex; flex-wrap: wrap; gap: 12px; }
+.checkbox-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--bg-tertiary); border: 1px solid var(--border-primary); border-radius: 6px; cursor: pointer; transition: border-color 0.2s; }
+.checkbox-item:hover { border-color: var(--accent-primary); }
+.checkbox-item input { margin: 0; }
+.checkbox-item label { cursor: pointer; margin: 0; color: var(--text-primary); }
+.checkbox-item.admin { border-color: rgba(239, 68, 68, 0.3); }
+.checkbox-item.operator { border-color: rgba(59, 130, 246, 0.3); }
+.checkbox-item.monitor { border-color: rgba(34, 197, 94, 0.3); }
+.toggle-group { display: flex; align-items: center; gap: 12px; }
+.toggle-switch { position: relative; width: 48px; height: 24px; }
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.toggle-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: var(--bg-tertiary); border: 1px solid var(--border-primary); border-radius: 24px; transition: 0.3s; }
+.toggle-slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 2px; bottom: 2px; background: var(--text-muted); border-radius: 50%; transition: 0.3s; }
+.toggle-switch input:checked + .toggle-slider { background: var(--accent-primary); border-color: var(--accent-primary); }
+.toggle-switch input:checked + .toggle-slider:before { transform: translateX(24px); background: white; }
+.msg { padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; display: none; }
+.msg.err { background: var(--status-failed-bg, rgba(239, 68, 68, 0.1)); color: var(--status-failed-text, #ef4444); }
+.msg.ok { background: var(--status-completed-bg, rgba(34, 197, 94, 0.1)); color: var(--status-completed-text, #22c55e); }
+.msg.visible { display: block; }
+.btn-group { display: flex; gap: 12px; margin-top: 24px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>{{ 'Edit User' if edit_mode else 'Create New User' }}</h1>
+    <p class="subtitle">{{ 'Update user details and permissions' if edit_mode else 'Add a new user account' }}</p>
+
+    <div id="msgBox" class="msg"></div>
+
+    <div class="section">
+        <form id="userForm" onsubmit="return handleSubmit(event)">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" placeholder="e.g., admin" required {% if edit_mode %}readonly{% endif %}>
+                {% if edit_mode %}<small>Username cannot be changed</small>{% else %}<small>Must be unique, used for login</small>{% endif %}
+            </div>
+
+            <div class="form-group">
+                <label for="email">Email</label>
+                <input type="email" id="email" name="email" placeholder="e.g., admin@example.com">
+                <small>Optional, for notifications</small>
+            </div>
+
+            <div class="form-group">
+                <label for="full_name">Full Name</label>
+                <input type="text" id="full_name" name="full_name" placeholder="e.g., John Doe">
+                <small>Optional display name</small>
+            </div>
+
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" placeholder="{% if edit_mode %}Leave blank to keep current{% else %}Enter a strong password{% endif %}" {% if not edit_mode %}required{% endif %}>
+                <small>{% if edit_mode %}Leave empty to keep current password{% else %}Minimum 8 characters recommended{% endif %}</small>
+            </div>
+
+            <div class="form-group">
+                <label for="password_confirm">Confirm Password</label>
+                <input type="password" id="password_confirm" name="password_confirm" placeholder="{% if edit_mode %}Confirm new password{% else %}Confirm password{% endif %}">
+            </div>
+
+            <div class="form-group">
+                <label>Roles</label>
+                <div class="checkbox-group">
+                    <div class="checkbox-item admin">
+                        <input type="checkbox" id="role_admin" name="roles" value="admin">
+                        <label for="role_admin">admin</label>
+                    </div>
+                    <div class="checkbox-item operator">
+                        <input type="checkbox" id="role_operator" name="roles" value="operator">
+                        <label for="role_operator">operator</label>
+                    </div>
+                    <div class="checkbox-item monitor">
+                        <input type="checkbox" id="role_monitor" name="roles" value="monitor">
+                        <label for="role_monitor">monitor</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="role_servers_admin" name="roles" value="servers_admin">
+                        <label for="role_servers_admin">servers_admin</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="role_servers_operator" name="roles" value="servers_operator">
+                        <label for="role_servers_operator">servers_operator</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="role_network_admin" name="roles" value="network_admin">
+                        <label for="role_network_admin">network_admin</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="role_network_operator" name="roles" value="network_operator">
+                        <label for="role_network_operator">network_operator</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="role_developer" name="roles" value="developer">
+                        <label for="role_developer">developer</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="role_auditor" name="roles" value="auditor">
+                        <label for="role_auditor">auditor</label>
+                    </div>
+                </div>
+                <small>Select one or more roles. Admin has full access.</small>
+            </div>
+
+            <div class="form-group">
+                <label>Account Status</label>
+                <div class="toggle-group">
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="enabled" name="enabled" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span id="enabledLabel">Enabled</span>
+                </div>
+                <small>Disabled accounts cannot log in</small>
+            </div>
+
+            <div class="btn-group">
+                <button type="submit" class="btn btn-primary" id="btnSubmit">{{ 'Save Changes' if edit_mode else 'Create User' }}</button>
+                <a href="/users" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block footer_scripts %}
+<script>
+var editMode = {{ 'true' if edit_mode else 'false' }};
+var editUsername = '{{ username if edit_mode else '' }}';
+
+function showMsg(text, isErr) {
+    var el = document.getElementById('msgBox');
+    el.textContent = text;
+    el.className = 'msg ' + (isErr ? 'err' : 'ok') + ' visible';
+}
+
+function updateEnabledLabel() {
+    var enabled = document.getElementById('enabled').checked;
+    document.getElementById('enabledLabel').textContent = enabled ? 'Enabled' : 'Disabled';
+}
+
+document.getElementById('enabled').addEventListener('change', updateEnabledLabel);
+
+function loadUser(username) {
+    fetch('/api/users/' + encodeURIComponent(username))
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.error) {
+                showMsg('Error loading user: ' + data.error, true);
+                return;
+            }
+            var user = data.user;
+            document.getElementById('username').value = user.username || '';
+            document.getElementById('email').value = user.email || '';
+            document.getElementById('full_name').value = user.full_name || '';
+            document.getElementById('enabled').checked = user.enabled !== false;
+            updateEnabledLabel();
+
+            // Set roles
+            var roles = user.roles || [];
+            document.querySelectorAll('input[name="roles"]').forEach(function(cb) {
+                cb.checked = roles.indexOf(cb.value) !== -1;
+            });
+        })
+        .catch(function(e) { showMsg('Failed to load user: ' + e.message, true); });
+}
+
+function handleSubmit(event) {
+    event.preventDefault();
+
+    var password = document.getElementById('password').value;
+    var passwordConfirm = document.getElementById('password_confirm').value;
+
+    if (password && password !== passwordConfirm) {
+        showMsg('Passwords do not match', true);
+        return false;
+    }
+
+    if (!editMode && !password) {
+        showMsg('Password is required for new users', true);
+        return false;
+    }
+
+    var roles = [];
+    document.querySelectorAll('input[name="roles"]:checked').forEach(function(cb) {
+        roles.push(cb.value);
+    });
+
+    var payload = {
+        username: document.getElementById('username').value.trim(),
+        email: document.getElementById('email').value.trim(),
+        full_name: document.getElementById('full_name').value.trim(),
+        roles: roles,
+        enabled: document.getElementById('enabled').checked
+    };
+
+    if (password) {
+        payload.password = password;
+    }
+
+    var btn = document.getElementById('btnSubmit');
+    btn.disabled = true;
+    btn.textContent = editMode ? 'Saving...' : 'Creating...';
+
+    var url = editMode ? '/api/users/' + encodeURIComponent(editUsername) : '/api/users';
+    var method = editMode ? 'PUT' : 'POST';
+
+    fetch(url, {
+        method: method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.ok) {
+            window.location.href = '/users';
+        } else {
+            showMsg(data.error || 'Failed to save user', true);
+            btn.disabled = false;
+            btn.textContent = editMode ? 'Save Changes' : 'Create User';
+        }
+    })
+    .catch(function(e) {
+        showMsg('Error: ' + e.message, true);
+        btn.disabled = false;
+        btn.textContent = editMode ? 'Save Changes' : 'Create User';
+    });
+
+    return false;
+}
+
+if (editMode && editUsername) {
+    loadUser(editUsername);
+}
+</script>
+{% endblock %}

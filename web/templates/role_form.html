@@ -1,0 +1,390 @@
+{% extends "base.html" %}
+{% block title %}{% if edit_mode %}Edit Role{% else %}Create Role{% endif %}{% endblock %}
+{% block content %}
+
+<div class="container py-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/roles">Roles</a></li>
+            <li class="breadcrumb-item active">{% if edit_mode %}Edit Role{% else %}Create Role{% endif %}</li>
+        </ol>
+    </nav>
+
+    <div class="card">
+        <div class="card-header">
+            <h4 class="mb-0">{% if edit_mode %}Edit Role{% else %}Create New Role{% endif %}</h4>
+        </div>
+        <div class="card-body">
+            <form id="role-form">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="role-id" class="form-label">Role ID <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="role-id" name="id" required
+                                   pattern="[a-z0-9_-]+"
+                                   placeholder="e.g., custom_operator"
+                                   {% if edit_mode %}readonly{% endif %}>
+                            <div class="form-text">Lowercase letters, numbers, underscores, and hyphens only.</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="role-name" class="form-label">Display Name <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="role-name" name="name" required
+                                   placeholder="e.g., Custom Operator">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label for="role-description" class="form-label">Description</label>
+                    <textarea class="form-control" id="role-description" name="description" rows="2"
+                              placeholder="Brief description of what this role can do"></textarea>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Inherit From Roles</label>
+                    <div class="form-text mb-2">This role will include all permissions from selected roles.</div>
+                    <div id="inherit-roles" class="border rounded p-3" style="max-height: 200px; overflow-y: auto;">
+                        <div class="spinner-border spinner-border-sm" role="status">
+                            <span class="visually-hidden">Loading roles...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">
+                        Permissions
+                        <button type="button" class="btn btn-sm btn-link" data-bs-toggle="modal" data-bs-target="#permissionHelpModal">
+                            <i class="bi bi-question-circle"></i>
+                        </button>
+                    </label>
+                    <div class="form-text mb-2">
+                        Add permissions in the format <code>resource:action</code>.
+                        Use <code>*</code> as wildcard (e.g., <code>playbooks:*</code> for all playbook actions).
+                    </div>
+
+                    <!-- Quick Add Buttons -->
+                    <div class="mb-2">
+                        <span class="me-2 text-muted">Quick add:</span>
+                        <div class="btn-group btn-group-sm">
+                            <button type="button" class="btn btn-outline-secondary" onclick="addPermission('playbooks:view')">Playbooks View</button>
+                            <button type="button" class="btn btn-outline-secondary" onclick="addPermission('playbooks:run')">Playbooks Run</button>
+                            <button type="button" class="btn btn-outline-secondary" onclick="addPermission('logs:view')">Logs View</button>
+                            <button type="button" class="btn btn-outline-secondary" onclick="addPermission('jobs:view')">Jobs View</button>
+                            <button type="button" class="btn btn-outline-secondary" onclick="addPermission('inventory:view')">Inventory View</button>
+                        </div>
+                    </div>
+
+                    <div id="permissions-list" class="mb-2">
+                        <!-- Permissions will be added here -->
+                    </div>
+
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="new-permission"
+                               placeholder="e.g., playbooks:run or playbooks.servers:*"
+                               onkeypress="if(event.key==='Enter'){event.preventDefault();addNewPermission();}">
+                        <button type="button" class="btn btn-outline-primary" onclick="addNewPermission()">
+                            <i class="bi bi-plus"></i> Add
+                        </button>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-between">
+                    <a href="/roles" class="btn btn-secondary">Cancel</a>
+                    <button type="submit" class="btn btn-primary">
+                        {% if edit_mode %}Update Role{% else %}Create Role{% endif %}
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Permission Help Modal -->
+<div class="modal fade" id="permissionHelpModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Permission Format Reference</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <h6>Format</h6>
+                <p><code>resource:action</code> or <code>resource.subresource:action</code></p>
+
+                <h6>Wildcards</h6>
+                <ul>
+                    <li><code>*:*</code> - Full access to everything (admin)</li>
+                    <li><code>playbooks:*</code> - All actions on playbooks</li>
+                    <li><code>*:view</code> - View action on all resources</li>
+                </ul>
+
+                <h6>Available Resources</h6>
+                <div id="permission-reference" class="border rounded p-3" style="max-height: 300px; overflow-y: auto;">
+                    <div class="spinner-border spinner-border-sm" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const editMode = {{ 'true' if edit_mode else 'false' }};
+const editRoleName = "{{ role_name|default('', true) }}";
+let permissions = [];
+let allRoles = [];
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadAvailableRoles();
+    loadPermissionReference();
+
+    if (editMode && editRoleName) {
+        loadRoleData(editRoleName);
+    }
+
+    document.getElementById('role-form').addEventListener('submit', handleSubmit);
+});
+
+async function loadAvailableRoles() {
+    try {
+        const response = await fetch('/api/roles');
+        if (!response.ok) throw new Error('Failed to load roles');
+        const data = await response.json();
+
+        allRoles = data.roles;
+        renderInheritRoles();
+    } catch (error) {
+        console.error('Error loading roles:', error);
+        document.getElementById('inherit-roles').innerHTML =
+            '<span class="text-danger">Failed to load roles</span>';
+    }
+}
+
+function renderInheritRoles() {
+    const container = document.getElementById('inherit-roles');
+    const currentRoleId = editMode ? editRoleName : null;
+
+    // Filter out the current role (can't inherit from itself)
+    const availableRoles = allRoles.filter(r => r.id !== currentRoleId);
+
+    if (availableRoles.length === 0) {
+        container.innerHTML = '<span class="text-muted">No other roles available</span>';
+        return;
+    }
+
+    container.innerHTML = availableRoles.map(role => `
+        <div class="form-check">
+            <input class="form-check-input inherit-checkbox" type="checkbox"
+                   value="${role.id}" id="inherit-${role.id}">
+            <label class="form-check-label" for="inherit-${role.id}">
+                <strong>${escapeHtml(role.name)}</strong>
+                <code class="ms-2">${role.id}</code>
+                ${role.builtin ? '<span class="badge bg-info ms-2">built-in</span>' : ''}
+                <br>
+                <small class="text-muted">${escapeHtml(role.description)}</small>
+            </label>
+        </div>
+    `).join('');
+}
+
+async function loadPermissionReference() {
+    try {
+        const response = await fetch('/api/permissions');
+        if (!response.ok) throw new Error('Failed to load permissions');
+        const data = await response.json();
+
+        const container = document.getElementById('permission-reference');
+        container.innerHTML = `
+            <table class="table table-sm table-striped mb-0">
+                <thead>
+                    <tr>
+                        <th>Resource</th>
+                        <th>Actions</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${data.permissions.map(p => `
+                        <tr>
+                            <td><code>${p.resource}</code></td>
+                            <td>${p.actions.map(a => `<code>${a}</code>`).join(', ')}</td>
+                            <td>${p.description}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+    } catch (error) {
+        console.error('Error loading permission reference:', error);
+    }
+}
+
+async function loadRoleData(roleName) {
+    try {
+        const response = await fetch(`/api/roles/${roleName}`);
+        if (!response.ok) throw new Error('Failed to load role');
+        const data = await response.json();
+
+        const role = data.role;
+
+        // Check if this is a builtin role
+        if (role.builtin) {
+            showToast('Built-in roles cannot be edited', 'warning');
+            window.location.href = '/roles';
+            return;
+        }
+
+        // Populate form
+        document.getElementById('role-id').value = role.id;
+        document.getElementById('role-name').value = role.name;
+        document.getElementById('role-description').value = role.description || '';
+
+        // Set permissions
+        permissions = role.permissions || [];
+        renderPermissions();
+
+        // Set inherited roles (after inherit checkboxes are rendered)
+        setTimeout(() => {
+            (role.inherits || []).forEach(inheritId => {
+                const checkbox = document.getElementById(`inherit-${inheritId}`);
+                if (checkbox) checkbox.checked = true;
+            });
+        }, 100);
+    } catch (error) {
+        console.error('Error loading role:', error);
+        showToast('Failed to load role data', 'danger');
+    }
+}
+
+function renderPermissions() {
+    const container = document.getElementById('permissions-list');
+    if (permissions.length === 0) {
+        container.innerHTML = '<div class="text-muted">No permissions added</div>';
+        return;
+    }
+
+    container.innerHTML = permissions.map((perm, index) => `
+        <span class="badge bg-primary me-1 mb-1" style="font-size: 0.9em;">
+            ${escapeHtml(perm)}
+            <button type="button" class="btn-close btn-close-white ms-1" style="font-size: 0.7em;"
+                    onclick="removePermission(${index})"></button>
+        </span>
+    `).join('');
+}
+
+function addPermission(permission) {
+    permission = permission.trim();
+    if (!permission) return;
+
+    // Validate format
+    if (!permission.includes(':')) {
+        showToast('Invalid permission format. Use resource:action', 'warning');
+        return;
+    }
+
+    // Check for duplicates
+    if (permissions.includes(permission)) {
+        showToast('Permission already added', 'warning');
+        return;
+    }
+
+    permissions.push(permission);
+    renderPermissions();
+}
+
+function addNewPermission() {
+    const input = document.getElementById('new-permission');
+    addPermission(input.value);
+    input.value = '';
+    input.focus();
+}
+
+function removePermission(index) {
+    permissions.splice(index, 1);
+    renderPermissions();
+}
+
+async function handleSubmit(event) {
+    event.preventDefault();
+
+    const roleId = document.getElementById('role-id').value.trim().toLowerCase();
+    const name = document.getElementById('role-name').value.trim();
+    const description = document.getElementById('role-description').value.trim();
+
+    // Get inherited roles
+    const inherits = [];
+    document.querySelectorAll('.inherit-checkbox:checked').forEach(cb => {
+        inherits.push(cb.value);
+    });
+
+    const roleData = {
+        id: roleId,
+        name: name,
+        description: description,
+        permissions: permissions,
+        inherits: inherits
+    };
+
+    try {
+        const url = editMode ? `/api/roles/${editRoleName}` : '/api/roles';
+        const method = editMode ? 'PUT' : 'POST';
+
+        const response = await fetch(url, {
+            method: method,
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(roleData)
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            showToast(editMode ? 'Role updated successfully' : 'Role created successfully', 'success');
+            setTimeout(() => {
+                window.location.href = '/roles';
+            }, 1000);
+        } else {
+            showToast(data.error || 'Operation failed', 'danger');
+        }
+    } catch (error) {
+        console.error('Error saving role:', error);
+        showToast('Failed to save role', 'danger');
+    }
+}
+
+function escapeHtml(text) {
+    if (text === null || text === undefined) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function showToast(message, type = 'info') {
+    const toastContainer = document.getElementById('toast-container') || createToastContainer();
+    const toast = document.createElement('div');
+    toast.className = `alert alert-${type} alert-dismissible fade show`;
+    toast.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    toastContainer.appendChild(toast);
+    setTimeout(() => toast.remove(), 5000);
+}
+
+function createToastContainer() {
+    const container = document.createElement('div');
+    container.id = 'toast-container';
+    container.className = 'position-fixed top-0 end-0 p-3';
+    container.style.zIndex = '1050';
+    document.body.appendChild(container);
+    return container;
+}
+</script>
+{% endblock %}

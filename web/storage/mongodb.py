@@ -914,6 +914,349 @@ class MongoDBStorage(StorageBackend):
             return 0
 
     # =========================================================================
+    # User Operations (Authentication)
+    # =========================================================================
+
+    def _ensure_auth_indexes(self):
+        """Create indexes for authentication collections."""
+        try:
+            # Users collection
+            self.db['users'].create_index('username', unique=True)
+            self.db['users'].create_index('id', unique=True)
+
+            # Groups collection
+            self.db['groups'].create_index('name', unique=True)
+            self.db['groups'].create_index('id', unique=True)
+
+            # Roles collection
+            self.db['roles'].create_index('name', unique=True)
+            self.db['roles'].create_index('id', unique=True)
+
+            # API tokens collection
+            self.db['api_tokens'].create_index('id', unique=True)
+            self.db['api_tokens'].create_index('token_hash', unique=True)
+            self.db['api_tokens'].create_index('user_id')
+
+            # Audit log collection
+            self.db['audit_log'].create_index([('timestamp', DESCENDING)])
+            self.db['audit_log'].create_index('user')
+            self.db['audit_log'].create_index('action')
+            self.db['audit_log'].create_index('resource')
+        except Exception as e:
+            print(f"Error creating auth indexes: {e}")
+
+    def get_user(self, username: str) -> Optional[Dict]:
+        """Get a user by username."""
+        try:
+            doc = self.db['users'].find_one({'username': username})
+            if doc:
+                doc.pop('_id', None)
+                return doc
+            return None
+        except Exception as e:
+            print(f"Error getting user from MongoDB: {e}")
+            return None
+
+    def get_user_by_id(self, user_id: str) -> Optional[Dict]:
+        """Get a user by ID."""
+        try:
+            doc = self.db['users'].find_one({'id': user_id})
+            if doc:
+                doc.pop('_id', None)
+                return doc
+            return None
+        except Exception as e:
+            print(f"Error getting user by ID from MongoDB: {e}")
+            return None
+
+    def get_all_users(self) -> List[Dict]:
+        """Get all users (without password_hash)."""
+        try:
+            cursor = self.db['users'].find(
+                {},
+                {'_id': 0, 'password_hash': 0}  # Exclude password_hash
+            )
+            return list(cursor)
+        except Exception as e:
+            print(f"Error getting all users from MongoDB: {e}")
+            return []
+
+    def save_user(self, username: str, user: Dict) -> bool:
+        """Save or update a user."""
+        try:
+            self._ensure_auth_indexes()
+            self.db['users'].update_one(
+                {'username': username},
+                {'$set': user},
+                upsert=True
+            )
+            return True
+        except Exception as e:
+            print(f"Error saving user to MongoDB: {e}")
+            return False
+
+    def delete_user(self, username: str) -> bool:
+        """Delete a user."""
+        try:
+            result = self.db['users'].delete_one({'username': username})
+            return result.deleted_count > 0
+        except Exception as e:
+            print(f"Error deleting user from MongoDB: {e}")
+            return False
+
+    def check_user_credentials(self, username: str, password_hash: str) -> bool:
+        """Check if username and password hash match."""
+        user = self.get_user(username)
+        if user and user.get('password_hash') == password_hash:
+            return True
+        return False
+
+    # =========================================================================
+    # Group Operations
+    # =========================================================================
+
+    def get_group(self, group_name: str) -> Optional[Dict]:
+        """Get a group by name."""
+        try:
+            doc = self.db['groups'].find_one({'name': group_name})
+            if doc:
+                doc.pop('_id', None)
+                return doc
+            return None
+        except Exception as e:
+            print(f"Error getting group from MongoDB: {e}")
+            return None
+
+    def get_all_groups(self) -> List[Dict]:
+        """Get all groups."""
+        try:
+            cursor = self.db['groups'].find({}, {'_id': 0})
+            return list(cursor)
+        except Exception as e:
+            print(f"Error getting all groups from MongoDB: {e}")
+            return []
+
+    def save_group(self, group_name: str, group: Dict) -> bool:
+        """Save or update a group."""
+        try:
+            self._ensure_auth_indexes()
+            self.db['groups'].update_one(
+                {'name': group_name},
+                {'$set': group},
+                upsert=True
+            )
+            return True
+        except Exception as e:
+            print(f"Error saving group to MongoDB: {e}")
+            return False
+
+    def delete_group(self, group_name: str) -> bool:
+        """Delete a group."""
+        try:
+            result = self.db['groups'].delete_one({'name': group_name})
+            return result.deleted_count > 0
+        except Exception as e:
+            print(f"Error deleting group from MongoDB: {e}")
+            return False
+
+    # =========================================================================
+    # Role Operations (RBAC)
+    # =========================================================================
+
+    def get_role(self, role_name: str) -> Optional[Dict]:
+        """Get a role by name."""
+        try:
+            doc = self.db['roles'].find_one({'name': role_name})
+            if doc:
+                doc.pop('_id', None)
+                return doc
+            return None
+        except Exception as e:
+            print(f"Error getting role from MongoDB: {e}")
+            return None
+
+    def get_all_roles(self) -> List[Dict]:
+        """Get all roles."""
+        try:
+            cursor = self.db['roles'].find({}, {'_id': 0})
+            return list(cursor)
+        except Exception as e:
+            print(f"Error getting all roles from MongoDB: {e}")
+            return []
+
+    def save_role(self, role_name: str, role: Dict) -> bool:
+        """Save or update a role."""
+        try:
+            self._ensure_auth_indexes()
+            self.db['roles'].update_one(
+                {'name': role_name},
+                {'$set': role},
+                upsert=True
+            )
+            return True
+        except Exception as e:
+            print(f"Error saving role to MongoDB: {e}")
+            return False
+
+    def delete_role(self, role_name: str) -> bool:
+        """Delete a role."""
+        try:
+            result = self.db['roles'].delete_one({'name': role_name})
+            return result.deleted_count > 0
+        except Exception as e:
+            print(f"Error deleting role from MongoDB: {e}")
+            return False
+
+    # =========================================================================
+    # API Token Operations
+    # =========================================================================
+
+    def get_api_token(self, token_id: str) -> Optional[Dict]:
+        """Get an API token by ID."""
+        try:
+            doc = self.db['api_tokens'].find_one({'id': token_id})
+            if doc:
+                doc.pop('_id', None)
+                return doc
+            return None
+        except Exception as e:
+            print(f"Error getting API token from MongoDB: {e}")
+            return None
+
+    def get_api_token_by_hash(self, token_hash: str) -> Optional[Dict]:
+        """Get an API token by its hash."""
+        try:
+            doc = self.db['api_tokens'].find_one({'token_hash': token_hash})
+            if doc:
+                doc.pop('_id', None)
+                return doc
+            return None
+        except Exception as e:
+            print(f"Error getting API token by hash from MongoDB: {e}")
+            return None
+
+    def get_user_api_tokens(self, user_id: str) -> List[Dict]:
+        """Get all API tokens for a user (without token_hash)."""
+        try:
+            cursor = self.db['api_tokens'].find(
+                {'user_id': user_id},
+                {'_id': 0, 'token_hash': 0}  # Exclude token_hash
+            )
+            return list(cursor)
+        except Exception as e:
+            print(f"Error getting user API tokens from MongoDB: {e}")
+            return []
+
+    def save_api_token(self, token_id: str, token: Dict) -> bool:
+        """Save or update an API token."""
+        try:
+            self._ensure_auth_indexes()
+            self.db['api_tokens'].update_one(
+                {'id': token_id},
+                {'$set': token},
+                upsert=True
+            )
+            return True
+        except Exception as e:
+            print(f"Error saving API token to MongoDB: {e}")
+            return False
+
+    def update_api_token(self, token_id: str, token: Dict) -> bool:
+        """Update an existing API token."""
+        return self.save_api_token(token_id, token)
+
+    def delete_api_token(self, token_id: str) -> bool:
+        """Delete an API token."""
+        try:
+            result = self.db['api_tokens'].delete_one({'id': token_id})
+            return result.deleted_count > 0
+        except Exception as e:
+            print(f"Error deleting API token from MongoDB: {e}")
+            return False
+
+    # =========================================================================
+    # Audit Log Operations
+    # =========================================================================
+
+    def add_audit_entry(self, entry: Dict) -> bool:
+        """Add an audit log entry."""
+        try:
+            self._ensure_auth_indexes()
+            # Add timestamp if not present
+            if 'timestamp' not in entry:
+                entry['timestamp'] = datetime.utcnow().isoformat()
+            self.db['audit_log'].insert_one(entry)
+            return True
+        except Exception as e:
+            print(f"Error adding audit entry to MongoDB: {e}")
+            return False
+
+    def get_audit_log(self, filters: Dict = None, limit: int = 100, offset: int = 0) -> List[Dict]:
+        """Get audit log entries with optional filters."""
+        try:
+            query = {}
+            if filters:
+                if filters.get('user'):
+                    query['user'] = filters['user']
+                if filters.get('action'):
+                    query['action'] = filters['action']
+                if filters.get('resource'):
+                    query['resource'] = filters['resource']
+                if filters.get('success') is not None:
+                    query['success'] = filters['success']
+                if filters.get('start_time') or filters.get('end_time'):
+                    query['timestamp'] = {}
+                    if filters.get('start_time'):
+                        query['timestamp']['$gte'] = filters['start_time']
+                    if filters.get('end_time'):
+                        query['timestamp']['$lte'] = filters['end_time']
+
+            cursor = self.db['audit_log'].find(
+                query,
+                {'_id': 0}
+            ).sort('timestamp', DESCENDING).skip(offset).limit(limit)
+
+            return list(cursor)
+        except Exception as e:
+            print(f"Error getting audit log from MongoDB: {e}")
+            return []
+
+    def cleanup_audit_log(self, max_age_days: int = 90, keep_count: int = 10000) -> int:
+        """Clean up old audit log entries."""
+        try:
+            from datetime import timedelta
+
+            # Count total entries
+            total = self.db['audit_log'].count_documents({})
+            if total <= keep_count:
+                return 0
+
+            # Calculate cutoff date
+            cutoff = datetime.utcnow() - timedelta(days=max_age_days)
+            cutoff_str = cutoff.isoformat()
+
+            # Get timestamps of newest entries to keep
+            cursor = self.db['audit_log'].find(
+                {},
+                {'timestamp': 1}
+            ).sort('timestamp', DESCENDING).limit(keep_count)
+            keep_timestamps = {doc.get('timestamp') for doc in cursor}
+
+            # Find the oldest timestamp to keep
+            min_keep_timestamp = min(keep_timestamps) if keep_timestamps else cutoff_str
+
+            # Delete entries older than both cutoff and min_keep_timestamp
+            delete_before = max(cutoff_str, min_keep_timestamp)
+            result = self.db['audit_log'].delete_many({
+                'timestamp': {'$lt': delete_before}
+            })
+
+            return result.deleted_count
+        except Exception as e:
+            print(f"Error cleaning up audit log in MongoDB: {e}")
+            return 0
+
+    # =========================================================================
     # Utility Operations
     # =========================================================================
 

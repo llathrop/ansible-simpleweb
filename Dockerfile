@@ -31,6 +31,7 @@ COPY library/ ./library/
 COPY callback_plugins/ ./callback_plugins/
 COPY ansible.cfg ./
 COPY run-playbook.sh ./
+COPY gunicorn_config.py ./
 
 # Make run script executable
 RUN chmod +x /app/run-playbook.sh
@@ -41,12 +42,17 @@ RUN mkdir -p /app/logs
 # Create SSH directory for keys
 RUN mkdir -p /root/.ssh && chmod 700 /root/.ssh
 
-# Expose Flask port
+# Expose ports (HTTP and HTTPS)
 EXPOSE 3001
+EXPOSE 3443
+
+# Create certificates directory
+RUN mkdir -p /app/config/certs && chmod 755 /app/config/certs
 
 # Set environment variables
 ENV FLASK_APP=web/app.py
 ENV PYTHONUNBUFFERED=1
 
-# Run Flask application with SocketIO support
+# Default to development mode (direct python)
+# For production with SSL, use: gunicorn -c gunicorn_config.py web.app:app
 CMD ["python3", "web/app.py"]

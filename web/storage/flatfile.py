@@ -15,7 +15,7 @@ import json
 import os
 import threading
 import fnmatch
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
 
 from .base import StorageBackend, compute_diff, is_empty_diff
@@ -989,6 +989,433 @@ class FlatFileStorage(StorageBackend):
                 return removed_count
             except Exception as e:
                 print(f"Error cleaning up jobs: {e}")
+                return 0
+
+    # =========================================================================
+    # User Operations (Authentication)
+    # =========================================================================
+
+    def _init_auth_files(self):
+        """Initialize authentication file paths and locks."""
+        if not hasattr(self, 'users_file'):
+            self.users_file = os.path.join(self.config_dir, 'users.json')
+            self.groups_file = os.path.join(self.config_dir, 'groups.json')
+            self.roles_file = os.path.join(self.config_dir, 'roles.json')
+            self.api_tokens_file = os.path.join(self.config_dir, 'api_tokens.json')
+            self.audit_log_file = os.path.join(self.config_dir, 'audit_log.json')
+            self._users_lock = threading.RLock()
+            self._groups_lock = threading.RLock()
+            self._roles_lock = threading.RLock()
+            self._api_tokens_lock = threading.RLock()
+            self._audit_log_lock = threading.RLock()
+
+    def get_user(self, username: str) -> Optional[Dict]:
+        """Get a user by username."""
+        self._init_auth_files()
+        with self._users_lock:
+            if not os.path.exists(self.users_file):
+                return None
+            try:
+                with open(self.users_file, 'r') as f:
+                    data = json.load(f)
+                return data.get('users', {}).get(username)
+            except (json.JSONDecodeError, IOError):
+                return None
+
+    def get_user_by_id(self, user_id: str) -> Optional[Dict]:
+        """Get a user by ID."""
+        self._init_auth_files()
+        with self._users_lock:
+            if not os.path.exists(self.users_file):
+                return None
+            try:
+                with open(self.users_file, 'r') as f:
+                    data = json.load(f)
+                for user in data.get('users', {}).values():
+                    if user.get('id') == user_id:
+                        return user
+                return None
+            except (json.JSONDecodeError, IOError):
+                return None
+
+    def get_all_users(self) -> List[Dict]:
+        """Get all users (without password_hash)."""
+        self._init_auth_files()
+        with self._users_lock:
+            if not os.path.exists(self.users_file):
+                return []
+            try:
+                with open(self.users_file, 'r') as f:
+                    data = json.load(f)
+                users = []
+                for user in data.get('users', {}).values():
+                    # Exclude password_hash from response
+                    safe_user = {k: v for k, v in user.items() if k != 'password_hash'}
+                    users.append(safe_user)
+                return users
+            except (json.JSONDecodeError, IOError):
+                return []
+
+    def save_user(self, username: str, user: Dict) -> bool:
+        """Save or update a user."""
+        self._init_auth_files()
+        with self._users_lock:
+            try:
+                data = {'users': {}}
+                if os.path.exists(self.users_file):
+                    with open(self.users_file, 'r') as f:
+                        data = json.load(f)
+                data.setdefault('users', {})[username] = user
+                with open(self.users_file, 'w') as f:
+                    json.dump(data, f, indent=2, default=str)
+                return True
+            except (json.JSONDecodeError, IOError) as e:
+                print(f"Error saving user: {e}")
+                return False
+
+    def delete_user(self, username: str) -> bool:
+        """Delete a user."""
+        self._init_auth_files()
+        with self._users_lock:
+            if not os.path.exists(self.users_file):
+                return False
+            try:
+                with open(self.users_file, 'r') as f:
+                    data = json.load(f)
+                if username in data.get('users', {}):
+                    del data['users'][username]
+                    with open(self.users_file, 'w') as f:
+                        json.dump(data, f, indent=2, default=str)
+                    return True
+                return False
+            except (json.JSONDecodeError, IOError):
+                return False
+
+    def check_user_credentials(self, username: str, password_hash: str) -> bool:
+        """Check if username and password hash match."""
+        user = self.get_user(username)
+        if user and user.get('password_hash') == password_hash:
+            return True
+        return False
+
+    # =========================================================================
+    # Group Operations
+    # =========================================================================
+
+    def get_group(self, group_name: str) -> Optional[Dict]:
+        """Get a group by name."""
+        self._init_auth_files()
+        with self._groups_lock:
+            if not os.path.exists(self.groups_file):
+                return None
+            try:
+                with open(self.groups_file, 'r') as f:
+                    data = json.load(f)
+                return data.get('groups', {}).get(group_name)
+            except (json.JSONDecodeError, IOError):
+                return None
+
+    def get_all_groups(self) -> List[Dict]:
+        """Get all groups."""
+        self._init_auth_files()
+        with self._groups_lock:
+            if not os.path.exists(self.groups_file):
+                return []
+            try:
+                with open(self.groups_file, 'r') as f:
+                    data = json.load(f)
+                return list(data.get('groups', {}).values())
+            except (json.JSONDecodeError, IOError):
+                return []
+
+    def save_group(self, group_name: str, group: Dict) -> bool:
+        """Save or update a group."""
+        self._init_auth_files()
+        with self._groups_lock:
+            try:
+                data = {'groups': {}}
+                if os.path.exists(self.groups_file):
+                    with open(self.groups_file, 'r') as f:
+                        data = json.load(f)
+                data.setdefault('groups', {})[group_name] = group
+                with open(self.groups_file, 'w') as f:
+                    json.dump(data, f, indent=2, default=str)
+                return True
+            except (json.JSONDecodeError, IOError) as e:
+                print(f"Error saving group: {e}")
+                return False
+
+    def delete_group(self, group_name: str) -> bool:
+        """Delete a group."""
+        self._init_auth_files()
+        with self._groups_lock:
+            if not os.path.exists(self.groups_file):
+                return False
+            try:
+                with open(self.groups_file, 'r') as f:
+                    data = json.load(f)
+                if group_name in data.get('groups', {}):
+                    del data['groups'][group_name]
+                    with open(self.groups_file, 'w') as f:
+                        json.dump(data, f, indent=2, default=str)
+                    return True
+                return False
+            except (json.JSONDecodeError, IOError):
+                return False
+
+    # =========================================================================
+    # Role Operations (RBAC)
+    # =========================================================================
+
+    def get_role(self, role_name: str) -> Optional[Dict]:
+        """Get a role by name."""
+        self._init_auth_files()
+        with self._roles_lock:
+            if not os.path.exists(self.roles_file):
+                return None
+            try:
+                with open(self.roles_file, 'r') as f:
+                    data = json.load(f)
+                return data.get('roles', {}).get(role_name)
+            except (json.JSONDecodeError, IOError):
+                return None
+
+    def get_all_roles(self) -> List[Dict]:
+        """Get all roles."""
+        self._init_auth_files()
+        with self._roles_lock:
+            if not os.path.exists(self.roles_file):
+                return []
+            try:
+                with open(self.roles_file, 'r') as f:
+                    data = json.load(f)
+                return list(data.get('roles', {}).values())
+            except (json.JSONDecodeError, IOError):
+                return []
+
+    def save_role(self, role_name: str, role: Dict) -> bool:
+        """Save or update a role."""
+        self._init_auth_files()
+        with self._roles_lock:
+            try:
+                data = {'roles': {}}
+                if os.path.exists(self.roles_file):
+                    with open(self.roles_file, 'r') as f:
+                        data = json.load(f)
+                data.setdefault('roles', {})[role_name] = role
+                with open(self.roles_file, 'w') as f:
+                    json.dump(data, f, indent=2, default=str)
+                return True
+            except (json.JSONDecodeError, IOError) as e:
+                print(f"Error saving role: {e}")
+                return False
+
+    def delete_role(self, role_name: str) -> bool:
+        """Delete a role."""
+        self._init_auth_files()
+        with self._roles_lock:
+            if not os.path.exists(self.roles_file):
+                return False
+            try:
+                with open(self.roles_file, 'r') as f:
+                    data = json.load(f)
+                if role_name in data.get('roles', {}):
+                    del data['roles'][role_name]
+                    with open(self.roles_file, 'w') as f:
+                        json.dump(data, f, indent=2, default=str)
+                    return True
+                return False
+            except (json.JSONDecodeError, IOError):
+                return False
+
+    # =========================================================================
+    # API Token Operations
+    # =========================================================================
+
+    def get_api_token(self, token_id: str) -> Optional[Dict]:
+        """Get an API token by ID."""
+        self._init_auth_files()
+        with self._api_tokens_lock:
+            if not os.path.exists(self.api_tokens_file):
+                return None
+            try:
+                with open(self.api_tokens_file, 'r') as f:
+                    data = json.load(f)
+                return data.get('tokens', {}).get(token_id)
+            except (json.JSONDecodeError, IOError):
+                return None
+
+    def get_api_token_by_hash(self, token_hash: str) -> Optional[Dict]:
+        """Get an API token by its hash."""
+        self._init_auth_files()
+        with self._api_tokens_lock:
+            if not os.path.exists(self.api_tokens_file):
+                return None
+            try:
+                with open(self.api_tokens_file, 'r') as f:
+                    data = json.load(f)
+                for token in data.get('tokens', {}).values():
+                    if token.get('token_hash') == token_hash:
+                        return token
+                return None
+            except (json.JSONDecodeError, IOError):
+                return None
+
+    def get_user_api_tokens(self, user_id: str) -> List[Dict]:
+        """Get all API tokens for a user (without token_hash)."""
+        self._init_auth_files()
+        with self._api_tokens_lock:
+            if not os.path.exists(self.api_tokens_file):
+                return []
+            try:
+                with open(self.api_tokens_file, 'r') as f:
+                    data = json.load(f)
+                tokens = []
+                for token in data.get('tokens', {}).values():
+                    if token.get('user_id') == user_id:
+                        # Exclude token_hash from response
+                        safe_token = {k: v for k, v in token.items() if k != 'token_hash'}
+                        tokens.append(safe_token)
+                return tokens
+            except (json.JSONDecodeError, IOError):
+                return []
+
+    def save_api_token(self, token_id: str, token: Dict) -> bool:
+        """Save or update an API token."""
+        self._init_auth_files()
+        with self._api_tokens_lock:
+            try:
+                data = {'tokens': {}}
+                if os.path.exists(self.api_tokens_file):
+                    with open(self.api_tokens_file, 'r') as f:
+                        data = json.load(f)
+                data.setdefault('tokens', {})[token_id] = token
+                with open(self.api_tokens_file, 'w') as f:
+                    json.dump(data, f, indent=2, default=str)
+                return True
+            except (json.JSONDecodeError, IOError) as e:
+                print(f"Error saving API token: {e}")
+                return False
+
+    def update_api_token(self, token_id: str, token: Dict) -> bool:
+        """Update an existing API token."""
+        return self.save_api_token(token_id, token)
+
+    def delete_api_token(self, token_id: str) -> bool:
+        """Delete an API token."""
+        self._init_auth_files()
+        with self._api_tokens_lock:
+            if not os.path.exists(self.api_tokens_file):
+                return False
+            try:
+                with open(self.api_tokens_file, 'r') as f:
+                    data = json.load(f)
+                if token_id in data.get('tokens', {}):
+                    del data['tokens'][token_id]
+                    with open(self.api_tokens_file, 'w') as f:
+                        json.dump(data, f, indent=2, default=str)
+                    return True
+                return False
+            except (json.JSONDecodeError, IOError):
+                return False
+
+    # =========================================================================
+    # Audit Log Operations
+    # =========================================================================
+
+    def add_audit_entry(self, entry: Dict) -> bool:
+        """Add an audit log entry."""
+        self._init_auth_files()
+        with self._audit_log_lock:
+            try:
+                data = {'entries': []}
+                if os.path.exists(self.audit_log_file):
+                    with open(self.audit_log_file, 'r') as f:
+                        data = json.load(f)
+                # Add timestamp if not present
+                if 'timestamp' not in entry:
+                    entry['timestamp'] = datetime.now(timezone.utc).isoformat()
+                data.setdefault('entries', []).insert(0, entry)  # Newest first
+                with open(self.audit_log_file, 'w') as f:
+                    json.dump(data, f, indent=2, default=str)
+                return True
+            except (json.JSONDecodeError, IOError) as e:
+                print(f"Error adding audit entry: {e}")
+                return False
+
+    def get_audit_log(self, filters: Dict = None, limit: int = 100, offset: int = 0) -> List[Dict]:
+        """Get audit log entries with optional filters."""
+        self._init_auth_files()
+        with self._audit_log_lock:
+            if not os.path.exists(self.audit_log_file):
+                return []
+            try:
+                with open(self.audit_log_file, 'r') as f:
+                    data = json.load(f)
+                entries = data.get('entries', [])
+
+                # Apply filters if provided
+                if filters:
+                    filtered = []
+                    for entry in entries:
+                        match = True
+                        if filters.get('user') and entry.get('user') != filters['user']:
+                            match = False
+                        if filters.get('action') and entry.get('action') != filters['action']:
+                            match = False
+                        if filters.get('resource') and entry.get('resource') != filters['resource']:
+                            match = False
+                        if filters.get('success') is not None and entry.get('success') != filters['success']:
+                            match = False
+                        if filters.get('start_time') and entry.get('timestamp', '') < filters['start_time']:
+                            match = False
+                        if filters.get('end_time') and entry.get('timestamp', '') > filters['end_time']:
+                            match = False
+                        if match:
+                            filtered.append(entry)
+                    entries = filtered
+
+                # Apply pagination
+                return entries[offset:offset + limit]
+            except (json.JSONDecodeError, IOError):
+                return []
+
+    def cleanup_audit_log(self, max_age_days: int = 90, keep_count: int = 10000) -> int:
+        """Clean up old audit log entries."""
+        self._init_auth_files()
+        from datetime import timedelta
+        with self._audit_log_lock:
+            if not os.path.exists(self.audit_log_file):
+                return 0
+            try:
+                with open(self.audit_log_file, 'r') as f:
+                    data = json.load(f)
+                entries = data.get('entries', [])
+
+                if len(entries) <= keep_count:
+                    return 0
+
+                cutoff = datetime.now(timezone.utc) - timedelta(days=max_age_days)
+                cutoff_str = cutoff.isoformat()
+
+                entries_to_keep = []
+                removed_count = 0
+
+                for i, entry in enumerate(entries):
+                    timestamp = entry.get('timestamp', '')
+                    # Keep if within keep_count or newer than cutoff
+                    if i < keep_count or timestamp >= cutoff_str:
+                        entries_to_keep.append(entry)
+                    else:
+                        removed_count += 1
+
+                if removed_count > 0:
+                    data['entries'] = entries_to_keep
+                    with open(self.audit_log_file, 'w') as f:
+                        json.dump(data, f, indent=2, default=str)
+
+                return removed_count
+            except (json.JSONDecodeError, IOError):
                 return 0
 
     # =========================================================================

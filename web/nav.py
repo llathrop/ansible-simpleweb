@@ -46,10 +46,20 @@ NAV_SECTIONS = [
             {'url': '/agent', 'label': 'Agent'},
         ],
     },
+    {
+        'id': 'admin',
+        'label': 'Admin',
+        'pages': [
+            {'url': '/users', 'label': 'Users'},
+            {'url': '/roles', 'label': 'Roles'},
+            {'url': '/audit', 'label': 'Audit Log'},
+        ],
+        'admin_only': True,
+    },
 ]
 
 
-def get_nav_context(path: str) -> dict:
+def get_nav_context(path: str, user=None) -> dict:
     """
     Return template context for navigation: nav_sections, active_section_id, active_page_url.
     Determines active section and page from the request path.
@@ -60,7 +70,18 @@ def get_nav_context(path: str) -> dict:
     path = path.rstrip('/') or '/'
     best_match_len = -1
 
-    for section in NAV_SECTIONS:
+    # Filter sections based on user permissions
+    is_admin = False
+    if user:
+        from authz import check_permission
+        is_admin = check_permission(user, 'users:*')
+
+    visible_sections = [
+        s for s in NAV_SECTIONS
+        if not s.get('admin_only') or is_admin
+    ]
+
+    for section in visible_sections:
         for page in section['pages']:
             page_url = page['url'].rstrip('/') or '/'
             if path == page_url:
@@ -77,7 +98,8 @@ def get_nav_context(path: str) -> dict:
                 active_page_url = page['url']
 
     return {
-        'nav_sections': NAV_SECTIONS,
-        'active_section_id': active_section_id or (NAV_SECTIONS[0]['id'] if NAV_SECTIONS else None),
+        'nav_sections': visible_sections,
+        'active_section_id': active_section_id or (visible_sections[0]['id'] if visible_sections else None),
         'active_page_url': active_page_url,
+        'current_user': user,
     }

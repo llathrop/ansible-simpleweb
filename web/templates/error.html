@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Error - Ansible Web Interface{% endblock %}
+
+{% block content %}
+<div class="container" style="padding-top: 60px; text-align: center;">
+    <div style="background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 12px; padding: 40px; max-width: 500px; margin: 0 auto;">
+        <h1 style="color: var(--status-failed-text, #ef4444); margin-bottom: 16px;">Access Denied</h1>
+        <p style="color: var(--text-secondary); margin-bottom: 24px;">{{ error or 'You do not have permission to access this page.' }}</p>
+        <a href="/" class="btn btn-primary">Go to Home</a>
+    </div>
+</div>
+{% endblock %}

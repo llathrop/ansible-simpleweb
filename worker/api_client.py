@@ -6,11 +6,14 @@ Handles HTTP communication with the primary server for:
 - Job polling
 - Status check-ins
 - Content sync
+
+Supports HTTPS with optional certificate verification.
 """
 
+import os
 import json
 import requests
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 from dataclasses import dataclass
 
 
@@ -26,17 +29,37 @@ class APIResponse:
 class PrimaryAPIClient:
     """HTTP client for primary server API."""
 
-    def __init__(self, server_url: str, timeout: int = 30):
+    def __init__(self, server_url: str, timeout: int = 30,
+                 ssl_verify: Union[bool, str] = None):
         """
         Initialize API client.
 
         Args:
-            server_url: Base URL of primary server (e.g., http://primary:3001)
+            server_url: Base URL of primary server (e.g., http://primary:3001 or https://primary:3443)
             timeout: Request timeout in seconds
+            ssl_verify: SSL verification:
+                - True: Verify SSL certificate (default for https)
+                - False: Disable SSL verification (insecure, for self-signed certs)
+                - str: Path to CA certificate file
+                - None: Auto-detect from SSL_VERIFY env var
         """
         self.server_url = server_url.rstrip('/')
         self.timeout = timeout
         self.worker_id: Optional[str] = None
+
+        # Configure SSL verification
+        if ssl_verify is None:
+            # Auto-detect from environment
+            verify_env = os.environ.get('SSL_VERIFY', 'true').lower()
+            if verify_env in ('false', '0', 'no', 'disable'):
+                self.ssl_verify = False
+            elif verify_env in ('true', '1', 'yes', 'enable'):
+                self.ssl_verify = True
+            else:
+                # Treat as path to CA certificate
+                self.ssl_verify = verify_env if os.path.exists(verify_env) else True
+        else:
+            self.ssl_verify = ssl_verify
 
     def _request(self, method: str, endpoint: str, **kwargs) -> APIResponse:
         """
@@ -52,6 +75,13 @@ class PrimaryAPIClient:
         """
         url = f"{self.server_url}{endpoint}"
         kwargs.setdefault('timeout', self.timeout)
+        kwargs.setdefault('verify', self.ssl_verify)
+
+        # Add worker_id header for authenticated endpoints
+        if self.worker_id:
+            headers = kwargs.get('headers', {})
+            headers['X-Worker-Id'] = self.worker_id
+            kwargs['headers'] = headers
 
         try:
             response = requests.request(method, url, **kwargs)
@@ -302,8 +332,9 @@ class PrimaryAPIClient:
             Tuple of (success, error_message)
         """
         url = f"{self.server_url}/api/sync/archive"
+        headers = {'X-Worker-Id': self.worker_id} if self.worker_id else {}
         try:
-            response = requests.get(url, timeout=120, stream=True)
+            response = requests.get(url, timeout=120, stream=True, verify=self.ssl_verify, headers=headers)
             if response.ok:
                 with open(output_path, 'wb') as f:
                     for chunk in response.iter_content(chunk_size=8192):
@@ -326,8 +357,9 @@ class PrimaryAPIClient:
             Tuple of (success, error_message)
         """
         url = f"{self.server_url}/api/sync/file/{filepath}"
+        headers = {'X-Worker-Id': self.worker_id} if self.worker_id else {}
         try:
-            response = requests.get(url, timeout=30)
+            response = requests.get(url, timeout=30, verify=self.ssl_verify, headers=headers)
             if response.ok:
                 with open(output_path, 'wb') as f:
                     f.write(response.content)
@@ -349,13 +381,17 @@ class PrimaryAPIClient:
         """
         Check if primary server is reachable.
 
+        Uses the public /health endpoint which doesn't require authentication.
+        This allows workers to verify connectivity before registration.
+
         Returns:
             True if server responds, False otherwise
         """
         try:
             response = requests.get(
-                f"{self.server_url}/api/sync/status",
-                timeout=5
+                f"{self.server_url}/health",
+                timeout=5,
+                verify=self.ssl_verify
             )
             return response.ok
         except requests.exceptions.RequestException:
