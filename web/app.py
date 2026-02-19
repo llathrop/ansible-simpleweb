@@ -5564,7 +5564,7 @@ def api_job_worker_recommendations(job_id):
 # =============================================================================
 
 @app.route('/api/sync/status', methods=['GET'])
-@require_permission('workers:view')
+@worker_auth_required
 def api_sync_status():
     """
     Get content repository status.
