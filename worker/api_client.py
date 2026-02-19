@@ -77,6 +77,12 @@ class PrimaryAPIClient:
         kwargs.setdefault('timeout', self.timeout)
         kwargs.setdefault('verify', self.ssl_verify)
 
+        # Add worker_id header for authenticated endpoints
+        if self.worker_id:
+            headers = kwargs.get('headers', {})
+            headers['X-Worker-Id'] = self.worker_id
+            kwargs['headers'] = headers
+
         try:
             response = requests.request(method, url, **kwargs)
 
@@ -326,8 +332,9 @@ class PrimaryAPIClient:
             Tuple of (success, error_message)
         """
         url = f"{self.server_url}/api/sync/archive"
+        headers = {'X-Worker-Id': self.worker_id} if self.worker_id else {}
         try:
-            response = requests.get(url, timeout=120, stream=True, verify=self.ssl_verify)
+            response = requests.get(url, timeout=120, stream=True, verify=self.ssl_verify, headers=headers)
             if response.ok:
                 with open(output_path, 'wb') as f:
                     for chunk in response.iter_content(chunk_size=8192):
@@ -350,8 +357,9 @@ class PrimaryAPIClient:
             Tuple of (success, error_message)
         """
         url = f"{self.server_url}/api/sync/file/{filepath}"
+        headers = {'X-Worker-Id': self.worker_id} if self.worker_id else {}
         try:
-            response = requests.get(url, timeout=30, verify=self.ssl_verify)
+            response = requests.get(url, timeout=30, verify=self.ssl_verify, headers=headers)
             if response.ok:
                 with open(output_path, 'wb') as f:
                     f.write(response.content)
