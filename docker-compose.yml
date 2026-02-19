@@ -50,8 +50,8 @@ services:
       - SSL_CERT_PATH=/app/config/certs/server.crt
       - SSL_KEY_PATH=/app/config/certs/server.key
       - SSL_HOSTNAME=${SSL_HOSTNAME:-localhost}
-      # Authentication (set AUTH_ENABLED=true to require login)
-      - AUTH_ENABLED=${AUTH_ENABLED:-false}
+      # Authentication (enabled by default for security)
+      - AUTH_ENABLED=${AUTH_ENABLED:-true}
       - INITIAL_ADMIN_USER=${INITIAL_ADMIN_USER:-admin}
       - INITIAL_ADMIN_PASSWORD=${INITIAL_ADMIN_PASSWORD:-}
     depends_on:
