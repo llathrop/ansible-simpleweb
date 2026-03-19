@@ -1558,15 +1558,16 @@ def api_list_permissions():
         }
     })
 
+
 def require_permission_or_worker(permission: str):
     """
     Decorator that allows access if EITHER:
     1. A user is authenticated and has the required permission
     2. A valid worker is authenticated (via X-Worker-Id header)
+
+    This enables dual access for endpoints like /api/jobs that are used by
+    both the web UI (users) and remote workers.
     """
-    from functools import wraps
-    from flask import g, request, jsonify
-    
     def decorator(f):
         @wraps(f)
         def decorated_function(*args, **kwargs):
@@ -1574,26 +1575,34 @@ def require_permission_or_worker(permission: str):
             if not storage:
                 return jsonify({'error': 'Storage backend not available'}), 500
 
-            # 1. Try Worker Auth first
+            # 1. Try Worker Auth first (X-Worker-Id header)
             worker_id = request.headers.get('X-Worker-Id')
             if not worker_id and request.is_json:
                 data = request.get_json(silent=True) or {}
                 worker_id = data.get('worker_id') if isinstance(data, dict) else None
-            
+
             if worker_id:
+                # Basic validation: ensure it looks like a UUID to prevent injection/probing
+                try:
+                    uuid.UUID(str(worker_id))
+                except (ValueError, TypeError, AttributeError):
+                    return jsonify({'error': 'Invalid worker ID format'}), 401
+
                 worker = storage.get_worker(worker_id)
                 if worker:
                     g.current_worker = worker
                     return f(*args, **kwargs)
 
-            # 2. Try User Auth
+            # 2. Try User Auth (session or API token)
             user = get_current_user()
             if user:
-                from authz import check_permission
                 if check_permission(user, permission, storage):
                     return f(*args, **kwargs)
-                else:
-                    return jsonify({'error': 'Permission denied', 'required_permission': permission}), 403
+
+                return jsonify({
+                        'error': 'Permission denied',
+                        'required_permission': permission
+                    }), 403
 
             return jsonify({'error': 'Authentication required (User or Worker)'}), 401
 
