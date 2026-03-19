@@ -40,7 +40,7 @@ from auth_routes import (
     get_current_user,
     login_required,
     admin_required,
-    worker_auth_required, require_permission_or_worker, require_permission_or_worker,
+    worker_auth_required, require_permission_or_worker,
     service_auth_required,
     require_permission,
     require_any_permission
@@ -1709,7 +1709,7 @@ def live_log(run_id):
 
 
 @app.route('/job/<job_id>')
-@require_permission_or_worker('jobs:view')
+@require_permission('jobs:view')
 def job_status_page(job_id):
     """View job status page for cluster jobs."""
     if not storage_backend:
@@ -1732,7 +1732,7 @@ def job_status_page(job_id):
 
 
 @app.route('/live/batch/<batch_id>')
-@require_permission_or_worker('jobs:view')
+@require_permission('jobs:view')
 def batch_live_log(batch_id):
     """View live streaming log for a batch job"""
     batch_job = get_batch_job_status(batch_id)
