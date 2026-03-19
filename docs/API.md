@@ -32,7 +32,8 @@ http://localhost:3001
 
 ## Authentication
 
-Currently: **None required**
+Users: Session cookie or API Token
+Workers: X-Worker-Id header
 
 The service is localhost-only by default. Before exposing externally, implement authentication (JWT, API keys, OAuth, etc.).
 
@@ -1674,3 +1675,12 @@ run_and_notify("hardware-inventory", "production")
 - [USAGE.md](USAGE.md) - Web interface usage
 - [ADDING_PLAYBOOKS.md](ADDING_PLAYBOOKS.md) - Creating playbooks
 - [CONFIGURATION.md](CONFIGURATION.md) - Setup and configuration
+
+### Worker Authentication
+
+For cluster-mode endpoints (e.g., polling for jobs), workers must include their registered UUID in the `X-Worker-Id` header:
+
+```http
+GET /api/jobs?status=assigned HTTP/1.1
+X-Worker-Id: 550e8400-e29b-41d4-a716-446655440000
+```

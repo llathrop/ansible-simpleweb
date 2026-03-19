@@ -88,7 +88,7 @@ Sync can be triggered:
 ### REST API (All State)
 
 All worker and job state is communicated via REST API:
-- Worker registration and authentication
+- Worker registration and header-based authentication (X-Worker-Id)
 - Job submission and assignment
 - Job status updates
 - Completion reports with logs
