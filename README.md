@@ -214,7 +214,7 @@ Example playbooks included:
 - **Step 8:** Schedule management with batch support and success tracking
 - **Step 9:** Host configuration wizard with SSH key management
 - **Step 10:** Cluster mode with distributed workers (13 features implemented)
-  - Worker registration and authentication
+  - Worker registration and enhanced authentication (dual user/worker support)
   - Content repository with revision tracking
   - Sync API for playbook/inventory distribution
   - Worker service with health reporting

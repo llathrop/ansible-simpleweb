@@ -40,7 +40,7 @@ from auth_routes import (
     get_current_user,
     login_required,
     admin_required,
-    worker_auth_required,
+    worker_auth_required, require_permission_or_worker, require_permission_or_worker,
     service_auth_required,
     require_permission,
     require_any_permission
@@ -1709,7 +1709,7 @@ def live_log(run_id):
 
 
 @app.route('/job/<job_id>')
-@require_permission('jobs:view')
+@require_permission_or_worker('jobs:view')
 def job_status_page(job_id):
     """View job status page for cluster jobs."""
     if not storage_backend:
@@ -1732,7 +1732,7 @@ def job_status_page(job_id):
 
 
 @app.route('/live/batch/<batch_id>')
-@require_permission('jobs:view')
+@require_permission_or_worker('jobs:view')
 def batch_live_log(batch_id):
     """View live streaming log for a batch job"""
     batch_job = get_batch_job_status(batch_id)
@@ -1954,7 +1954,7 @@ def api_playbooks():
     return jsonify(result)
 
 @app.route('/api/runs')
-@require_permission('jobs:view')
+@require_permission_or_worker('jobs:view')
 def api_runs():
     """Get all active runs"""
     with runs_lock:
@@ -1965,7 +1965,7 @@ def api_runs():
     return jsonify(runs)
 
 @app.route('/api/runs/<run_id>')
-@require_permission('jobs:view')
+@require_permission_or_worker('jobs:view')
 def api_run_detail(run_id):
     """Get details of a specific run"""
     with runs_lock:
@@ -2009,7 +2009,7 @@ def api_run_log(run_id):
 # =============================================================================
 
 @app.route('/api/batch', methods=['GET'])
-@require_permission('jobs:view')
+@require_permission_or_worker('jobs:view')
 def api_batch_list():
     """
     Get all batch jobs.
@@ -2043,7 +2043,7 @@ def api_batch_list():
 
 
 @app.route('/api/batch/<batch_id>', methods=['GET'])
-@require_permission('jobs:view')
+@require_permission_or_worker('jobs:view')
 def api_batch_detail(batch_id):
     """Get details of a specific batch job."""
     batch_job = get_batch_job_status(batch_id)
@@ -2194,7 +2194,7 @@ def api_batch_log_content(batch_id, log_file):
 
 
 @app.route('/api/batch/active', methods=['GET'])
-@require_permission('jobs:view')
+@require_permission_or_worker('jobs:view')
 def api_batch_active():
     """Get all currently active (running) batch jobs."""
     with batch_lock:
@@ -2207,7 +2207,7 @@ def api_batch_active():
 
 
 @app.route('/api/batch/<batch_id>/export', methods=['GET'])
-@require_permission('jobs:view')
+@require_permission_or_worker('jobs:view')
 def api_batch_export(batch_id):
     """
     Export a batch job configuration for reuse or version control.
@@ -4856,7 +4856,7 @@ def api_submit_job():
 
 
 @app.route('/api/jobs', methods=['GET'])
-@require_permission('jobs:view')
+@require_permission_or_worker('jobs:view')
 def api_list_jobs():
     """
     List jobs with optional filters.
@@ -4895,7 +4895,7 @@ def api_list_jobs():
 
     # Filter by ownership unless user has all-view permission
     current_user = get_current_user()
-    from web.authz import check_permission
+    from authz import check_permission
     has_all_view = check_permission(current_user, 'jobs.all:view', storage_backend) or \
                    check_permission(current_user, 'jobs:*', storage_backend) or \
                    check_permission(current_user, '*:*', storage_backend)
@@ -4920,7 +4920,7 @@ def api_list_jobs():
 
 
 @app.route('/api/jobs/<job_id>', methods=['GET'])
-@require_permission('jobs:view')
+@require_permission_or_worker('jobs:view')
 def api_get_job(job_id):
     """Get a single job by ID."""
     if not storage_backend:
@@ -5583,7 +5583,7 @@ def api_job_worker_recommendations(job_id):
 # =============================================================================
 
 @app.route('/api/sync/status', methods=['GET'])
-@worker_auth_required
+@require_permission_or_worker('workers:view')
 def api_sync_status():
     """
     Get content repository status.

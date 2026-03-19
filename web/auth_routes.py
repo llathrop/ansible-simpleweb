@@ -831,9 +831,9 @@ def init_auth_middleware(app, storage_backend, auth_enabled=True):
     # Route prefixes that use their own authentication (worker_auth_required or service_auth_required)
     # These bypass general auth middleware but must have their own auth decorators
     SELF_AUTH_ROUTE_PREFIXES = {
-        '/api/workers/',        # Worker checkin, etc. - uses @worker_auth_required
-        '/api/jobs/',           # Job start/complete/stream - uses @worker_auth_required
-        '/api/sync/',           # Content sync - uses @worker_auth_required
+        '/api/workers',        # Worker checkin, etc. - uses @worker_auth_required
+        '/api/jobs',           # Job start/complete/stream - uses @worker_auth_required
+        '/api/sync',           # Content sync - uses @worker_auth_required
         '/api/test-worker/',    # Test routes - uses @worker_auth_required
         '/api/test-service/',   # Test routes - uses @service_auth_required
     }
@@ -1557,3 +1557,45 @@ def api_list_permissions():
             '*:action': 'Action on all resources'
         }
     })
+
+def require_permission_or_worker(permission: str):
+    """
+    Decorator that allows access if EITHER:
+    1. A user is authenticated and has the required permission
+    2. A valid worker is authenticated (via X-Worker-Id header)
+    """
+    from functools import wraps
+    from flask import g, request, jsonify
+    
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            storage = getattr(g, 'storage_backend', None)
+            if not storage:
+                return jsonify({'error': 'Storage backend not available'}), 500
+
+            # 1. Try Worker Auth first
+            worker_id = request.headers.get('X-Worker-Id')
+            if not worker_id and request.is_json:
+                data = request.get_json(silent=True) or {}
+                worker_id = data.get('worker_id') if isinstance(data, dict) else None
+            
+            if worker_id:
+                worker = storage.get_worker(worker_id)
+                if worker:
+                    g.current_worker = worker
+                    return f(*args, **kwargs)
+
+            # 2. Try User Auth
+            user = get_current_user()
+            if user:
+                from authz import check_permission
+                if check_permission(user, permission, storage):
+                    return f(*args, **kwargs)
+                else:
+                    return jsonify({'error': 'Permission denied', 'required_permission': permission}), 403
+
+            return jsonify({'error': 'Authentication required (User or Worker)'}), 401
+
+        return decorated_function
+    return decorator
