@@ -1,0 +1,90 @@
+{
+  "name": "Default (Light)",
+  "description": "Standard light theme",
+  "colors": {
+    "background": {
+      "primary": "#f5f5f5",
+      "secondary": "#ffffff",
+      "tertiary": "#fafafa",
+      "inverse": "#1e1e1e"
+    },
+    "text": {
+      "primary": "#333333",
+      "secondary": "#666666",
+      "muted": "#999999",
+      "inverse": "#d4d4d4",
+      "link": "#1976d2"
+    },
+    "border": {
+      "primary": "#e0e0e0",
+      "secondary": "#cccccc",
+      "focus": "#1976d2"
+    },
+    "button": {
+      "primary": {
+        "background": "#1976d2",
+        "text": "#ffffff",
+        "hover": "#1565c0"
+      },
+      "secondary": {
+        "background": "#757575",
+        "text": "#ffffff",
+        "hover": "#616161"
+      },
+      "disabled": {
+        "background": "#cccccc",
+        "text": "#999999"
+      }
+    },
+    "status": {
+      "ready": {
+        "background": "#e8f5e9",
+        "text": "#2e7d32"
+      },
+      "running": {
+        "background": "#fff3e0",
+        "text": "#e65100"
+      },
+      "completed": {
+        "background": "#e3f2fd",
+        "text": "#1976d2"
+      },
+      "failed": {
+        "background": "#ffebee",
+        "text": "#c62828"
+      }
+    },
+    "log": {
+      "background": "#1e1e1e",
+      "text": "#d4d4d4",
+      "ok": "#4ec9b0",
+      "changed": "#dcdcaa",
+      "failed": "#f48771",
+      "skipped": "#808080",
+      "task": "#569cd6",
+      "play": "#c586c0",
+      "recap": "#9cdcfe"
+    },
+    "table": {
+      "header": "#f5f5f5",
+      "rowHover": "#fafafa",
+      "border": "#e0e0e0"
+    },
+    "notification": {
+      "info": {
+        "background": "#fff3cd",
+        "border": "#ffc107",
+        "text": "#333333"
+      }
+    },
+    "connection": {
+      "connected": "#4caf50",
+      "disconnected": "#f44336",
+      "neutral": "#cccccc"
+    }
+  },
+  "shadows": {
+    "card": "0 2px 4px rgba(0,0,0,0.1)",
+    "cardHover": "0 4px 8px rgba(0,0,0,0.1)"
+  }
+}

@@ -1,0 +1,90 @@
+{
+  "name": "Dark",
+  "description": "Dark theme for night owls",
+  "colors": {
+    "background": {
+      "primary": "#121212",
+      "secondary": "#1e1e1e",
+      "tertiary": "#2d2d2d",
+      "inverse": "#f5f5f5"
+    },
+    "text": {
+      "primary": "#e0e0e0",
+      "secondary": "#b0b0b0",
+      "muted": "#808080",
+      "inverse": "#121212",
+      "link": "#bb86fc"
+    },
+    "border": {
+      "primary": "#333333",
+      "secondary": "#444444",
+      "focus": "#bb86fc"
+    },
+    "button": {
+      "primary": {
+        "background": "#bb86fc",
+        "text": "#000000",
+        "hover": "#a370f7"
+      },
+      "secondary": {
+        "background": "#3d3d3d",
+        "text": "#e0e0e0",
+        "hover": "#4d4d4d"
+      },
+      "disabled": {
+        "background": "#2d2d2d",
+        "text": "#666666"
+      }
+    },
+    "status": {
+      "ready": {
+        "background": "#1b2e1c",
+        "text": "#81c784"
+      },
+      "running": {
+        "background": "#332b00",
+        "text": "#ffb74d"
+      },
+      "completed": {
+        "background": "#0d2137",
+        "text": "#64b5f6"
+      },
+      "failed": {
+        "background": "#370d0d",
+        "text": "#e57373"
+      }
+    },
+    "log": {
+      "background": "#000000",
+      "text": "#d4d4d4",
+      "ok": "#4ec9b0",
+      "changed": "#dcdcaa",
+      "failed": "#f48771",
+      "skipped": "#808080",
+      "task": "#569cd6",
+      "play": "#c586c0",
+      "recap": "#9cdcfe"
+    },
+    "table": {
+      "header": "#1e1e1e",
+      "rowHover": "#252525",
+      "border": "#333333"
+    },
+    "notification": {
+      "info": {
+        "background": "#332b00",
+        "border": "#ffb74d",
+        "text": "#ffb74d"
+      }
+    },
+    "connection": {
+      "connected": "#4caf50",
+      "disconnected": "#f44336",
+      "neutral": "#444444"
+    }
+  },
+  "shadows": {
+    "card": "0 2px 4px rgba(0,0,0,0.5)",
+    "cardHover": "0 4px 8px rgba(0,0,0,0.7)"
+  }
+}
