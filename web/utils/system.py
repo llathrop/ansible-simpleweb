@@ -48,4 +48,4 @@ def get_system_warnings() -> list:
             "affected_component": "Database"
         })
         
-    return warnings\n
+    return warnings
