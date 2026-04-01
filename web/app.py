@@ -60,7 +60,11 @@ from validation import (
 # Authentication settings
 AUTH_ENABLED = os.environ.get('AUTH_ENABLED', 'false').lower() == 'true'
 
+# Import system utilities for hardware checks
+from utils.system import get_system_warnings
+
 app = Flask(__name__)
+app.system_warnings = get_system_warnings()
 
 
 def _run_inventory_sync():
@@ -82,14 +86,22 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'ansible-simpleweb-dev-k
 
 @app.context_processor
 def inject_nav_context():
-    """Inject navigation context into all templates (nav_sections, active_section_id, active_page_url, current_user)."""
+    """Inject navigation context into all templates (nav_sections, active_section_id, active_page_url, current_user, system_warnings)."""
     try:
         from nav import get_nav_context
         from flask import g
         user = getattr(g, 'current_user', None)
-        return get_nav_context(request.path, user)
+        context = get_nav_context(request.path, user)
+        context['system_warnings'] = getattr(app, 'system_warnings', [])
+        return context
     except Exception:
-        return {'nav_sections': [], 'active_section_id': None, 'active_page_url': None, 'current_user': None}
+        return {
+            'nav_sections': [], 
+            'active_section_id': None, 
+            'active_page_url': None, 
+            'current_user': None,
+            'system_warnings': getattr(app, 'system_warnings', [])
+        }
 
 
 # Initialize SocketIO with eventlet for async support

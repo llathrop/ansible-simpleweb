@@ -21,6 +21,13 @@ from .flatfile import FlatFileStorage
 # Note: MongoDBStorage is imported lazily to avoid requiring pymongo
 # when only using flatfile storage
 
+# Lazy import system utilities to avoid circular dependencies
+def _get_mongodb_compat():
+    try:
+        from utils.system import check_mongodb_compatibility
+        return check_mongodb_compatibility()
+    except ImportError:
+        return True, ""
 
 def get_storage_backend() -> StorageBackend:
     """
@@ -34,27 +41,41 @@ def get_storage_backend() -> StorageBackend:
     Returns:
         StorageBackend instance
     """
+    config_dir = os.environ.get('CONFIG_DIR', '/app/config')
+    
     try:
         from config_manager import config_file_exists, get_effective_storage_backend, get_effective_mongodb_settings
         if config_file_exists():
             backend_type = get_effective_storage_backend().lower()
             if backend_type == 'mongodb':
+                is_compat, msg = _get_mongodb_compat()
+                if not is_compat:
+                    print(f"CRITICAL: {msg}")
+                    print("Falling back to flatfile storage to prevent system instability.")
+                    return FlatFileStorage(config_dir=config_dir)
+                    
                 from .mongodb import MongoDBStorage
                 m = get_effective_mongodb_settings()
                 return MongoDBStorage(host=m['host'], port=m['port'], database=m['database'])
-            config_dir = os.environ.get('CONFIG_DIR', '/app/config')
+            
             return FlatFileStorage(config_dir=config_dir)
     except ImportError:
         pass
 
     backend_type = os.environ.get('STORAGE_BACKEND', 'flatfile').lower()
     if backend_type == 'mongodb':
+        is_compat, msg = _get_mongodb_compat()
+        if not is_compat:
+            print(f"CRITICAL: {msg}")
+            print("Falling back to flatfile storage to prevent system instability.")
+            return FlatFileStorage(config_dir=config_dir)
+            
         from .mongodb import MongoDBStorage
         host = os.environ.get('MONGODB_HOST', 'mongodb')
         port = int(os.environ.get('MONGODB_PORT', 27017))
         database = os.environ.get('MONGODB_DATABASE', 'ansible_simpleweb')
         return MongoDBStorage(host=host, port=port, database=database)
-    config_dir = os.environ.get('CONFIG_DIR', '/app/config')
+        
     return FlatFileStorage(config_dir=config_dir)
 
 

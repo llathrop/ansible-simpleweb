@@ -85,6 +85,19 @@
         </aside>
 
         <main class="main-content {% block main_class %}{% endblock %}">
+            {% if system_warnings %}
+            <div class="system-warnings">
+                {% for warning in system_warnings %}
+                <div class="system-alert alert-{{ warning.severity }}">
+                    <span class="alert-icon">⚠️</span>
+                    <div class="alert-content">
+                        <strong>System Warning: {{ warning.affected_component }}</strong>
+                        <p>{{ warning.message }}</p>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
             {% block content %}{% endblock %}
         </main>
     </div>

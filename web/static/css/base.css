@@ -1455,3 +1455,48 @@ h1 {
     background: var(--bg-tertiary);
     color: var(--text-muted);
 }
+
+/* ==========================================================================
+   System Warnings & Alerts
+   ========================================================================== */
+
+.system-warnings {
+    margin-bottom: 20px;
+}
+
+.system-alert {
+    display: flex;
+    align-items: flex-start;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 10px;
+    border: 1px solid transparent;
+}
+
+.system-alert .alert-icon {
+    font-size: 1.5em;
+    margin-right: 15px;
+}
+
+.system-alert .alert-content strong {
+    display: block;
+    margin-bottom: 5px;
+}
+
+.system-alert .alert-content p {
+    margin: 0;
+    font-size: 0.9em;
+    line-height: 1.4;
+}
+
+.system-alert.alert-danger {
+    background-color: var(--status-failed-bg, #ffebee);
+    color: var(--status-failed-text, #c62828);
+    border-color: rgba(198, 40, 40, 0.2);
+}
+
+.system-alert.alert-warning {
+    background-color: var(--status-running-bg, #fff3e0);
+    color: var(--status-running-text, #e65100);
+    border-color: rgba(230, 81, 0, 0.2);
+}
