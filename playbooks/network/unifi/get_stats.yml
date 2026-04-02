@@ -1,0 +1,27 @@
+---
+- name: Gather UniFi AP Usage Stats
+  hosts: unifi_aps
+  gather_facts: false
+  tasks:
+    - name: Get wireless stats (mca-dump)
+      shell: mca-dump
+      register: mca_dump
+
+    - name: Parse dump for key stats
+      set_fact:
+        parsed_stats: "{{ mca_dump.stdout | from_json }}"
+
+    - name: Display usage summary
+      debug:
+        msg:
+          - "Model: {{ parsed_stats.model }}"
+          - "Version: {{ parsed_stats.version }}"
+          - "Uptime: {{ parsed_stats.uptime }}s"
+          - "Memory: {{ parsed_stats.mem_used / 1024 / 1024 | round(2) }}MB / {{ parsed_stats.mem_total / 1024 / 1024 | round(2) }}MB"
+          - "Load: {{ parsed_stats.loadavg }}"
+
+    - name: Save detailed stats to file
+      copy:
+        content: "{{ mca_dump.stdout | from_json | to_nice_json }}"
+        dest: "logs/unifi_{{ inventory_hostname }}_stats.json"
+      delegate_to: localhost

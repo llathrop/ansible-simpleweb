@@ -1,0 +1,27 @@
+---
+- name: Gather UniFi AP Logs
+  hosts: unifi_aps
+  gather_facts: false
+  tasks:
+    - name: Get system logs
+      shell: tail -n 100 /var/log/messages
+      register: system_logs
+
+    - name: Get kernel logs
+      shell: dmesg | tail -n 50
+      register: kernel_logs
+
+    - name: Display system logs
+      debug:
+        var: system_logs.stdout_lines
+
+    - name: Save logs to file
+      copy:
+        content: |
+          === SYSTEM LOGS ===
+          {{ system_logs.stdout }}
+          
+          === KERNEL LOGS ===
+          {{ kernel_logs.stdout }}
+        dest: "logs/unifi_{{ inventory_hostname }}_logs.txt"
+      delegate_to: localhost
