@@ -3302,7 +3302,7 @@ def api_inventory_test_connection():
             inventory_path = f.name
 
         try:
-            # Run ansible ping module
+            # Try ansible ping module first (verifies Python environment)
             result = subprocess.run(
                 [
                     'ansible', hostname,
@@ -3314,6 +3314,21 @@ def api_inventory_test_connection():
                 text=True,
                 timeout=30
             )
+
+            # If ping fails, try raw module (verifies basic SSH connectivity)
+            if result.returncode != 0:
+                result = subprocess.run(
+                    [
+                        'ansible', hostname,
+                        '-i', inventory_path,
+                        '-m', 'raw',
+                        '-a', 'true',
+                        '--timeout', '10'
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
 
             if result.returncode == 0:
                 return jsonify({

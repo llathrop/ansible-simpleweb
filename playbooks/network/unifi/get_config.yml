@@ -4,12 +4,12 @@
   gather_facts: false
   tasks:
     - name: Get current configuration
-      shell: cat /tmp/system.cfg
+      raw: cat /tmp/system.cfg
       register: ap_config
 
     - name: Display configuration
       debug:
-        var: ap_config.stdout_lines
+        msg: "{{ ap_config.stdout_lines }}"
 
     - name: Save configuration to file
       copy:
