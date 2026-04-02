@@ -4,7 +4,7 @@
   gather_facts: false
   tasks:
     - name: Get wireless stats (mca-dump)
-      shell: mca-dump
+      raw: mca-dump
       register: mca_dump
 
     - name: Parse dump for key stats
@@ -17,7 +17,7 @@
           - "Model: {{ parsed_stats.model }}"
           - "Version: {{ parsed_stats.version }}"
           - "Uptime: {{ parsed_stats.uptime }}s"
-          - "Memory: {{ parsed_stats.mem_used / 1024 / 1024 | round(2) }}MB / {{ parsed_stats.mem_total / 1024 / 1024 | round(2) }}MB"
+          - "Memory: {{ (parsed_stats.mem_used | int) / 1024 / 1024 | round(2) }}MB / {{ (parsed_stats.mem_total | int) / 1024 / 1024 | round(2) }}MB"
           - "Load: {{ parsed_stats.loadavg }}"
 
     - name: Save detailed stats to file
