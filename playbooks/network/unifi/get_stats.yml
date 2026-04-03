@@ -2,6 +2,7 @@
 - name: Gather UniFi AP Usage Stats
   hosts: all
   gather_facts: false
+  become: false
   tasks:
     - name: Get wireless stats (mca-dump)
       raw: mca-dump
