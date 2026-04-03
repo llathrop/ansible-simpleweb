@@ -3756,9 +3756,6 @@ def schedules_page():
     try:
         from authz import check_permission
     except ImportError:
-        try:
-        from authz import check_permission
-    except ImportError:
         from web.authz import check_permission
     has_all_view = check_permission(current_user, 'schedules.all:view', storage_backend) or \
                    check_permission(current_user, 'schedules:*', storage_backend) or \
@@ -4036,9 +4033,6 @@ def api_schedules():
     # Filter by ownership unless user has all-view permission
     current_user = get_current_user()
     try:
-        from authz import check_permission
-    except ImportError:
-        try:
         from authz import check_permission
     except ImportError:
         from web.authz import check_permission

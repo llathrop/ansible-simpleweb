@@ -1244,10 +1244,7 @@ def api_list_roles():
     try:
         from authz import BUILTIN_ROLES
     except ImportError:
-        try:
-            from authz import BUILTIN_ROLES
-        except ImportError:
-            from web.authz import BUILTIN_ROLES
+        from web.authz import BUILTIN_ROLES
 
     # Get custom roles from storage
     custom_roles = storage.get_all_roles()
@@ -1294,10 +1291,7 @@ def api_get_role(role_name):
     try:
         from authz import BUILTIN_ROLES
     except ImportError:
-        try:
-            from authz import BUILTIN_ROLES
-        except ImportError:
-            from web.authz import BUILTIN_ROLES
+        from web.authz import BUILTIN_ROLES
 
     # Check builtin roles first
     if role_name in BUILTIN_ROLES:
@@ -1347,10 +1341,7 @@ def api_create_role():
     try:
         from authz import BUILTIN_ROLES
     except ImportError:
-        try:
-            from authz import BUILTIN_ROLES
-        except ImportError:
-            from web.authz import BUILTIN_ROLES
+        from web.authz import BUILTIN_ROLES
 
     data = request.get_json() or {}
 
@@ -1427,10 +1418,7 @@ def api_update_role(role_name):
     try:
         from authz import BUILTIN_ROLES
     except ImportError:
-        try:
-            from authz import BUILTIN_ROLES
-        except ImportError:
-            from web.authz import BUILTIN_ROLES
+        from web.authz import BUILTIN_ROLES
 
     # Cannot modify builtin roles
     if role_name in BUILTIN_ROLES:
@@ -1491,10 +1479,7 @@ def api_delete_role(role_name):
     try:
         from authz import BUILTIN_ROLES
     except ImportError:
-        try:
-            from authz import BUILTIN_ROLES
-        except ImportError:
-            from web.authz import BUILTIN_ROLES
+        from web.authz import BUILTIN_ROLES
 
     # Cannot delete builtin roles
     if role_name in BUILTIN_ROLES:
