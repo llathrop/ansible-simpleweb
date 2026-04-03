@@ -3753,7 +3753,13 @@ def schedules_page():
 
     # Filter by ownership unless user has all-view permission
     current_user = get_current_user()
-    from web.authz import check_permission
+    try:
+        from authz import check_permission
+    except ImportError:
+        try:
+        from authz import check_permission
+    except ImportError:
+        from web.authz import check_permission
     has_all_view = check_permission(current_user, 'schedules.all:view', storage_backend) or \
                    check_permission(current_user, 'schedules:*', storage_backend) or \
                    check_permission(current_user, '*:*', storage_backend)
@@ -3901,7 +3907,10 @@ def edit_schedule(schedule_id):
     user_username = current_user.get('username', '') if current_user else ''
 
     is_owner = (schedule_owner == user_username)
-    from web.authz import check_permission
+    try:
+        from authz import check_permission
+    except ImportError:
+        from web.authz import check_permission
     has_all_edit = check_permission(current_user, 'schedules.all:edit', storage_backend) or \
                    check_permission(current_user, 'schedules:*', storage_backend) or \
                    check_permission(current_user, '*:*', storage_backend)
@@ -3952,7 +3961,10 @@ def update_schedule(schedule_id):
     user_username = current_user.get('username', '') if current_user else ''
 
     is_owner = (schedule_owner == user_username)
-    from web.authz import check_permission
+    try:
+        from authz import check_permission
+    except ImportError:
+        from web.authz import check_permission
     has_all_edit = check_permission(current_user, 'schedules.all:edit', storage_backend) or \
                    check_permission(current_user, 'schedules:*', storage_backend) or \
                    check_permission(current_user, '*:*', storage_backend)
@@ -4023,7 +4035,13 @@ def api_schedules():
 
     # Filter by ownership unless user has all-view permission
     current_user = get_current_user()
-    from web.authz import check_permission
+    try:
+        from authz import check_permission
+    except ImportError:
+        try:
+        from authz import check_permission
+    except ImportError:
+        from web.authz import check_permission
     has_all_view = check_permission(current_user, 'schedules.all:view', storage_backend) or \
                    check_permission(current_user, 'schedules:*', storage_backend) or \
                    check_permission(current_user, '*:*', storage_backend)
@@ -4092,7 +4110,10 @@ def check_schedule_modify_permission(schedule_id):
 
     # User can modify if they own the schedule, or have full schedule permissions
     is_owner = (schedule_owner == user_username)
-    from web.authz import check_permission
+    try:
+        from authz import check_permission
+    except ImportError:
+        from web.authz import check_permission
     has_all_edit = check_permission(current_user, 'schedules.all:edit', storage_backend) or \
                    check_permission(current_user, 'schedules:*', storage_backend) or \
                    check_permission(current_user, '*:*', storage_backend)
@@ -4986,7 +5007,10 @@ def api_cancel_job(job_id):
 
     # User can cancel if they own the job, or have all-cancel permission
     is_owner = (job_owner == user_username)
-    from web.authz import check_permission
+    try:
+        from authz import check_permission
+    except ImportError:
+        from web.authz import check_permission
     has_all_cancel = check_permission(current_user, 'jobs.all:cancel', storage_backend) or \
                      check_permission(current_user, 'jobs:*', storage_backend) or \
                      check_permission(current_user, '*:*', storage_backend)
