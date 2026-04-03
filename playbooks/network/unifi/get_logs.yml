@@ -2,6 +2,7 @@
 - name: Gather UniFi AP Logs
   hosts: all
   gather_facts: false
+  become: false
   tasks:
     - name: Get system logs
       raw: tail -n 100 /var/log/messages
