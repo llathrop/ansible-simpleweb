@@ -1582,7 +1582,7 @@ def _get_worker_name(worker_id: str) -> str:
     return worker_id[:8] if len(worker_id) > 8 else worker_id
 
 
-@app.route('/run/<playbook_name>')
+@app.route('/run/<path:playbook_name>')
 @require_permission('playbooks:run')
 def run_playbook(playbook_name):
     """Trigger playbook execution with streaming"""
