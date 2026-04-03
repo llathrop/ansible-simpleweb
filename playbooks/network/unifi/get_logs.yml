@@ -1,6 +1,6 @@
 ---
 - name: Gather UniFi AP Logs
-  hosts: unifi_aps
+  hosts: all
   gather_facts: false
   tasks:
     - name: Get system logs
