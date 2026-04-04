@@ -395,3 +395,5 @@ For issues or questions:
 ---
 
 **Built with Claude Code** | Generated with Claude Opus 4.5
+## Roadmap: Cloud AI Integration
+To restore AI capabilities without local hardware overhead, we plan to implement a Cloud AI connector supporting OpenAI/Anthropic APIs. Tracked in Issue #28.
