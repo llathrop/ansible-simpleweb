@@ -92,7 +92,11 @@ def inject_nav_context():
         from flask import g
         user = getattr(g, 'current_user', None)
         context = get_nav_context(request.path, user)
-        context['system_warnings'] = getattr(app, 'system_warnings', [])
+        # Only show system-level hardware warnings on configuration pages
+        if request.path.startswith('/config') or request.path.startswith('/settings'):
+            context['system_warnings'] = getattr(app, 'system_warnings', [])
+        else:
+            context['system_warnings'] = []
         return context
     except Exception:
         return {
