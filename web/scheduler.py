@@ -109,6 +109,9 @@ class ScheduleManager:
 
     def start(self):
         """Start the scheduler and register all enabled jobs."""
+        # Start the scheduler first
+        self.scheduler.start()
+        
         # Register existing enabled schedules with APScheduler
         for schedule_id, schedule in self.schedules.items():
             if schedule.get('enabled', True):
@@ -117,7 +120,6 @@ class ScheduleManager:
                 except Exception as e:
                     print(f"Error registering schedule {schedule_id}: {e}")
 
-        self.scheduler.start()
         print(f"Scheduler started with {len(self.schedules)} schedules")
 
     def shutdown(self):
