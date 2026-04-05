@@ -34,6 +34,7 @@ services:
     environment:
       - FLASK_ENV=development
       - FLASK_APP=web/app.py
+      - FLASK_DEBUG=1
       # Storage backend: 'flatfile' or 'mongodb'
       - STORAGE_BACKEND=mongodb
       # MongoDB connection (used when STORAGE_BACKEND=mongodb)
@@ -57,6 +58,7 @@ services:
     depends_on:
       - mongodb
     restart: unless-stopped
+    mem_limit: 300M
 
   mongodb:
     image: mongo:7
@@ -70,6 +72,7 @@ services:
       # No auth for local development - add MONGO_INITDB_ROOT_USERNAME/PASSWORD for production
       - MONGO_INITDB_DATABASE=ansible_simpleweb
     restart: unless-stopped
+    mem_limit: 50M
 
   # Worker 1 - General purpose
   # Workers need network access to target hosts. Options:
@@ -110,6 +113,7 @@ services:
     #   - "target1.example.com:192.168.1.100"
     #   - "target2.example.com:192.168.1.101"
     restart: unless-stopped
+    mem_limit: 200M
 
   # Worker 2 - High memory workloads
   worker-2:
@@ -137,6 +141,7 @@ services:
     depends_on:
       - ansible-web
     restart: unless-stopped
+    mem_limit: 200M
 
   # Worker 3 - Network operations
   worker-3:
@@ -164,6 +169,7 @@ services:
     depends_on:
       - ansible-web
     restart: unless-stopped
+    mem_limit: 200M
 
   # Ollama LLM (required for agent log review; part of this project—status and logs are our responsibility)
   ollama:
@@ -184,6 +190,7 @@ services:
       start_period: 60s
     # Pull model on first run (lightweight): docker compose exec ollama ollama run qwen2.5-coder:1.5b
     # Logs: docker compose logs ollama
+    mem_limit: 50M
 
   # Agent Service
   agent-service:
@@ -215,6 +222,7 @@ services:
       ollama:
         condition: service_healthy
     restart: unless-stopped
+    mem_limit: 50M
 
 volumes:
   mongodb_data:

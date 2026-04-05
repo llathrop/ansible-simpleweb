@@ -433,6 +433,7 @@
                 </div>
                 {% endif %}
                 <div class="inventory-actions">
+                    <button class="btn btn-secondary btn-small" onclick="viewFacts('{{ item.hostname }}')">Facts</button>
                     <button class="btn btn-secondary btn-small" onclick="showEditModal('{{ item.id }}')">Edit</button>
                     <button class="btn btn-danger btn-small" onclick="deleteItem('{{ item.id }}', '{{ item.hostname }}')">Delete</button>
                 </div>
@@ -447,6 +448,22 @@
         {% endif %}
 
 </div>
+
+    <!-- Facts Modal -->
+    <div class="modal" id="factsModal">
+        <div class="modal-content" style="max-width: 800px;">
+            <div class="modal-header">
+                <h2 id="factsModalTitle">Host Facts</h2>
+                <button class="modal-close" onclick="closeFactsModal()">&times;</button>
+            </div>
+            <div id="factsContent" style="font-family: monospace; white-space: pre-wrap; background: var(--bg-primary); padding: 15px; border-radius: 4px; overflow-x: auto;">
+                Loading...
+            </div>
+            <div style="margin-top: 15px; text-align: right;">
+                <button class="btn btn-secondary" onclick="closeFactsModal()">Close</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Host Configuration Wizard Modal -->
     <div class="modal wizard-modal" id="itemModal">
@@ -1210,6 +1227,38 @@
                     card.style.display = 'none';
                 }
             });
+        }
+
+        // =========================================================================
+        // Facts Modal
+        // =========================================================================
+        async function viewFacts(hostname) {
+            const modal = document.getElementById('factsModal');
+            const title = document.getElementById('factsModalTitle');
+            const content = document.getElementById('factsContent');
+
+            title.textContent = `Facts: ${hostname}`;
+            content.innerHTML = 'Loading facts...';
+            modal.classList.add('active');
+
+            try {
+                // Wait, does the API exist? Let's use the CMDB route or create one if needed.
+                // Wait, I should add the API route `/api/inventory/<hostname>/facts` first.
+                const response = await fetch(`/api/inventory/${hostname}/facts`);
+                if (response.ok) {
+                    const data = await response.json();
+                    content.textContent = JSON.stringify(data, null, 2);
+                } else {
+                    const err = await response.json();
+                    content.textContent = `Error: ${err.error || 'Failed to load facts'}`;
+                }
+            } catch (e) {
+                content.textContent = `Error: ${e.message}`;
+            }
+        }
+
+        function closeFactsModal() {
+            document.getElementById('factsModal').classList.remove('active');
         }
 
         // Close modal on escape key
