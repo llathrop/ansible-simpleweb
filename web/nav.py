@@ -33,7 +33,6 @@ NAV_SECTIONS = [
         'pages': [
             {'url': '/logs', 'label': 'All Logs'},
             {'url': '/inventory', 'label': 'Inventory'},
-            {'url': '/cmdb', 'label': 'CMDB'},
             {'url': '/storage', 'label': 'Storage'},
         ],
     },

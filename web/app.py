@@ -2805,6 +2805,21 @@ def api_cert_upload():
 # Stored via the pluggable storage backend (flatfile or MongoDB)
 # =============================================================================
 
+@app.route('/api/inventory/<hostname>/facts')
+@require_any_permission('inventory:view', 'cmdb:view')
+def api_inventory_facts(hostname):
+    """
+    Get CMDB facts for a specific host by its hostname.
+    """
+    if not storage_backend:
+        return jsonify({'error': 'Storage backend not initialized'}), 500
+
+    host_facts = storage_backend.get_host(hostname)
+    if not host_facts:
+        return jsonify({'error': 'Host facts not found in CMDB'}), 404
+
+    return jsonify(host_facts.get('facts', {}))
+
 @app.route('/api/inventory')
 @require_permission('inventory:view')
 def api_inventory_list():
@@ -3513,7 +3528,7 @@ def api_history():
 # =============================================================================
 
 @app.route('/api/hosts')
-@require_permission('cmdb:view')
+@require_any_permission('cmdb:view', 'inventory:view')
 def api_hosts_list():
     """
     Get summary of all hosts with collected facts.
@@ -3529,7 +3544,7 @@ def api_hosts_list():
 
 
 @app.route('/api/hosts/<host>')
-@require_permission('cmdb:view')
+@require_any_permission('cmdb:view', 'inventory:view')
 def api_host_facts(host):
     """
     Get all collected facts for a specific host.
@@ -3551,7 +3566,7 @@ def api_host_facts(host):
 
 
 @app.route('/api/hosts/<host>/<collection>')
-@require_permission('cmdb:view')
+@require_any_permission('cmdb:view', 'inventory:view')
 def api_host_collection(host, collection):
     """
     Get a specific collection for a host.
@@ -3579,7 +3594,7 @@ def api_host_collection(host, collection):
 
 
 @app.route('/api/hosts/<host>/<collection>/history')
-@require_permission('cmdb:view')
+@require_any_permission('cmdb:view', 'inventory:view')
 def api_host_collection_history(host, collection):
     """
     Get history of changes for a host's collection.
@@ -3691,7 +3706,7 @@ def api_delete_host_collection(host, collection):
 
 
 @app.route('/api/hosts/by-group/<group>')
-@require_permission('cmdb:view')
+@require_any_permission('cmdb:view', 'inventory:view')
 def api_hosts_by_group(group):
     """
     Get all hosts in a specific group.
@@ -3707,34 +3722,6 @@ def api_hosts_by_group(group):
 
     hosts = storage_backend.get_hosts_by_group(group)
     return jsonify(hosts)
-
-
-@app.route('/cmdb')
-@require_permission('cmdb:view')
-def cmdb_page():
-    """
-    CMDB browser page - view collected host facts.
-    """
-    if not storage_backend:
-        return "Storage backend not initialized", 500
-
-    hosts = storage_backend.get_all_hosts()
-
-    # Get all unique groups
-    all_groups = set()
-    for h in hosts:
-        all_groups.update(h.get('groups', []))
-
-    # Get all unique collections
-    all_collections = set()
-    for h in hosts:
-        all_collections.update(h.get('collections', []))
-
-    return render_template('cmdb.html',
-                          hosts=hosts,
-                          groups=sorted(all_groups),
-                          collections=sorted(all_collections),
-                          backend_type=storage_backend.get_backend_type())
 
 
 # =============================================================================
