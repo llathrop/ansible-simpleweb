@@ -151,6 +151,104 @@
             background: var(--bg-secondary);
             color: var(--text-primary);
         }
+
+        /* CMDB / Facts Modal specific styles */
+        .cmdb-data-viewer {
+            background: var(--bg-tertiary);
+            padding: 15px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.9em;
+            white-space: pre-wrap;
+            word-break: break-all;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .cmdb-tabs {
+            display: flex;
+            border-bottom: 2px solid var(--border-primary);
+            margin-bottom: 15px;
+        }
+        .cmdb-tab-btn {
+            padding: 10px 20px;
+            border: none;
+            background: none;
+            cursor: pointer;
+            color: var(--text-secondary);
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+        }
+        .cmdb-tab-btn:hover { color: var(--text-primary); }
+        .cmdb-tab-btn.active {
+            color: var(--text-primary);
+            border-bottom-color: var(--btn-primary-bg, #3b82f6);
+        }
+        .cmdb-tab-content { display: none; }
+        .cmdb-tab-content.active { display: block; }
+        .cmdb-history-item {
+            padding: 10px;
+            margin-bottom: 10px;
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+        }
+        .cmdb-history-timestamp { font-weight: bold; }
+        .cmdb-diff-section { margin-top: 10px; }
+        .cmdb-diff-added { color: #22c55e; }
+        .cmdb-diff-removed { color: #ef4444; }
+        .cmdb-diff-changed { color: #eab308; }
+        .cmdb-diff-category {
+            margin-top: 8px;
+            padding: 8px;
+            background: var(--bg-primary);
+            border-radius: 4px;
+        }
+        .cmdb-diff-category-title {
+            font-weight: bold;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .cmdb-diff-category-title::before {
+            content: '';
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+        .cmdb-diff-category.added .cmdb-diff-category-title::before { background: #22c55e; }
+        .cmdb-diff-category.removed .cmdb-diff-category-title::before { background: #ef4444; }
+        .cmdb-diff-category.changed .cmdb-diff-category-title::before { background: #eab308; }
+        .cmdb-diff-item {
+            font-family: monospace;
+            font-size: 0.85em;
+            padding: 4px 0;
+            border-bottom: 1px solid var(--border-primary);
+        }
+        .cmdb-diff-key {
+            color: var(--text-secondary);
+            display: inline-block;
+            min-width: 150px;
+        }
+        .cmdb-collection-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+        .cmdb-collection-badge {
+            cursor: pointer;
+            padding: 8px 12px;
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .cmdb-collection-badge:hover { background: var(--table-row-hover); }
+        .cmdb-collection-name { font-weight: bold; }
+        .cmdb-collection-date { font-size: 0.8em; color: var(--text-muted); }
+
         /* Wizard Styles */
         .wizard-modal .modal-content {
             max-width: 600px;
@@ -276,32 +374,19 @@
         .ssh-key-tabs {
             display: flex;
             gap: 10px;
-            margin-bottom: 15px;
+            margin-bottom: 10px;
         }
         .ssh-key-tab {
-            padding: 8px 16px;
-            border: 1px solid var(--border-primary);
+            padding: 5px 12px;
             border-radius: 4px;
-            background: var(--bg-tertiary);
             cursor: pointer;
+            font-size: 0.85em;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-primary);
         }
         .ssh-key-tab.active {
             background: var(--btn-primary-bg);
             color: var(--btn-primary-text);
-            border-color: var(--btn-primary-bg);
-        }
-        .ssh-key-upload {
-            border: 2px dashed var(--border-primary);
-            padding: 20px;
-            text-align: center;
-            border-radius: 8px;
-            cursor: pointer;
-        }
-        .ssh-key-upload:hover {
-            border-color: var(--btn-primary-bg);
-        }
-        .ssh-key-upload.dragover {
-            background: rgba(var(--btn-primary-bg-rgb, 66,133,244), 0.1);
             border-color: var(--btn-primary-bg);
         }
         .ssh-key-list {
@@ -309,11 +394,12 @@
             overflow-y: auto;
             border: 1px solid var(--border-primary);
             border-radius: 4px;
+            margin-bottom: 10px;
         }
         .ssh-key-item {
-            padding: 10px;
-            border-bottom: 1px solid var(--border-primary);
+            padding: 8px 12px;
             cursor: pointer;
+            border-bottom: 1px solid var(--border-primary);
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -322,12 +408,24 @@
             border-bottom: none;
         }
         .ssh-key-item:hover {
-            background: var(--bg-tertiary);
+            background: var(--table-row-hover);
         }
         .ssh-key-item.selected {
             background: rgba(var(--btn-primary-bg-rgb, 66,133,244), 0.1);
+            font-weight: bold;
         }
-        /* Review section */
+        .ssh-key-upload {
+            border: 2px dashed var(--border-primary);
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+        .ssh-key-upload:hover, .ssh-key-upload.dragover {
+            border-color: var(--btn-primary-bg);
+        }
+        /* Review Section */
         .review-section {
             background: var(--bg-tertiary);
             padding: 15px;
@@ -336,130 +434,134 @@
         }
         .review-row {
             display: flex;
-            padding: 8px 0;
-            border-bottom: 1px solid var(--border-primary);
-        }
-        .review-row:last-child {
-            border-bottom: none;
+            justify-content: space-between;
+            padding: 5px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
         }
         .review-label {
-            width: 140px;
-            font-weight: bold;
             color: var(--text-muted);
+            font-size: 0.9em;
         }
         .review-value {
-            flex: 1;
-            color: var(--text-primary);
+            font-weight: bold;
         }
-        /* Connection test */
+        /* Connection Test */
         .connection-test {
-            margin-top: 15px;
             padding: 15px;
             border-radius: 8px;
-            text-align: center;
+            margin-top: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
-        .connection-test.testing {
-            background: var(--status-running-bg);
-            color: var(--status-running-text);
-        }
-        .connection-test.success {
-            background: var(--status-completed-bg);
-            color: var(--status-completed-text);
-        }
-        .connection-test.failed {
-            background: var(--status-failed-bg);
-            color: var(--status-failed-text);
-        }
-        .connection-test .test-icon {
-            font-size: 2em;
-            margin-bottom: 10px;
-        }
-    </style>
+        .connection-test.testing { background: var(--bg-tertiary); }
+        .connection-test.success { background: rgba(34, 197, 94, 0.1); border: 1px solid #22c55e; }
+        .connection-test.failed { background: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444; }
+        .test-icon { font-size: 1.2em; }
+</style>
 {% endblock %}
 
 {% block content %}
 <div class="container container-wide">
-    <h1>Inventory Management</h1>
-    <p class="subtitle">Manage hosts and servers in the database</p>
+    <div class="d-flex justify-content-between align-items-center">
+        <h1>Inventory Management</h1>
+        <div class="d-flex gap-2">
+            <button class="btn btn-secondary" onclick="validateSshKeys()">Validate SSH Keys</button>
+            <button class="btn btn-primary" onclick="showAddModal()">Add Host</button>
+        </div>
+    </div>
 
     <div class="stats-bar">
-            <div class="stat-item">
-                <div class="stat-value" id="totalItems">{{ inventory|length }}</div>
-                <div class="stat-label">Total Items</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-value" id="totalGroups">{{ groups|length }}</div>
-                <div class="stat-label">Groups</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-value">{{ backend_type }}</div>
-                <div class="stat-label">Storage Backend</div>
-            </div>
+        <div class="stat-item">
+            <div class="stat-value">{{ inventory|length }}</div>
+            <div class="stat-label">Total Hosts</div>
         </div>
-
-        <div class="action-bar" style="display: flex; gap: 10px; margin-bottom: 20px;">
-            <button class="btn btn-primary" onclick="showAddModal()">+ Add Host</button>
-            <button class="btn btn-secondary" onclick="validateSshKeys()">Validate SSH Keys</button>
-            <input type="text" id="searchInput" placeholder="Search hostname, group, or description..."
-                   style="flex: 1; padding: 10px; border: 1px solid var(--border-primary); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary);"
-                   onkeyup="filterInventory()">
+        <div class="stat-item">
+            <div class="stat-value">{{ inventory|map(attribute='group')|unique|list|length }}</div>
+            <div class="stat-label">Groups</div>
         </div>
+    </div>
 
-        {% if inventory %}
-        <div class="inventory-grid" id="inventoryGrid">
-            {% for item in inventory %}
-            <div class="inventory-card" data-item-id="{{ item.id }}"
-                 data-hostname="{{ item.hostname|lower }}"
-                 data-group="{{ item.group|lower }}"
-                 data-description="{{ item.description|lower }}">
-                <div class="inventory-header">
-                    <div class="inventory-hostname">{{ item.hostname }}</div>
-                    <span class="inventory-group">{{ item.group }}</span>
-                </div>
-                <div class="inventory-details">
-                    {% if item.display_name and item.display_name != item.hostname %}
-                    <strong>Display Name:</strong> {{ item.display_name }}<br>
-                    {% endif %}
-                    {% if item.description %}
-                    <strong>Description:</strong> {{ item.description }}<br>
-                    {% endif %}
-                    <strong>Created:</strong> {{ item.created[:19] if item.created else 'N/A' }}
-                </div>
-                {% if item.variables %}
-                <div class="inventory-variables">
-                    {% for key, value in item.variables.items() %}
-                    {{ key }}: {{ value }}<br>
-                    {% endfor %}
-                </div>
+    <div class="search-bar">
+        <input type="text" id="searchInput" placeholder="Search hosts by name, group, or description..." onkeyup="filterInventory()">
+    </div>
+
+    {% if inventory %}
+    <div class="inventory-grid" id="inventoryGrid">
+        {% for item in inventory %}
+        <div class="inventory-card" 
+             data-hostname="{{ item.hostname|lower }}" 
+             data-group="{{ item.group|lower }}"
+             data-description="{{ (item.description or '')|lower }}">
+            <div class="inventory-header">
+                <div class="inventory-hostname">{{ item.hostname }}</div>
+                <span class="inventory-group">{{ item.group or 'ungrouped' }}</span>
+            </div>
+            <div class="inventory-details">
+                {% if item.display_name %}
+                <strong>{{ item.display_name }}</strong><br>
                 {% endif %}
-                <div class="inventory-actions">
-                    <button class="btn btn-secondary btn-small" onclick="viewFacts('{{ item.hostname }}')">Facts</button>
-                    <button class="btn btn-secondary btn-small" onclick="showEditModal('{{ item.id }}')">Edit</button>
-                    <button class="btn btn-danger btn-small" onclick="deleteItem('{{ item.id }}', '{{ item.hostname }}')">Delete</button>
-                </div>
+                {{ item.description or 'No description' }}
             </div>
-            {% endfor %}
+            {% if item.variables %}
+            <div class="inventory-variables">
+                {% for key, value in item.variables.items() %}
+                {{ key }}: {{ value }}<br>
+                {% endfor %}
+            </div>
+            {% endif %}
+            <div class="inventory-actions">
+                <button class="btn btn-secondary btn-small" onclick="viewFacts('{{ item.hostname }}')">Facts</button>
+                <button class="btn btn-secondary btn-small" onclick="showEditModal('{{ item.id }}')">Edit</button>
+                <button class="btn btn-danger btn-small" onclick="deleteItem('{{ item.id }}', '{{ item.hostname }}')">Delete</button>
+            </div>
         </div>
-        {% else %}
-        <div class="empty-state">
-            <p>No inventory items found.</p>
-            <p>Click "Add Host" to add your first managed host.</p>
-        </div>
-        {% endif %}
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <p>No inventory items found.</p>
+        <p>Click "Add Host" to add your first managed host.</p>
+    </div>
+    {% endif %}
 
 </div>
 
     <!-- Facts Modal -->
     <div class="modal" id="factsModal">
-        <div class="modal-content" style="max-width: 800px;">
+        <div class="modal-content" style="max-width: 900px;">
             <div class="modal-header">
                 <h2 id="factsModalTitle">Host Facts</h2>
                 <button class="modal-close" onclick="closeFactsModal()">&times;</button>
             </div>
-            <div id="factsContent" style="font-family: monospace; white-space: pre-wrap; background: var(--bg-primary); padding: 15px; border-radius: 4px; overflow-x: auto;">
-                Loading...
+            <div class="modal-body">
+                <div class="cmdb-tabs" id="factsTabs" style="display: none;">
+                    <button class="cmdb-tab-btn active" onclick="showFactsTab('current')">Current Data</button>
+                    <button class="cmdb-tab-btn" onclick="showFactsTab('history')">History</button>
+                </div>
+                
+                <div id="facts-browser">
+                    <!-- Host overview and collection list -->
+                    <div id="host-overview"></div>
+                    <h3 style="margin-top: 20px; font-size: 1.1em;">Collections</h3>
+                    <div class="cmdb-collection-list" id="collectionList"></div>
+                </div>
+
+                <div id="current-tab" class="cmdb-tab-content">
+                    <div class="cmdb-data-viewer" id="factsContent">Loading...</div>
+                    <div style="margin-top: 15px;">
+                        <button class="btn btn-secondary btn-small" onclick="backToBrowser()">&larr; Back to Collections</button>
+                    </div>
+                </div>
+
+                <div id="history-tab" class="cmdb-tab-content">
+                    <div id="historyViewer">Loading...</div>
+                    <div style="margin-top: 15px;">
+                        <button class="btn btn-secondary btn-small" onclick="backToBrowser()">&larr; Back to Collections</button>
+                    </div>
+                </div>
             </div>
-            <div style="margin-top: 15px; text-align: right;">
+            <div style="padding: 15px; border-top: 1px solid var(--border-primary); text-align: right;">
                 <button class="btn btn-secondary" onclick="closeFactsModal()">Close</button>
             </div>
         </div>
@@ -472,94 +574,88 @@
                 <h2 id="modalTitle">Add Host</h2>
                 <button class="modal-close" onclick="closeModal()">&times;</button>
             </div>
-
-            <!-- Wizard Step Indicators -->
-            <div class="wizard-steps">
-                <div class="wizard-step active" data-step="1">
-                    <div class="wizard-step-number">1</div>
-                    <div class="wizard-step-label">Basic Info</div>
-                </div>
-                <div class="wizard-step" data-step="2">
-                    <div class="wizard-step-number">2</div>
-                    <div class="wizard-step-label">Authentication</div>
-                </div>
-                <div class="wizard-step" data-step="3">
-                    <div class="wizard-step-number">3</div>
-                    <div class="wizard-step-label">SSH Key</div>
-                </div>
-                <div class="wizard-step" data-step="4">
-                    <div class="wizard-step-number">4</div>
-                    <div class="wizard-step-label">Review</div>
-                </div>
-            </div>
-
-            <form id="itemForm" onsubmit="saveItem(event)">
+            
+            <form onsubmit="saveItem(event)">
                 <input type="hidden" id="itemId">
+                
+                <!-- Wizard Steps Indicator -->
+                <div class="wizard-steps">
+                    <div class="wizard-step active" data-step="1">
+                        <div class="wizard-step-number">1</div>
+                        <div class="wizard-step-label">Basic</div>
+                    </div>
+                    <div class="wizard-step" data-step="2">
+                        <div class="wizard-step-number">2</div>
+                        <div class="wizard-step-label">Auth</div>
+                    </div>
+                    <div class="wizard-step" data-step="3">
+                        <div class="wizard-step-number">3</div>
+                        <div class="wizard-step-label">Key</div>
+                    </div>
+                    <div class="wizard-step" data-step="4">
+                        <div class="wizard-step-number">4</div>
+                        <div class="wizard-step-label">Review</div>
+                    </div>
+                </div>
+
                 <div class="wizard-content">
                     <!-- Step 1: Basic Info -->
                     <div class="wizard-page active" data-page="1">
-                        <h3>Basic Information</h3>
                         <div class="form-group">
                             <label for="hostname">Hostname / IP *</label>
-                            <input type="text" id="hostname" required placeholder="server.example.com or 192.168.1.100">
+                            <input type="text" id="hostname" required placeholder="e.g. 192.168.1.10">
                         </div>
                         <div class="form-group">
-                            <label for="displayName">Display Name</label>
-                            <input type="text" id="displayName" placeholder="Friendly name (optional)">
+                            <label for="displayName">Display Name (optional)</label>
+                            <input type="text" id="displayName" placeholder="e.g. Web Server 01">
                         </div>
                         <div class="form-group">
-                            <label for="group">Group</label>
-                            <input type="text" id="group" placeholder="webservers, databases, etc." list="groupList">
-                            <datalist id="groupList">
-                                {% for g in groups %}
-                                <option value="{{ g }}">
-                                {% endfor %}
-                            </datalist>
-                        </div>
-                        <div class="form-group">
-                            <label for="description">Description</label>
-                            <input type="text" id="description" placeholder="Optional description">
+                            <label for="group">Ansible Group</label>
+                            <input type="text" id="group" placeholder="e.g. webservers">
                         </div>
                         <div class="form-group">
                             <label for="deviceType">Device Type</label>
                             <select id="deviceType">
-                                <option value="linux">Standard (Linux/Unix)</option>
+                                <option value="linux">Standard Linux (SSH)</option>
                                 <option value="mikrotik">MikroTik RouterOS</option>
                             </select>
-                            <small style="color: var(--text-muted);">Use MikroTik for routers; enables network_cli connection.</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="description">Description</label>
+                            <textarea id="description" placeholder="Notes about this host..."></textarea>
                         </div>
                     </div>
 
-                    <!-- Step 2: Authentication -->
+                    <!-- Step 2: Auth Method -->
                     <div class="wizard-page" data-page="2">
-                        <h3>Authentication Settings</h3>
-                        <div class="form-group">
-                            <label for="ansibleUser">SSH Username</label>
-                            <input type="text" id="ansibleUser" placeholder="root, deploy, ansible, etc.">
-                        </div>
-                        <div class="form-group">
-                            <label for="ansiblePort">SSH Port</label>
-                            <input type="number" id="ansiblePort" placeholder="22" value="22">
-                        </div>
                         <div class="form-group">
                             <label>Authentication Method</label>
                             <div class="auth-method-options">
                                 <div class="auth-method-option" data-method="key" onclick="selectAuthMethod('key')">
                                     <div class="auth-icon">🔑</div>
                                     <div class="auth-label">SSH Key</div>
-                                    <div class="auth-desc">Recommended</div>
+                                    <div class="auth-desc">Private key file</div>
                                 </div>
                                 <div class="auth-method-option" data-method="password" onclick="selectAuthMethod('password')">
-                                    <div class="auth-icon">🔒</div>
+                                    <div class="auth-icon">⌨️</div>
                                     <div class="auth-label">Password</div>
-                                    <div class="auth-desc">Less secure</div>
+                                    <div class="auth-desc">SSH password</div>
                                 </div>
                                 <div class="auth-method-option" data-method="agent" onclick="selectAuthMethod('agent')">
-                                    <div class="auth-icon">🔗</div>
-                                    <div class="auth-label">SSH Agent</div>
+                                    <div class="auth-icon">🤖</div>
+                                    <div class="auth-label">Agent</div>
                                     <div class="auth-desc">Use system agent</div>
                                 </div>
                             </div>
+                        </div>
+                        <!-- Common settings for all methods -->
+                        <div class="form-group">
+                            <label for="ansibleUser">SSH User (optional)</label>
+                            <input type="text" id="ansibleUser" placeholder="e.g. root, ansible">
+                        </div>
+                        <div class="form-group">
+                            <label for="ansiblePort">SSH Port</label>
+                            <input type="number" id="ansiblePort" value="22">
                         </div>
                         <!-- Password field (hidden by default) -->
                         <div class="auth-fields" id="passwordFields">
@@ -672,6 +768,161 @@
             uploadedKeyName: null,
             sshKeys: []
         };
+
+        // =========================================================================
+        // Facts Modal & CMDB Integration
+        // =========================================================================
+        let currentFactsHost = null;
+
+        async function viewFacts(hostname) {
+            currentFactsHost = hostname;
+            const modal = document.getElementById('factsModal');
+            const title = document.getElementById('factsModalTitle');
+            const browser = document.getElementById('facts-browser');
+            const tabs = document.getElementById('factsTabs');
+            
+            title.textContent = `Facts: ${hostname}`;
+            browser.style.display = 'block';
+            tabs.style.display = 'none';
+            document.getElementById('current-tab').classList.remove('active');
+            document.getElementById('history-tab').classList.remove('active');
+            
+            document.getElementById('host-overview').innerHTML = '<div class="empty-state">Loading host facts...</div>';
+            document.getElementById('collectionList').innerHTML = '';
+            
+            modal.classList.add('active');
+
+            try {
+                const response = await fetch(`/api/inventory/${encodeURIComponent(hostname)}/facts`);
+                if (!response.ok) throw new Error(await response.text());
+                const data = await response.json();
+                
+                // Render overview
+                document.getElementById('host-overview').innerHTML = `
+                    <div style="font-size: 0.9em; color: var(--text-muted);">
+                        First seen: ${data.first_seen || 'N/A'}<br>
+                        Last updated: ${data.last_updated || 'N/A'}
+                    </div>
+                `;
+                
+                // Render collections
+                if (data.collections && data.collections.length > 0) {
+                    document.getElementById('collectionList').innerHTML = data.collections.map(coll => `
+                        <div class="cmdb-collection-badge" onclick="viewCollection('${hostname}', '${coll}')">
+                            <span class="cmdb-collection-name">${coll}</span>
+                            <span class="cmdb-collection-date">View Data &rarr;</span>
+                        </div>
+                    `).join('');
+                } else {
+                    document.getElementById('collectionList').innerHTML = '<div class="empty-state">No collections found. Run a playbook first.</div>';
+                }
+            } catch (e) {
+                document.getElementById('host-overview').innerHTML = `<div class="error">Error loading host data: ${e.message}</div>`;
+            }
+        }
+
+        async function viewCollection(host, collection) {
+            const browser = document.getElementById('facts-browser');
+            const tabs = document.getElementById('factsTabs');
+            const content = document.getElementById('factsContent');
+            const historyViewer = document.getElementById('historyViewer');
+            
+            document.getElementById('factsModalTitle').textContent = `${host} / ${collection}`;
+            browser.style.display = 'none';
+            tabs.style.display = 'flex';
+            showFactsTab('current');
+            
+            content.textContent = 'Loading collection data...';
+            historyViewer.innerHTML = 'Loading history...';
+
+            try {
+                // Fetch both current data and history in parallel
+                const [dataRes, histRes] = await Promise.all([
+                    fetch(`/api/inventory/${encodeURIComponent(host)}/facts/${encodeURIComponent(collection)}`),
+                    fetch(`/api/inventory/${encodeURIComponent(host)}/facts/${encodeURIComponent(collection)}/history`)
+                ]);
+
+                if (!dataRes.ok) throw new Error(`Data error: ${dataRes.statusText}`);
+                if (!histRes.ok) throw new Error(`History error: ${histRes.statusText}`);
+
+                const data = await dataRes.json();
+                const history = await histRes.json();
+
+                // Render current data
+                content.textContent = JSON.stringify(data.current || data, null, 2);
+
+                // Render history
+                if (!history || history.length === 0) {
+                    historyViewer.innerHTML = '<div class="empty-state">No history available</div>';
+                } else {
+                    historyViewer.innerHTML = history.map((entry, idx) => `
+                        <div class="cmdb-history-item">
+                            <div class="cmdb-history-timestamp">${new Date(entry.timestamp).toLocaleString()}</div>
+                            <div style="color: var(--text-muted); font-size: 0.85em; margin-bottom: 8px;">Source: ${entry.source || 'N/A'}</div>
+                            ${entry.diff_from_next ? renderDiff(entry.diff_from_next) : '<div class="text-muted">No changes recorded</div>'}
+                        </div>
+                    `).join('');
+                }
+            } catch (e) {
+                content.textContent = 'Error: ' + e.message;
+                historyViewer.innerHTML = 'Error: ' + e.message;
+            }
+        }
+
+        function renderDiff(diff) {
+            let html = '<div class="cmdb-diff-section">';
+            const added = Object.keys(diff.added || {});
+            const removed = Object.keys(diff.removed || {});
+            const changed = Object.keys(diff.changed || {});
+
+            const formatVal = (v) => {
+                if (v === null) return 'null';
+                if (typeof v === 'object') return JSON.stringify(v);
+                return String(v);
+            };
+
+            if (added.length) {
+                html += `<div class="cmdb-diff-category added"><div class="cmdb-diff-category-title">Added</div>`;
+                added.forEach(k => html += `<div class="cmdb-diff-item"><span class="cmdb-diff-key">${k}</span><span class="cmdb-diff-new">${formatVal(diff.added[k])}</span></div>`);
+                html += `</div>`;
+            }
+            if (removed.length) {
+                html += `<div class="cmdb-diff-category removed"><div class="cmdb-diff-category-title">Removed</div>`;
+                removed.forEach(k => html += `<div class="cmdb-diff-item"><span class="cmdb-diff-key">${k}</span><span class="cmdb-diff-old">${formatVal(diff.removed[k])}</span></div>`);
+                html += `</div>`;
+            }
+            if (changed.length) {
+                html += `<div class="cmdb-diff-category changed"><div class="cmdb-diff-category-title">Changed</div>`;
+                changed.forEach(k => {
+                    const c = diff.changed[k];
+                    html += `<div class="cmdb-diff-item"><span class="cmdb-diff-key">${k}</span><span class="cmdb-diff-old">${formatVal(c.old)}</span> &rarr; <span class="cmdb-diff-new">${formatVal(c.new)}</span></div>`;
+                });
+                html += `</div>`;
+            }
+            return html + '</div>';
+        }
+
+        function showFactsTab(tabName) {
+            document.querySelectorAll('.cmdb-tab-content').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.cmdb-tab-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(tabName + '-tab').classList.add('active');
+            
+            const btns = document.querySelectorAll('.cmdb-tab-btn');
+            if (tabName === 'current') btns[0].classList.add('active');
+            else btns[1].classList.add('active');
+        }
+
+        function backToBrowser() {
+            document.getElementById('factsModalTitle').textContent = `Facts: ${currentFactsHost}`;
+            document.getElementById('facts-browser').style.display = 'block';
+            document.getElementById('factsTabs').style.display = 'none';
+            document.getElementById('current-tab').classList.remove('active');
+            document.getElementById('history-tab').classList.remove('active');
+        }
+
+        function closeFactsModal() {
+            document.getElementById('factsModal').classList.remove('active');
+        }
 
         // =========================================================================
         // Wizard Navigation
@@ -1227,38 +1478,6 @@
                     card.style.display = 'none';
                 }
             });
-        }
-
-        // =========================================================================
-        // Facts Modal
-        // =========================================================================
-        async function viewFacts(hostname) {
-            const modal = document.getElementById('factsModal');
-            const title = document.getElementById('factsModalTitle');
-            const content = document.getElementById('factsContent');
-
-            title.textContent = `Facts: ${hostname}`;
-            content.innerHTML = 'Loading facts...';
-            modal.classList.add('active');
-
-            try {
-                // Wait, does the API exist? Let's use the CMDB route or create one if needed.
-                // Wait, I should add the API route `/api/inventory/<hostname>/facts` first.
-                const response = await fetch(`/api/inventory/${hostname}/facts`);
-                if (response.ok) {
-                    const data = await response.json();
-                    content.textContent = JSON.stringify(data, null, 2);
-                } else {
-                    const err = await response.json();
-                    content.textContent = `Error: ${err.error || 'Failed to load facts'}`;
-                }
-            } catch (e) {
-                content.textContent = `Error: ${e.message}`;
-            }
-        }
-
-        function closeFactsModal() {
-            document.getElementById('factsModal').classList.remove('active');
         }
 
         // Close modal on escape key
