@@ -2805,21 +2805,6 @@ def api_cert_upload():
 # Stored via the pluggable storage backend (flatfile or MongoDB)
 # =============================================================================
 
-@app.route('/api/inventory/<hostname>/facts')
-@require_any_permission('inventory:view', 'cmdb:view')
-def api_inventory_facts(hostname):
-    """
-    Get CMDB facts for a specific host by its hostname.
-    """
-    if not storage_backend:
-        return jsonify({'error': 'Storage backend not initialized'}), 500
-
-    host_facts = storage_backend.get_host(hostname)
-    if not host_facts:
-        return jsonify({'error': 'Host facts not found in CMDB'}), 404
-
-    return jsonify(host_facts.get('facts', {}))
-
 @app.route('/api/inventory')
 @require_permission('inventory:view')
 def api_inventory_list():
@@ -3527,204 +3512,46 @@ def api_history():
 # Endpoints for collected host data from playbook runs
 # =============================================================================
 
-@app.route('/api/hosts')
-@require_any_permission('cmdb:view', 'inventory:view')
-def api_hosts_list():
-    """
-    Get summary of all hosts with collected facts.
 
-    Returns:
-        JSON array of host summaries with collections and timestamps.
-    """
-    if not storage_backend:
-        return jsonify({'error': 'Storage backend not initialized'}), 500
+# =============================================================================
+# =============================================================================
+# Unified Inventory Facts API (CMDB integration)
+# =============================================================================
 
-    hosts = storage_backend.get_all_hosts()
-    return jsonify(hosts)
-
-
-@app.route('/api/hosts/<host>')
-@require_any_permission('cmdb:view', 'inventory:view')
+@app.route("/api/inventory/<host>/facts")
+@require_any_permission("inventory:view", "cmdb:view")
 def api_host_facts(host):
-    """
-    Get all collected facts for a specific host.
-
-    Args:
-        host: Hostname or IP address
-
-    Returns:
-        JSON with all host facts and collections.
-    """
+    """Get all collected facts for a specific host."""
     if not storage_backend:
-        return jsonify({'error': 'Storage backend not initialized'}), 500
-
+        return jsonify({"error": "Storage backend not initialized"}), 500
     facts = storage_backend.get_host_facts(host)
     if not facts:
-        return jsonify({'error': 'Host not found'}), 404
-
+        return jsonify({"error": "Host not found"}), 404
     return jsonify(facts)
 
-
-@app.route('/api/hosts/<host>/<collection>')
-@require_any_permission('cmdb:view', 'inventory:view')
+@app.route("/api/inventory/<host>/facts/<collection>")
+@require_any_permission("inventory:view", "cmdb:view")
 def api_host_collection(host, collection):
-    """
-    Get a specific collection for a host.
-
-    Args:
-        host: Hostname or IP address
-        collection: Collection name (hardware, software, etc.)
-
-    Query params:
-        history: Include history (default: false)
-
-    Returns:
-        JSON with collection data.
-    """
+    """Get a specific collection for a host."""
     if not storage_backend:
-        return jsonify({'error': 'Storage backend not initialized'}), 500
-
-    include_history = request.args.get('history', 'false').lower() == 'true'
+        return jsonify({"error": "Storage backend not initialized"}), 500
+    include_history = request.args.get("history", "false").lower() == "true"
     data = storage_backend.get_host_collection(host, collection, include_history)
-
     if not data:
-        return jsonify({'error': 'Collection not found'}), 404
-
+        return jsonify({"error": "Collection not found"}), 404
     return jsonify(data)
 
-
-@app.route('/api/hosts/<host>/<collection>/history')
-@require_any_permission('cmdb:view', 'inventory:view')
+@app.route("/api/inventory/<host>/facts/<collection>/history")
+@require_any_permission("inventory:view", "cmdb:view")
 def api_host_collection_history(host, collection):
-    """
-    Get history of changes for a host's collection.
-
-    Args:
-        host: Hostname or IP address
-        collection: Collection name
-
-    Query params:
-        limit: Max entries (default: 50)
-
-    Returns:
-        JSON array of historical changes with diffs.
-    """
+    """Get history of changes for a host collection."""
     if not storage_backend:
-        return jsonify({'error': 'Storage backend not initialized'}), 500
-
-    limit = request.args.get('limit', 50, type=int)
+        return jsonify({"error": "Storage backend not initialized"}), 500
+    limit = request.args.get("limit", 50, type=int)
     history = storage_backend.get_host_history(host, collection, limit)
     return jsonify(history)
 
 
-@app.route('/api/hosts', methods=['POST'])
-@require_permission('cmdb:edit')
-def api_save_host_facts():
-    """
-    Save collected facts for a host.
-
-    Expected JSON body:
-    {
-        "host": "192.168.1.50",
-        "collection": "hardware",
-        "data": { ... collected data ... },
-        "groups": ["webservers", "production"]  // optional
-    }
-
-    Returns:
-        JSON with save result (created/updated/unchanged).
-    """
-    if not storage_backend:
-        return jsonify({'error': 'Storage backend not initialized'}), 500
-
-    data = request.get_json()
-    if not data:
-        return jsonify({'error': 'No data provided'}), 400
-
-    host = data.get('host')
-    collection = data.get('collection')
-    facts_data = data.get('data')
-
-    if not host or not collection or not facts_data:
-        return jsonify({'error': 'host, collection, and data are required'}), 400
-
-    groups = data.get('groups', [])
-    source = data.get('source', 'api')
-
-    result = storage_backend.save_host_facts(
-        host=host,
-        collection=collection,
-        data=facts_data,
-        groups=groups,
-        source=source
-    )
-
-    return jsonify(result)
-
-
-@app.route('/api/hosts/<host>', methods=['DELETE'])
-@require_permission('cmdb:edit')
-def api_delete_host(host):
-    """
-    Delete all facts for a host.
-
-    Args:
-        host: Hostname or IP address
-
-    Returns:
-        JSON with success status.
-    """
-    if not storage_backend:
-        return jsonify({'error': 'Storage backend not initialized'}), 500
-
-    if storage_backend.delete_host_facts(host):
-        return jsonify({'success': True, 'deleted': host})
-    else:
-        return jsonify({'error': 'Host not found'}), 404
-
-
-@app.route('/api/hosts/<host>/<collection>', methods=['DELETE'])
-@require_permission('cmdb:edit')
-def api_delete_host_collection(host, collection):
-    """
-    Delete a specific collection for a host.
-
-    Args:
-        host: Hostname or IP address
-        collection: Collection to delete
-
-    Returns:
-        JSON with success status.
-    """
-    if not storage_backend:
-        return jsonify({'error': 'Storage backend not initialized'}), 500
-
-    if storage_backend.delete_host_facts(host, collection):
-        return jsonify({'success': True, 'deleted': f'{host}/{collection}'})
-    else:
-        return jsonify({'error': 'Collection not found'}), 404
-
-
-@app.route('/api/hosts/by-group/<group>')
-@require_any_permission('cmdb:view', 'inventory:view')
-def api_hosts_by_group(group):
-    """
-    Get all hosts in a specific group.
-
-    Args:
-        group: Ansible group name
-
-    Returns:
-        JSON array of host summaries.
-    """
-    if not storage_backend:
-        return jsonify({'error': 'Storage backend not initialized'}), 500
-
-    hosts = storage_backend.get_hosts_by_group(group)
-    return jsonify(hosts)
-
-
-# =============================================================================
 # Schedule Routes
 # Playbook scheduling with APScheduler backend
 # =============================================================================
