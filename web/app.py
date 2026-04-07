@@ -178,6 +178,7 @@ def add_security_headers(response):
 
 
 # Paths
+CONFIG_DIR = '/app/config'
 PLAYBOOKS_DIR = '/app/playbooks'
 LOGS_DIR = '/app/logs'
 RUN_SCRIPT = '/app/run-playbook.sh'
